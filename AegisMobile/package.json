@@ -13,9 +13,13 @@
     "@react-native-community/blur": "^4.4.1",
     "@react-native/new-app-screen": "0.85.2",
     "@tamagui/config": "^2.0.0-rc.41",
+    "llama.rn": "^0.12.0-rc.9",
     "react": "19.2.3",
     "react-dom": "^19.2.3",
     "react-native": "0.85.2",
+    "react-native-device-info": "^15.0.2",
+    "react-native-fs": "^2.20.0",
+    "react-native-markdown-renderer": "^4.1.1",
     "tamagui": "^2.0.0-rc.41"
   },
   "devDependencies": {

@@ -1,11 +1,47 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { ModelStatus } from '../hooks/useAegisInference';
 
 interface Props {
   onInitialize: () => void;
+  modelStatus: ModelStatus;
+  downloadProgress: number;
 }
 
-export const LandingPage: React.FC<Props> = ({ onInitialize }) => {
+export const LandingPage: React.FC<Props> = ({
+  onInitialize,
+  modelStatus,
+  downloadProgress,
+}) => {
+  const isWorking =
+    modelStatus === 'downloading' || modelStatus === 'loading';
+
+  const getButtonText = () => {
+    switch (modelStatus) {
+      case 'downloading':
+        return `DOWNLOADING MODEL ${downloadProgress}%`;
+      case 'loading':
+        return 'LOADING MODEL...';
+      case 'error':
+        return 'RETRY INITIALIZATION';
+      default:
+        return 'INITIALIZE PROTOCOL';
+    }
+  };
+
+  const getSubtitle = () => {
+    switch (modelStatus) {
+      case 'downloading':
+        return 'Pulling Gemma 4 E4B from HuggingFace CDN...';
+      case 'loading':
+        return 'Loading model into device memory...';
+      case 'error':
+        return 'Initialization failed. Tap to retry.';
+      default:
+        return 'Edge-optimized neural processing engine for on-device inference.';
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Atmospheric Glow - Top Right */}
@@ -21,19 +57,62 @@ export const LandingPage: React.FC<Props> = ({ onInitialize }) => {
           <Text style={styles.title}>A E G I S</Text>
           <Text style={styles.subtitle}>BARE-METAL INTELLIGENCE</Text>
         </View>
-        <Text style={styles.description}>
-          Edge-optimized neural processing engine for Snapdragon Hexagon architecture.
-        </Text>
+        <Text style={styles.description}>{getSubtitle()}</Text>
+
+        {/* Download Progress Bar */}
+        {modelStatus === 'downloading' && (
+          <View style={styles.progressBarContainer}>
+            <View style={styles.progressBarTrack}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  { width: `${downloadProgress}%` },
+                ]}
+              />
+            </View>
+            <Text style={styles.progressText}>
+              {downloadProgress}% complete
+            </Text>
+          </View>
+        )}
+
+        {/* Loading Spinner */}
+        {modelStatus === 'loading' && (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#00ffff" />
+            <Text style={styles.loadingText}>
+              Initializing inference engine...
+            </Text>
+          </View>
+        )}
       </View>
       <View style={styles.footer}>
-        <TouchableOpacity 
-          style={styles.initButton}
+        <TouchableOpacity
+          style={[styles.initButton, isWorking && styles.initButtonDisabled]}
           onPress={onInitialize}
           activeOpacity={0.8}
+          disabled={isWorking}
         >
-          <Text style={styles.initText}>INITIALIZE PROTOCOL</Text>
+          {isWorking ? (
+            <View style={styles.buttonContent}>
+              <ActivityIndicator
+                size="small"
+                color={isWorking ? '#00ffff' : '#000000'}
+                style={{ marginRight: 8 }}
+              />
+              <Text
+                style={[styles.initText, isWorking && styles.initTextWorking]}
+              >
+                {getButtonText()}
+              </Text>
+            </View>
+          ) : (
+            <Text style={styles.initText}>{getButtonText()}</Text>
+          )}
         </TouchableOpacity>
-        <Text style={styles.versionText}>v0.0.1 • Powered by Aegis Engine</Text>
+        <Text style={styles.versionText}>
+          v0.1.0 • Gemma 4 E4B-IT • Q4_K_M
+        </Text>
       </View>
     </View>
   );
@@ -103,6 +182,39 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     paddingHorizontal: 20,
   },
+  progressBarContainer: {
+    width: '80%',
+    marginTop: 24,
+    alignItems: 'center',
+  },
+  progressBarTrack: {
+    width: '100%',
+    height: 4,
+    backgroundColor: 'rgba(0, 255, 255, 0.15)',
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#00ffff',
+    borderRadius: 2,
+  },
+  progressText: {
+    color: 'rgba(0, 255, 255, 0.6)',
+    fontSize: 11,
+    fontFamily: 'monospace',
+    marginTop: 8,
+  },
+  loadingContainer: {
+    marginTop: 24,
+    alignItems: 'center',
+    gap: 12,
+  },
+  loadingText: {
+    color: 'rgba(0, 255, 255, 0.6)',
+    fontSize: 12,
+    fontFamily: 'monospace',
+  },
   footer: {
     paddingBottom: 32,
     alignItems: 'center',
@@ -119,12 +231,29 @@ const styles = StyleSheet.create({
     shadowRadius: 20,
     elevation: 12,
   },
+  initButtonDisabled: {
+    backgroundColor: 'rgba(0, 255, 255, 0.15)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 255, 255, 0.3)',
+    elevation: 0,
+    shadowOpacity: 0,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   initText: {
     color: '#000000',
     fontSize: 15,
     fontWeight: 'bold',
     letterSpacing: 2,
     fontFamily: 'monospace',
+  },
+  initTextWorking: {
+    color: '#00ffff',
+    fontSize: 12,
+    letterSpacing: 1,
   },
   versionText: {
     color: 'rgba(255, 255, 255, 0.2)',
