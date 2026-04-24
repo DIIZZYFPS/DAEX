@@ -1,5 +1,5 @@
 {
-  "name": "AegisMobile",
+  "name": "DaexMobile",
   "version": "0.0.1",
   "private": true,
   "scripts": {
@@ -20,6 +20,8 @@
     "react-native-device-info": "^15.0.2",
     "react-native-fs": "^2.20.0",
     "react-native-markdown-renderer": "^4.1.1",
+    "react-native-svg": "^15.15.4",
+    "react-native-svg-transformer": "^1.5.3",
     "tamagui": "^2.0.0-rc.41"
   },
   "devDependencies": {

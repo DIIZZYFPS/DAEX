@@ -6,7 +6,7 @@ import { LandingPage } from './src/components/LandingPage';
 import { MobileExecution } from './src/components/MobileExecution';
 import { llamaService } from './src/services/llamaService';
 import { modelManager } from './src/services/modelManager';
-import { ModelStatus } from './src/hooks/useAegisInference';
+import { ModelStatus } from './src/hooks/useDaexInference';
 
 function App(): React.JSX.Element {
   const [currentScreen, setCurrentScreen] = useState<'landing' | 'execution'>('landing');

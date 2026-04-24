@@ -10,8 +10,10 @@ import {
 } from 'react-native';
 import { BlurView } from '@react-native-community/blur';
 import { YStack, XStack, Text, Input, Button } from 'tamagui';
-import { useAegisInference } from '../hooks/useAegisInference';
+import { useDaexInference } from '../hooks/useDaexInference';
 import { MessageLine } from './MessageLine';
+import { DaexLogo } from './DaexLogo';
+import { DaexLoader } from './DaexLoader';
 import { Sidebar } from './Sidebar';
 import { SettingsModal } from './SettingsModal';
 import { SuggestedPrompts } from './SuggestedPrompts';
@@ -41,7 +43,7 @@ export const MobileExecution: React.FC<Props> = ({ onBack }) => {
     downloadModel,
     toggleGPU,
     clearMessages,
-  } = useAegisInference();
+  } = useDaexInference();
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -150,17 +152,15 @@ export const MobileExecution: React.FC<Props> = ({ onBack }) => {
                   ☰
                 </Text>
               </TouchableOpacity>
-              <XStack ai="center" gap="$1.5">
-                <Text color="#00ffff" fontSize={14}>
-                  🛡️
-                </Text>
+              <XStack ai="center" gap="$2.5">
+                <DaexLogo size={22} ambient />
                 <Text
                   color="#ffffff"
                   fontSize={16}
                   fontWeight="bold"
                   letterSpacing={2}
                 >
-                  AEGIS
+                  DAEX
                 </Text>
               </XStack>
             </XStack>
@@ -234,13 +234,13 @@ export const MobileExecution: React.FC<Props> = ({ onBack }) => {
                 </YStack>
               ) : modelStatus === 'loading' ? (
                 <XStack ai="center" gap="$2">
-                  <ActivityIndicator size="small" color="#f59e0b" />
+                  <DaexLoader size={16} />
                   <Text
                     color="#f59e0b"
                     fontSize={12}
                     fontFamily="monospace"
                   >
-                    Loading model into memory...
+                    Loading engine into memory...
                   </Text>
                 </XStack>
               ) : modelStatus === 'error' ? (
@@ -351,35 +351,41 @@ export const MobileExecution: React.FC<Props> = ({ onBack }) => {
                 onChangeText={setInputText}
                 placeholder={
                   isModelReady
-                    ? 'Send protocol to Aegis...'
-                    : 'Model not loaded...'
+                    ? 'Initialize execution with Icarus...'
+                    : 'Engine not loaded...'
                 }
                 placeholderTextColor={"rgba(255, 255, 255, 0.4)" as any}
                 onSubmitEditing={() => handleSend()}
                 disabled={isGenerating || !isModelReady}
               />
               <Button
-                size="$3"
+                size="$4"
                 circular
                 bg={
                   isGenerating || !isModelReady
-                    ? 'rgba(0, 255, 255, 0.2)'
+                    ? 'rgba(0, 255, 255, 0.1)'
                     : '#00ffff'
                 }
                 onPress={() => handleSend()}
                 disabled={isGenerating || !isModelReady}
                 ml="$2"
+                pressStyle={{ scale: 0.95, opacity: 0.8 }}
+                hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
               >
-                <YStack
-                  w={12}
-                  h={12}
-                  borderRadius={6}
-                  bg={
-                    isGenerating || !isModelReady
-                      ? 'rgba(0, 255, 255, 0.5)'
-                      : '#000000'
-                  }
-                />
+                {isGenerating ? (
+                  <DaexLoader size={20} />
+                ) : (
+                  <View
+                    style={{
+                      width: 14,
+                      height: 14,
+                      borderRadius: 7,
+                      backgroundColor: !isModelReady
+                        ? 'rgba(0, 255, 255, 0.3)'
+                        : '#000000',
+                    }}
+                  />
+                )}
               </Button>
             </XStack>
           </YStack>

@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { YStack, XStack, Text } from 'tamagui';
+import { DaexLogo } from './DaexLogo';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const SIDEBAR_WIDTH = SCREEN_WIDTH * 0.8;
@@ -83,14 +84,14 @@ export const Sidebar: React.FC<Props> = ({
         {/* Header */}
         <XStack ai="center" jc="space-between" px="$4" pt="$6" pb="$4">
           <YStack>
-            <XStack ai="center" gap="$2">
-              <Text color="#00ffff" fontSize={12}>🛡️</Text>
+            <XStack ai="center" gap="$2.5">
+              <DaexLogo size={18} ambient />
               <Text color="#ffffff" fontSize={20} fontWeight="900" letterSpacing={2}>
-                AEGIS
+                DAEX
               </Text>
             </XStack>
             <Text color="rgba(255, 255, 255, 0.4)" fontSize={10} fontFamily="monospace" letterSpacing={1} mt="$1">
-              INTELLIGENT COMPANION
+              DAEDALUS EXECUTION ENGINE
             </Text>
           </YStack>
           <TouchableOpacity onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
@@ -147,7 +148,7 @@ export const Sidebar: React.FC<Props> = ({
         <YStack borderTopWidth={0.5} borderTopColor="rgba(255, 255, 255, 0.08)" px="$4" pt="$3" pb="$2">
           <XStack ai="center" jc="space-between" mb="$2">
             <Text color="rgba(255, 255, 255, 0.5)" fontSize={11} fontFamily="monospace" letterSpacing={1}>
-              AEGIS // SYS
+              DAEX // SYS
             </Text>
             <XStack ai="center" gap="$1.5">
               <View style={styles.statusDot} />
@@ -156,8 +157,8 @@ export const Sidebar: React.FC<Props> = ({
               </Text>
             </XStack>
           </XStack>
-          <XStack ai="center" gap="$2">
-            <Text color="#00ffff" fontSize={11}>🛡️</Text>
+          <XStack ai="center" gap="$2.5">
+            <DaexLogo size={12} />
             <Text color="rgba(255, 255, 255, 0.6)" fontSize={11} fontFamily="monospace">
               Gemma 4 E4B
             </Text>

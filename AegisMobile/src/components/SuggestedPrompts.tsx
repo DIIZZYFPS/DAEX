@@ -1,6 +1,7 @@
 import React from 'react';
 import { TouchableOpacity } from 'react-native';
 import { YStack, Text } from 'tamagui';
+import { DaexLogo } from './DaexLogo';
 
 interface Props {
   onSelectPrompt: (prompt: string) => void;
@@ -15,15 +16,15 @@ const PROMPTS = [
 export const SuggestedPrompts: React.FC<Props> = ({ onSelectPrompt }) => {
   return (
     <YStack f={1} ai="center" jc="center" px="$4">
-      {/* Shield Icon */}
-      <Text fontSize={48} mb="$4">🛡️</Text>
+      {/* DAEX Logo */}
+      <DaexLogo size={80} ambient />
 
       {/* Welcome Text */}
-      <Text color="#ffffff" fontSize={22} fontWeight="bold" letterSpacing={3} mb="$2">
-        Welcome to A E G I S
+      <Text color="#ffffff" fontSize={22} fontWeight="bold" letterSpacing={3} mb="$2" mt="$4">
+        Welcome to D A E X
       </Text>
       <Text color="rgba(255, 255, 255, 0.5)" fontSize={14} textAlign="center" mb="$6" lineHeight={22}>
-        Your intelligent companion. Ask anything — I'll respond with clarity.
+        Icarus is ready. Execute with precision.
       </Text>
 
       {/* Prompt Cards */}

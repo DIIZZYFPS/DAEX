@@ -17,7 +17,7 @@ export interface ChatMessage {
   content: string;
 }
 
-export const useAegisInference = () => {
+export const useDaexInference = () => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [hardwareState, setHardwareState] = useState<'GPU' | 'CPU'>('CPU');

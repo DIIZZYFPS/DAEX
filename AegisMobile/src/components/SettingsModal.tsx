@@ -8,7 +8,7 @@ import {
   Switch,
 } from 'react-native';
 import { YStack, XStack, Text } from 'tamagui';
-import { ModelStatus } from '../hooks/useAegisInference';
+import { ModelStatus } from '../hooks/useDaexInference';
 
 interface Props {
   visible: boolean;

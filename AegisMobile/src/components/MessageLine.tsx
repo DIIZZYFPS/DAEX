@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text as RNText, StyleSheet } from 'react-native';
-import { ChatMessage } from '../hooks/useAegisInference';
+import { ChatMessage } from '../hooks/useDaexInference';
 import { XStack, YStack, Text } from 'tamagui';
 import Markdown from 'react-native-markdown-renderer';
 
@@ -193,7 +193,7 @@ export const MessageLine: React.FC<Props> = ({
     <View style={styles.modelContainer}>
       {/* Model label */}
       <View style={styles.labelRow}>
-        <RNText style={styles.labelText}>🛡️ AEGIS</RNText>
+        <RNText style={styles.labelText}>ICARUS</RNText>
       </View>
 
       {/* Markdown rendered content */}

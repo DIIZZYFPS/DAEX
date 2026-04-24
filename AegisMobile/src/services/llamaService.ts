@@ -15,7 +15,7 @@ const TURN_START = '<|turn>';
 const TURN_END = '<turn|>';
 
 const SYSTEM_PROMPT =
-  'You are Aegis, a helpful AI assistant running directly on device hardware. You respond clearly and concisely.';
+  'You are Icarus, the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.';
 
 /**
  * Formats conversation history into Gemma 4's chat template.

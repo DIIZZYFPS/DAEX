@@ -1,6 +1,8 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { ModelStatus } from '../hooks/useAegisInference';
+import { ModelStatus } from '../hooks/useDaexInference';
+import { DaexLogo } from './DaexLogo';
+import { DaexLoader } from './DaexLoader';
 
 interface Props {
   onInitialize: () => void;
@@ -51,11 +53,11 @@ export const LandingPage: React.FC<Props> = ({
 
       <View style={styles.content}>
         {/* Shield Icon */}
-        <Text style={styles.shield}>🛡️</Text>
+        <DaexLogo size={80} ambient />
 
         <View style={styles.logoContainer}>
-          <Text style={styles.title}>A E G I S</Text>
-          <Text style={styles.subtitle}>BARE-METAL INTELLIGENCE</Text>
+          <Text style={styles.title}>D A E X</Text>
+          <Text style={styles.subtitle}>DAEDALUS EXECUTION ENGINE</Text>
         </View>
         <Text style={styles.description}>{getSubtitle()}</Text>
 
@@ -79,9 +81,9 @@ export const LandingPage: React.FC<Props> = ({
         {/* Loading Spinner */}
         {modelStatus === 'loading' && (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#00ffff" />
+            <DaexLoader size={60} />
             <Text style={styles.loadingText}>
-              Initializing inference engine...
+              Initializing execution engine...
             </Text>
           </View>
         )}
