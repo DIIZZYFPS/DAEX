@@ -6,29 +6,99 @@ import {
   ScrollView,
   View,
   Switch,
+  Modal,
+  Dimensions,
 } from 'react-native';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withSpring,
+  withTiming,
+  runOnJS,
+  Easing,
+} from 'react-native-reanimated';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { YStack, XStack, Text } from 'tamagui';
 import { ModelStatus } from '../hooks/useDaexInference';
+import { Model } from '../services/modelBank';
+
+const SCREEN_HEIGHT = Dimensions.get('window').height;
+const OPEN_SPRING = { damping: 26, stiffness: 300, mass: 0.8 };
+const CLOSE_TIMING = { duration: 260, easing: Easing.in(Easing.cubic) };
 
 interface Props {
   visible: boolean;
   onClose: () => void;
   modelStatus: ModelStatus;
+  selectedModel: Model;
   useGPU: boolean;
   onToggleGPU: (enabled: boolean) => void;
   onDownloadModel: () => void;
   onDeleteModel: () => void;
 }
 
+
 export const SettingsModal: React.FC<Props> = ({
   visible,
   onClose,
   modelStatus,
+  selectedModel,
   useGPU,
   onToggleGPU,
   onDownloadModel,
   onDeleteModel,
 }) => {
+  const translateY = useSharedValue(SCREEN_HEIGHT);
+  const backdropOpacity = useSharedValue(0);
+  const dragOffset = useSharedValue(0);
+
+  React.useEffect(() => {
+    if (visible) {
+      translateY.value = withSpring(0, OPEN_SPRING);
+      backdropOpacity.value = withTiming(1, { duration: 280 });
+    } else {
+      translateY.value = SCREEN_HEIGHT;
+      backdropOpacity.value = 0;
+    }
+  }, [visible]);
+
+  const closeSheet = () => {
+    'worklet';
+    translateY.value = withTiming(SCREEN_HEIGHT, CLOSE_TIMING, (finished) => {
+      if (finished) runOnJS(onClose)();
+    });
+    backdropOpacity.value = withTiming(0, { duration: 220 });
+  };
+
+  const handleClose = () => { closeSheet(); };
+
+  const dragGesture = Gesture.Pan()
+    .onUpdate((e) => {
+      dragOffset.value = Math.max(0, e.translationY);
+      translateY.value = dragOffset.value;
+      backdropOpacity.value = Math.max(0, 1 - dragOffset.value / (SCREEN_HEIGHT * 0.5));
+    })
+    .onEnd((e) => {
+      if (dragOffset.value > SCREEN_HEIGHT * 0.3 || e.velocityY > 800) {
+        translateY.value = withTiming(SCREEN_HEIGHT, CLOSE_TIMING, (finished) => {
+          if (finished) runOnJS(onClose)();
+        });
+        backdropOpacity.value = withTiming(0, { duration: 200 });
+      } else {
+        translateY.value = withSpring(0, OPEN_SPRING);
+        backdropOpacity.value = withTiming(1, { duration: 200 });
+      }
+      dragOffset.value = 0;
+    });
+
+  const sheetStyle = useAnimatedStyle(() => ({
+    transform: [{ translateY: translateY.value }],
+  }));
+
+  const backdropStyle = useAnimatedStyle(() => ({
+    opacity: backdropOpacity.value,
+  }));
+
   if (!visible) return null;
 
   const isModelReady = modelStatus === 'ready';
@@ -65,15 +135,22 @@ export const SettingsModal: React.FC<Props> = ({
   };
 
   return (
-    <View style={StyleSheet.absoluteFill}>
-      {/* Backdrop */}
-      <TouchableWithoutFeedback onPress={onClose}>
-        <View style={styles.backdrop} />
-      </TouchableWithoutFeedback>
+    <Modal
+      visible={visible}
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={handleClose}
+    >
+      <Animated.View style={[styles.backdrop, backdropStyle]}>
+        <TouchableWithoutFeedback onPress={handleClose}>
+          <View style={StyleSheet.absoluteFill} />
+        </TouchableWithoutFeedback>
+      </Animated.View>
 
-      {/* Modal Card */}
-      <View style={styles.centerContainer}>
-        <YStack style={styles.modal}>
+      <GestureDetector gesture={dragGesture}>
+        <Animated.View style={[styles.sheetContainer, sheetStyle]}>
+          <View style={styles.handle} />
           <ScrollView showsVerticalScrollIndicator={false}>
             {/* Header */}
             <XStack ai="center" jc="space-between" mb="$4">
@@ -120,7 +197,7 @@ export const SettingsModal: React.FC<Props> = ({
                       fontSize={14}
                       fontWeight="600"
                     >
-                      Gemma 4 E4B-IT
+                      {selectedModel.name}
                     </Text>
                     <Text
                       color="rgba(255, 255, 255, 0.4)"
@@ -128,7 +205,7 @@ export const SettingsModal: React.FC<Props> = ({
                       fontFamily="monospace"
                       mt="$1"
                     >
-                      Q4_K_M • ~2.5GB • 4B params
+                      {(selectedModel.size / 1e9).toFixed(1)}GB • {(selectedModel.requiredRAM / 1e9).toFixed(0)}GB RAM req.
                     </Text>
                   </YStack>
                   <YStack ai="flex-end">
@@ -305,7 +382,7 @@ export const SettingsModal: React.FC<Props> = ({
                     bg="rgba(239, 68, 68, 0.05)"
                   >
                     <Text color="#ef4444" fontSize={14}>
-                      Delete model file (~2.5GB)
+                      Delete model file (~{(selectedModel.size / 1e9).toFixed(1)}GB)
                     </Text>
                   </XStack>
                 </TouchableOpacity>
@@ -343,35 +420,41 @@ export const SettingsModal: React.FC<Props> = ({
               </Text>
             </YStack>
           </ScrollView>
-        </YStack>
-      </View>
-    </View>
+        </Animated.View>
+      </GestureDetector>
+    </Modal>
   );
 };
 
 const styles = StyleSheet.create({
   backdrop: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(0, 0, 0, 0.7)',
   },
-  centerContainer: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-  },
-  modal: {
-    width: '100%',
-    maxHeight: '80%',
-    backgroundColor: 'rgba(10, 10, 20, 0.95)',
-    borderRadius: 16,
-    borderWidth: 0.5,
+  sheetContainer: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    maxHeight: '88%',
+    backgroundColor: '#080812',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    borderTopWidth: 0.5,
+    borderLeftWidth: 0.5,
+    borderRightWidth: 0.5,
     borderColor: 'rgba(255, 255, 255, 0.1)',
-    padding: 20,
+    paddingHorizontal: 20,
+    paddingTop: 12,
+    paddingBottom: 40,
+  },
+  handle: {
+    width: 36,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: 'rgba(255, 255, 255, 0.18)',
+    alignSelf: 'center',
+    marginBottom: 20,
   },
   statusDot: {
     width: 6,

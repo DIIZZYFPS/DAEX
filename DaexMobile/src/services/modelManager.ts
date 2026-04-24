@@ -1,12 +1,6 @@
 import RNFS from 'react-native-fs';
 import DeviceInfo from 'react-native-device-info';
-
-const MODEL_FILENAME = 'google_gemma-4-E4B-it-Q4_K_M.gguf';
-const MODEL_DOWNLOAD_URL =
-  'https://huggingface.co/bartowski/google_gemma-4-E4B-it-GGUF/resolve/main/google_gemma-4-E4B-it-Q4_K_M.gguf';
-
-// Expected size in bytes (~2.5GB) — used for integrity check
-const EXPECTED_MIN_SIZE = 2_000_000_000;
+import { Model } from './modelBank';
 
 export interface DownloadProgress {
   bytesWritten: number;
@@ -19,65 +13,94 @@ export interface StorageInfo {
   totalRAM: number; // bytes
   modelSize: number; // bytes, 0 if not downloaded
   isDownloaded: boolean;
+  isHardwareCapable: boolean;
 }
 
 class ModelManager {
   private downloadJobId: number | null = null;
 
   /**
-   * Returns the absolute path where the model file lives (or should live)
-   * in the app's document directory.
+   * Returns the absolute path where the model file lives.
    */
-  getModelPath(): string {
-    return `${RNFS.DocumentDirectoryPath}/${MODEL_FILENAME}`;
+  getModelPath(model: Model): string {
+    return `${RNFS.DocumentDirectoryPath}/${model.id}.gguf`;
   }
 
   /**
-   * Checks if the model file exists and is large enough to be valid.
+   * Checks if the device meets the hardware requirements for a specific model.
    */
-  async isModelDownloaded(): Promise<boolean> {
-    const path = this.getModelPath();
+  async checkSpecSupport(model: Model) {
+    const [totalRAM, diskInfo] = await Promise.all([
+      DeviceInfo.getTotalMemory(),
+      RNFS.getFSInfo(),
+    ]);
+
+    const hasEnoughRAM = totalRAM >= model.requiredRAM;
+    const hasEnoughStorage = diskInfo.freeSpace > model.size;
+
+    return {
+      totalRAM,
+      freeSpace: diskInfo.freeSpace,
+      hasEnoughRAM,
+      hasEnoughStorage,
+      supported: hasEnoughRAM, // Storage is transient, but RAM is a hard limit
+    };
+  }
+
+  /**
+   * Checks if the model file exists and is valid based on its expected size.
+   */
+  async isModelDownloaded(model: Model): Promise<boolean> {
+    const path = this.getModelPath(model);
     const exists = await RNFS.exists(path);
     if (!exists) return false;
 
     try {
       const stat = await RNFS.stat(path);
-      return Number(stat.size) > EXPECTED_MIN_SIZE;
+      // Ensure the file is at least 90% of expected size to be considered "valid"
+      return Number(stat.size) >= model.size * 0.9;
     } catch {
       return false;
     }
   }
 
   /**
-   * Downloads the GGUF model from HuggingFace CDN with progress tracking.
+   * Downloads a model from its bank URL with progress tracking.
    */
   async downloadModel(
+    model: Model,
     onProgress?: (progress: DownloadProgress) => void,
   ): Promise<string> {
-    const destPath = this.getModelPath();
+    const destPath = this.getModelPath(model);
+
+    // Check hardware capability before starting
+    const spec = await this.checkSpecSupport(model);
+    if (!spec.supported) {
+      throw new Error(
+        `Device does not meet the required ${this.formatBytes(
+          model.requiredRAM,
+        )} of RAM for this model.`,
+      );
+    }
 
     // Clean up any partial download
     const exists = await RNFS.exists(destPath);
     if (exists) {
       const stat = await RNFS.stat(destPath);
-      if (Number(stat.size) < EXPECTED_MIN_SIZE) {
+      if (Number(stat.size) < model.size * 0.9) {
         await RNFS.unlink(destPath);
       } else {
-        // Already downloaded and valid
         return destPath;
       }
     }
 
     const downloadResult = RNFS.downloadFile({
-      fromUrl: MODEL_DOWNLOAD_URL,
+      fromUrl: model.downloadUrl,
       toFile: destPath,
       background: true,
       discretionary: false,
       cacheable: false,
       progressDivider: 1,
-      begin: (_res: any) => {
-        // Download started
-      },
       progress: (res: any) => {
         if (onProgress) {
           const percent =
@@ -94,20 +117,14 @@ class ModelManager {
     });
 
     this.downloadJobId = downloadResult.jobId;
-
     const result = await downloadResult.promise;
-
     this.downloadJobId = null;
 
     if (result.statusCode !== 200) {
-      // Clean up failed download
-      const failedExists = await RNFS.exists(destPath);
-      if (failedExists) {
+      if (await RNFS.exists(destPath)) {
         await RNFS.unlink(destPath);
       }
-      throw new Error(
-        `Download failed with status ${result.statusCode}`,
-      );
+      throw new Error(`Download failed with status ${result.statusCode}`);
     }
 
     return destPath;
@@ -124,37 +141,39 @@ class ModelManager {
   }
 
   /**
-   * Delete the model file from device storage.
+   * Delete a model file from device storage.
    */
-  async deleteModel(): Promise<void> {
-    const path = this.getModelPath();
-    const exists = await RNFS.exists(path);
-    if (exists) {
+  async deleteModel(model: Model): Promise<void> {
+    const path = this.getModelPath(model);
+    if (await RNFS.exists(path)) {
       await RNFS.unlink(path);
     }
   }
 
   /**
-   * Get storage and device info relevant to model management.
+   * Get storage and device info relevant to a specific model.
    */
-  async getStorageInfo(): Promise<StorageInfo> {
-    const [freeSpace, totalRAM, isDownloaded] = await Promise.all([
-      RNFS.getFSInfo().then((info: any) => info.freeSpace),
-      DeviceInfo.getTotalMemory(),
-      this.isModelDownloaded(),
+  async getStorageInfo(model: Model): Promise<StorageInfo> {
+    const [spec, isDownloaded] = await Promise.all([
+      this.checkSpecSupport(model),
+      this.isModelDownloaded(model),
     ]);
 
     let modelSize = 0;
     if (isDownloaded) {
       try {
-        const stat = await RNFS.stat(this.getModelPath());
+        const stat = await RNFS.stat(this.getModelPath(model));
         modelSize = Number(stat.size);
-      } catch {
-        // ignore
-      }
+      } catch {}
     }
 
-    return { freeSpace, totalRAM, modelSize, isDownloaded };
+    return {
+      freeSpace: spec.freeSpace,
+      totalRAM: spec.totalRAM,
+      modelSize,
+      isDownloaded,
+      isHardwareCapable: spec.supported,
+    };
   }
 
   /**
@@ -169,5 +188,5 @@ class ModelManager {
   }
 }
 
-// Singleton export
 export const modelManager = new ModelManager();
+

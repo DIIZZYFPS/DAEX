@@ -18,12 +18,15 @@ import { Sidebar } from './Sidebar';
 import { SettingsModal } from './SettingsModal';
 import { SuggestedPrompts } from './SuggestedPrompts';
 import { modelManager } from '../services/modelManager';
+import { Model } from '../services/modelBank';
+
 
 interface Props {
   onBack: () => void;
+  selectedModel: Model;
 }
 
-export const MobileExecution: React.FC<Props> = ({ onBack }) => {
+export const MobileExecution: React.FC<Props> = ({ onBack, selectedModel }) => {
   const [inputText, setInputText] = useState('');
   const [keyboardHeight, setKeyboardHeight] = useState(0);
   const [sidebarVisible, setSidebarVisible] = useState(false);
@@ -43,7 +46,7 @@ export const MobileExecution: React.FC<Props> = ({ onBack }) => {
     downloadModel,
     toggleGPU,
     clearMessages,
-  } = useDaexInference();
+  } = useDaexInference(selectedModel);
   const flatListRef = useRef<FlatList>(null);
 
   useEffect(() => {
@@ -86,7 +89,7 @@ export const MobileExecution: React.FC<Props> = ({ onBack }) => {
 
   const handleDeleteModel = async () => {
     await unloadModel();
-    await modelManager.deleteModel();
+    await modelManager.deleteModel(selectedModel);
     setSettingsVisible(false);
     onBack();
   };
@@ -403,11 +406,13 @@ export const MobileExecution: React.FC<Props> = ({ onBack }) => {
         visible={settingsVisible}
         onClose={() => setSettingsVisible(false)}
         modelStatus={modelStatus}
+        selectedModel={selectedModel}
         useGPU={useGPU}
         onToggleGPU={toggleGPU}
         onDownloadModel={downloadModel}
         onDeleteModel={handleDeleteModel}
       />
+
     </View>
   );
 };

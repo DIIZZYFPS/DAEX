@@ -1,19 +1,24 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { ModelStatus } from '../hooks/useDaexInference';
+import { Model } from '../services/modelBank';
 import { DaexLogo } from './DaexLogo';
 import { DaexLoader } from './DaexLoader';
 
 interface Props {
   onInitialize: () => void;
+  onChangeModel: () => void;
   modelStatus: ModelStatus;
   downloadProgress: number;
+  selectedModel: Model;
 }
 
 export const LandingPage: React.FC<Props> = ({
   onInitialize,
+  onChangeModel,
   modelStatus,
   downloadProgress,
+  selectedModel,
 }) => {
   const isWorking =
     modelStatus === 'downloading' || modelStatus === 'loading';
@@ -34,7 +39,7 @@ export const LandingPage: React.FC<Props> = ({
   const getSubtitle = () => {
     switch (modelStatus) {
       case 'downloading':
-        return 'Pulling Gemma 4 E4B from HuggingFace CDN...';
+        return `Pulling ${selectedModel.name} from HuggingFace CDN...`;
       case 'loading':
         return 'Loading model into device memory...';
       case 'error':
@@ -42,6 +47,11 @@ export const LandingPage: React.FC<Props> = ({
       default:
         return 'Edge-optimized neural processing engine for on-device inference.';
     }
+  };
+
+  const formatBytes = (bytes: number) => {
+    const gb = bytes / (1024 * 1024 * 1024);
+    return `${gb.toFixed(1)}GB`;
   };
 
   return (
@@ -88,6 +98,7 @@ export const LandingPage: React.FC<Props> = ({
           </View>
         )}
       </View>
+
       <View style={styles.footer}>
         <TouchableOpacity
           style={[styles.initButton, isWorking && styles.initButtonDisabled]}
@@ -112,9 +123,22 @@ export const LandingPage: React.FC<Props> = ({
             <Text style={styles.initText}>{getButtonText()}</Text>
           )}
         </TouchableOpacity>
-        <Text style={styles.versionText}>
-          v0.1.0 • Gemma 4 E4B-IT • Q4_K_M
-        </Text>
+
+        {/* Tappable model selector pill */}
+        <TouchableOpacity
+          onPress={onChangeModel}
+          activeOpacity={0.7}
+          disabled={isWorking}
+          style={styles.selectorPill}
+        >
+          <View style={styles.selectorDot} />
+          <Text style={styles.selectorLabel}>
+            {selectedModel.name}
+          </Text>
+          <Text style={styles.selectorMeta}>
+            {formatBytes(selectedModel.size)} · {formatBytes(selectedModel.requiredRAM)} RAM ›
+          </Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -149,10 +173,6 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-  },
-  shield: {
-    fontSize: 56,
-    marginBottom: 24,
   },
   logoContainer: {
     alignItems: 'center',
@@ -220,6 +240,7 @@ const styles = StyleSheet.create({
   footer: {
     paddingBottom: 32,
     alignItems: 'center',
+    gap: 0,
   },
   initButton: {
     width: '100%',
@@ -257,10 +278,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
     letterSpacing: 1,
   },
-  versionText: {
-    color: 'rgba(255, 255, 255, 0.2)',
-    fontSize: 10,
+  selectorPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 20,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    borderWidth: 0.5,
+    borderColor: 'rgba(0, 255, 255, 0.2)',
+    backgroundColor: 'rgba(0, 255, 255, 0.05)',
+  },
+  selectorDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: '#00ffff',
+  },
+  selectorLabel: {
+    color: 'rgba(0, 255, 255, 0.8)',
+    fontSize: 11,
     fontFamily: 'monospace',
-    marginTop: 16,
+    fontWeight: '600',
+  },
+  selectorMeta: {
+    color: 'rgba(255, 255, 255, 0.35)',
+    fontSize: 11,
+    fontFamily: 'monospace',
   },
 });
+

@@ -1,8 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { llamaService } from '../services/llamaService';
 import { modelManager, DownloadProgress } from '../services/modelManager';
+import { Model } from '../services/modelBank';
 
 export type Role = 'user' | 'model';
+
 
 export type ModelStatus =
   | 'not_downloaded'
@@ -17,7 +19,8 @@ export interface ChatMessage {
   content: string;
 }
 
-export const useDaexInference = () => {
+export const useDaexInference = (model: Model) => {
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [hardwareState, setHardwareState] = useState<'GPU' | 'CPU'>('CPU');
@@ -35,7 +38,7 @@ export const useDaexInference = () => {
 
   const checkModelStatus = useCallback(async () => {
     try {
-      const isDownloaded = await modelManager.isModelDownloaded();
+      const isDownloaded = await modelManager.isModelDownloaded(model);
       if (isDownloaded) {
         if (llamaService.isLoaded()) {
           setModelStatus('ready');
@@ -63,7 +66,7 @@ export const useDaexInference = () => {
     setErrorMessage(null);
 
     try {
-      await modelManager.downloadModel((progress: DownloadProgress) => {
+      await modelManager.downloadModel(model, (progress: DownloadProgress) => {
         setDownloadProgress(progress.percent);
       });
       // Download complete — don't auto-load, let user trigger via loadModel
@@ -88,7 +91,7 @@ export const useDaexInference = () => {
    * Load the model into memory from device storage.
    */
   const loadModel = useCallback(async () => {
-    const isDownloaded = await modelManager.isModelDownloaded();
+    const isDownloaded = await modelManager.isModelDownloaded(model);
 
     if (!isDownloaded) {
       // Need to download first
@@ -97,7 +100,7 @@ export const useDaexInference = () => {
       setErrorMessage(null);
 
       try {
-        await modelManager.downloadModel((progress: DownloadProgress) => {
+        await modelManager.downloadModel(model, (progress: DownloadProgress) => {
           setDownloadProgress(progress.percent);
         });
       } catch (err: any) {
@@ -112,7 +115,7 @@ export const useDaexInference = () => {
     setErrorMessage(null);
 
     try {
-      const modelPath = modelManager.getModelPath();
+      const modelPath = modelManager.getModelPath(model);
       await llamaService.initContext(modelPath, useGPU);
       setModelStatus('ready');
       setHardwareState(useGPU ? 'GPU' : 'CPU');
@@ -143,7 +146,7 @@ export const useDaexInference = () => {
         setModelStatus('loading');
         try {
           await llamaService.releaseContext();
-          const modelPath = modelManager.getModelPath();
+          const modelPath = modelManager.getModelPath(model);
           await llamaService.initContext(modelPath, enabled);
           setModelStatus('ready');
           setHardwareState(enabled ? 'GPU' : 'CPU');
