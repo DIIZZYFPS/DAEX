@@ -9,6 +9,12 @@ __pycache__/
 # C extensions
 *.so
 
+# Python venv
+forge/
+
+# NPU files
+DaexForge/
+
 # Distribution / packaging
 .Python
 build/
