@@ -20,9 +20,13 @@ import com.daex.android.ui.components.DaexButton
 import com.daex.android.ui.components.DaexLogo
 import com.daex.android.ui.theme.DaexTheme
 
+import kotlinx.coroutines.launch
+import com.daex.android.services.DaexPreferences
+
 @Composable
 fun LandingScreen(
-    onContinue: () -> Unit
+    onContinue: () -> Unit,
+    daexPreferences: DaexPreferences
 ) {
     var animateSpacing by remember { mutableStateOf(false) }
     
@@ -31,6 +35,7 @@ fun LandingScreen(
         animationSpec = tween(durationMillis = 1500),
         label = "logo_spacing"
     )
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(Unit) {
         animateSpacing = true
@@ -95,7 +100,12 @@ fun LandingScreen(
             modifier = Modifier.fillMaxWidth()
         ) {
             DaexButton(
-                onClick = onContinue,
+                onClick = { 
+                    coroutineScope.launch {
+                        daexPreferences.completeLandingPage()
+                        onContinue()
+                    }
+                },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 BasicText(

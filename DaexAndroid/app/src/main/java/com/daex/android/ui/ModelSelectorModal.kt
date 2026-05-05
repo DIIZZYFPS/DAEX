@@ -20,8 +20,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asComposeRenderEffect
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -30,39 +28,20 @@ import com.daex.android.services.ModelBank
 import com.daex.android.services.ModelManager
 import com.daex.android.ui.theme.DaexTheme
 
-data class ModelSupportStatus(
-    val hasEnoughRAM: Boolean,
-    val hasEnoughStorage: Boolean,
-    val isDownloaded: Boolean,
-    val checked: Boolean
-)
-
 @Composable
 fun ModelSelectorModal(
     visible: Boolean,
     onClose: () -> Unit,
     onSelect: (Model) -> Unit,
+    onOpenMarketplace: () -> Unit,
     modelManager: ModelManager?
 ) {
-    val models = ModelBank.models
-    val supportMap = remember { mutableStateMapOf<String, ModelSupportStatus>() }
+    val allModels = ModelBank.models
+    var downloadedModels by remember { mutableStateOf<List<Model>>(emptyList()) }
 
     LaunchedEffect(visible) {
         if (!visible || modelManager == null) return@LaunchedEffect
-        models.forEach { model ->
-            try {
-                val spec = modelManager.checkSpecSupport(model)
-                val isDownloaded = modelManager.isModelDownloaded(model)
-                supportMap[model.id] = ModelSupportStatus(
-                    hasEnoughRAM = spec.hasEnoughRAM,
-                    hasEnoughStorage = spec.hasEnoughStorage,
-                    isDownloaded = isDownloaded,
-                    checked = true
-                )
-            } catch (e: Exception) {
-                supportMap[model.id] = ModelSupportStatus(false, false, false, true)
-            }
-        }
+        downloadedModels = allModels.filter { modelManager.isModelDownloaded(it) }
     }
 
     AnimatedVisibility(
@@ -77,11 +56,10 @@ fun ModelSelectorModal(
                 .clickable { onClose() },
             contentAlignment = Alignment.BottomCenter
         ) {
-            // Main Sheet
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .fillMaxHeight(0.85f)
+                    .fillMaxHeight(0.6f)
                     .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp))
                     .background(DaexTheme.colors.background.copy(alpha = 0.95f))
                     .border(
@@ -89,9 +67,8 @@ fun ModelSelectorModal(
                         color = Color.White.copy(alpha = 0.1f),
                         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp)
                     )
-                    .clickable(enabled = false, onClick = {}) // Block clickthrough
+                    .clickable(enabled = false, onClick = {})
             ) {
-                // Header Handle
                 Box(
                     modifier = Modifier
                         .padding(top = 12.dp)
@@ -110,7 +87,7 @@ fun ModelSelectorModal(
                 ) {
                     Column {
                         BasicText(
-                            text = "ENGINE REPOSITORY",
+                            text = "HOT SWAP",
                             style = DaexTheme.typography.h2.copy(
                                 color = DaexTheme.colors.primary,
                                 letterSpacing = 2.sp,
@@ -118,179 +95,82 @@ fun ModelSelectorModal(
                             )
                         )
                         BasicText(
-                            text = "${models.size} local models available",
+                            text = "Switch between downloaded engines",
                             style = DaexTheme.typography.mono.copy(
                                 color = Color.White.copy(alpha = 0.4f),
                                 fontSize = 11.sp
                             )
                         )
                     }
-                    
-                    BasicText(
-                        text = "✕",
-                        style = DaexTheme.typography.h2.copy(color = Color.White.copy(alpha = 0.6f)),
-                        modifier = Modifier
-                            .clickable { onClose() }
-                            .padding(8.dp)
-                    )
                 }
 
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 20.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    contentPadding = PaddingValues(bottom = 40.dp)
-                ) {
-                    itemsIndexed(models) { _, model ->
-                        val status = supportMap[model.id]
-                        val isSupported = status?.hasEnoughRAM ?: true
-                        val isDownloaded = status?.isDownloaded ?: false
-                        
-                        ModelCard(
-                            model = model,
-                            isSupported = isSupported,
-                            isDownloaded = isDownloaded,
-                            modelManager = modelManager,
-                            onClick = { onSelect(model) }
+                if (downloadedModels.isEmpty()) {
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        BasicText(
+                            text = "No models downloaded yet.",
+                            style = DaexTheme.typography.mono.copy(color = Color.White.copy(alpha = 0.4f))
                         )
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ModelCard(
-    model: Model,
-    isSupported: Boolean,
-    isDownloaded: Boolean,
-    modelManager: ModelManager?,
-    onClick: () -> Unit
-) {
-    val opacity = if (isSupported) 1f else 0.4f
-    
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(Color.White.copy(alpha = 0.03f))
-            .border(
-                width = 0.5.dp,
-                color = if (isSupported) Color.White.copy(alpha = 0.1f) else Color.Red.copy(alpha = 0.2f),
-                shape = RoundedCornerShape(16.dp)
-            )
-            .clickable(enabled = isSupported, onClick = onClick)
-            .padding(16.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            // Status Glow
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(
-                        if (isDownloaded) DaexTheme.colors.success.copy(alpha = 0.1f)
-                        else if (isSupported) DaexTheme.colors.primary.copy(alpha = 0.05f)
-                        else Color.Red.copy(alpha = 0.1f)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(
-                            if (isDownloaded) DaexTheme.colors.success
-                            else if (isSupported) DaexTheme.colors.primary
-                            else Color.Red
-                        )
-                )
-            }
-
-            Spacer(modifier = Modifier.width(16.dp))
-
-            Column(modifier = Modifier.weight(1f)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    BasicText(
-                        text = model.name,
-                        style = DaexTheme.typography.body1.copy(
-                            color = Color.White.copy(alpha = opacity),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp
-                        )
-                    )
-                    if (isDownloaded) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Box(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(DaexTheme.colors.success.copy(alpha = 0.15f))
-                                .padding(horizontal = 6.dp, vertical = 2.dp)
-                        ) {
-                            BasicText(
-                                text = "READY",
-                                style = DaexTheme.typography.mono.copy(
-                                    color = DaexTheme.colors.success,
-                                    fontSize = 8.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(horizontal = 20.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        itemsIndexed(downloadedModels) { _, model ->
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(Color.White.copy(alpha = 0.03f))
+                                    .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
+                                    .clickable { onSelect(model) }
+                                    .padding(16.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(8.dp)
+                                            .clip(CircleShape)
+                                            .background(DaexTheme.colors.success)
+                                    )
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    BasicText(
+                                        text = model.name,
+                                        style = DaexTheme.typography.body1.copy(color = Color.White, fontWeight = FontWeight.Bold)
+                                    )
+                                }
+                            }
                         }
                     }
                 }
 
-                BasicText(
-                    text = model.description,
-                    style = DaexTheme.typography.body2.copy(
-                        color = Color.White.copy(alpha = 0.4f * opacity),
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp
-                    ),
-                    modifier = Modifier.padding(top = 4.dp),
-                    maxLines = 2
-                )
-
-                Row(
-                    modifier = Modifier.padding(top = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                // Marketplace Link
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(DaexTheme.colors.primary.copy(alpha = 0.1f))
+                        .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                        .clickable { onOpenMarketplace() }
+                        .padding(16.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    InfoTag(label = modelManager?.formatBytes(model.size) ?: "0 B")
-                    InfoTag(label = "${modelManager?.formatBytes(model.requiredRAM)} RAM")
-                }
-
-                if (!isSupported) {
                     BasicText(
-                        text = "INSUFFICIENT HARDWARE",
+                        text = "BROWSE MARKETPLACE →",
                         style = DaexTheme.typography.mono.copy(
-                            color = Color.Red.copy(alpha = 0.7f),
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold
-                        ),
-                        modifier = Modifier.padding(top = 10.dp)
+                            color = DaexTheme.colors.primary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 12.sp
+                        )
                     )
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun InfoTag(label: String) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .background(Color.White.copy(alpha = 0.05f))
-            .padding(horizontal = 6.dp, vertical = 3.dp)
-    ) {
-        BasicText(
-            text = label,
-            style = DaexTheme.typography.mono.copy(
-                color = Color.White.copy(alpha = 0.5f),
-                fontSize = 10.sp
-            )
-        )
     }
 }

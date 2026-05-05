@@ -43,7 +43,7 @@ fun SuggestedPrompts(
         BasicText(
             text = "Welcome to D A E X",
             style = DaexTheme.typography.h2.copy(
-                color = Color.White,
+                color = DaexTheme.colors.onBackground,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 3.sp
@@ -55,7 +55,7 @@ fun SuggestedPrompts(
         BasicText(
             text = "Icarus is ready. Execute with precision.",
             style = DaexTheme.typography.body1.copy(
-                color = Color.White.copy(alpha = 0.5f),
+                color = DaexTheme.colors.onBackground.copy(alpha = 0.5f),
                 textAlign = TextAlign.Center,
                 lineHeight = 22.sp
             )
@@ -73,10 +73,10 @@ fun SuggestedPrompts(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Color.White.copy(alpha = 0.03f))
+                        .background(DaexTheme.colors.onSurface.copy(alpha = 0.03f))
                         .border(
                             width = 0.5.dp,
-                            color = Color(0xFF00FFFF).copy(alpha = 0.2f),
+                            color = DaexTheme.colors.primary.copy(alpha = 0.2f),
                             shape = RoundedCornerShape(8.dp)
                         )
                         .clickable { onSelectPrompt(prompt) }
@@ -85,7 +85,7 @@ fun SuggestedPrompts(
                     BasicText(
                         text = prompt,
                         style = DaexTheme.typography.body1.copy(
-                            color = Color.White.copy(alpha = 0.7f),
+                            color = DaexTheme.colors.onSurface.copy(alpha = 0.7f),
                             fontSize = 14.sp
                         )
                     )

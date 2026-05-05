@@ -10,6 +10,9 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.*
@@ -38,7 +41,11 @@ fun SettingsModal(
     modelStatus: ModelStatus,
     selectedModel: Model,
     useGPU: Boolean,
+    isDark: Boolean,
+    primaryColor: Color,
     onToggleGPU: (Boolean) -> Unit,
+    onToggleDark: (Boolean) -> Unit,
+    onSelectColor: (Color) -> Unit,
     onDownloadModel: () -> Unit,
     onChangeModel: () -> Unit,
     onDeleteModel: () -> Unit,
@@ -60,8 +67,6 @@ fun SettingsModal(
         val offsetY = remember { Animatable(screenHeightPx) }
         val scrimOpacity = remember { Animatable(0f) }
 
-        // Spring spec matching RN Reanimated { damping: 26, stiffness: 300, mass: 0.8 }
-        // roughly translates to stiffness ~300, dampingRatio ~0.75 in Compose
         val springSpec = spring<Float>(dampingRatio = 0.75f, stiffness = 300f)
         val timingSpec = tween<Float>(durationMillis = 260, easing = CubicBezierEasing(0.4f, 0.0f, 1.0f, 1.0f))
 
@@ -106,10 +111,10 @@ fun SettingsModal(
                     .align(Alignment.BottomCenter)
                     .offset { IntOffset(0, offsetY.value.roundToInt()) }
                     .clip(RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp))
-                    .background(Color(0xFF080812))
+                    .background(DaexTheme.colors.surface)
                     .border(
                         width = 0.5.dp,
-                        color = Color.White.copy(alpha = 0.1f),
+                        color = DaexTheme.colors.onSurface.copy(alpha = 0.1f),
                         shape = RoundedCornerShape(topStart = 22.dp, topEnd = 22.dp)
                     )
                     .pointerInput(Unit) {
@@ -142,7 +147,7 @@ fun SettingsModal(
                             .width(36.dp)
                             .height(4.dp)
                             .clip(RoundedCornerShape(2.dp))
-                            .background(Color.White.copy(alpha = 0.18f))
+                            .background(DaexTheme.colors.onSurface.copy(alpha = 0.18f))
                             .align(Alignment.CenterHorizontally)
                     )
                     
@@ -157,13 +162,13 @@ fun SettingsModal(
                         BasicText(
                             text = "Settings",
                             style = DaexTheme.typography.h2.copy(
-                                color = Color.White,
+                                color = DaexTheme.colors.onBackground,
                                 letterSpacing = 1.sp
                             )
                         )
                         BasicText(
                             text = "✕",
-                            style = DaexTheme.typography.h2.copy(color = Color.White.copy(alpha = 0.5f)),
+                            style = DaexTheme.typography.h2.copy(color = DaexTheme.colors.onBackground.copy(alpha = 0.5f)),
                             modifier = Modifier
                                 .clickable { dismiss() }
                                 .padding(8.dp)
@@ -203,7 +208,7 @@ fun SettingsModal(
                                             BasicText(
                                                 text = "${sizeGb}GB • ${ramGb}GB RAM req.",
                                                 style = DaexTheme.typography.mono.copy(
-                                                    color = Color.White.copy(alpha = 0.4f),
+                                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
                                                     fontSize = 11.sp
                                                 ),
                                                 modifier = Modifier.padding(top = 4.dp)
@@ -214,7 +219,7 @@ fun SettingsModal(
                                                 ModelStatus.READY -> DaexTheme.colors.success
                                                 ModelStatus.LOADING, ModelStatus.DOWNLOADING -> DaexTheme.colors.warning
                                                 ModelStatus.ERROR -> DaexTheme.colors.error
-                                                else -> Color.White.copy(alpha = 0.4f)
+                                                else -> DaexTheme.colors.onSurface.copy(alpha = 0.4f)
                                             }
                                             val statusText = when (modelStatus) {
                                                 ModelStatus.READY -> "Loaded • Active"
@@ -251,7 +256,7 @@ fun SettingsModal(
                                             BasicText(
                                                 text = "↓ DOWNLOAD MODEL",
                                                 style = DaexTheme.typography.mono.copy(
-                                                    color = Color.Black,
+                                                    color = DaexTheme.colors.onPrimary,
                                                     fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
                                                     fontSize = 13.sp
                                                 )
@@ -264,7 +269,7 @@ fun SettingsModal(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clip(RoundedCornerShape(8.dp))
-                                            .background(Color.White.copy(alpha = 0.1f))
+                                            .background(DaexTheme.colors.onSurface.copy(alpha = 0.1f))
                                             .clickable { onChangeModel() }
                                             .padding(vertical = 10.dp),
                                         contentAlignment = Alignment.Center
@@ -272,7 +277,7 @@ fun SettingsModal(
                                         BasicText(
                                             text = "CHANGE MODEL",
                                             style = DaexTheme.typography.mono.copy(
-                                                color = Color.White,
+                                                color = DaexTheme.colors.onSurface,
                                                 fontSize = 13.sp
                                             )
                                         )
@@ -290,7 +295,7 @@ fun SettingsModal(
                                     .background(if (useGPU) Color(0xFFA855F7).copy(alpha = 0.08f) else Color.Transparent)
                                     .border(
                                         0.5.dp, 
-                                        if (useGPU) Color(0xFFA855F7).copy(alpha = 0.4f) else Color.White.copy(alpha = 0.1f), 
+                                        if (useGPU) Color(0xFFA855F7).copy(alpha = 0.4f) else DaexTheme.colors.onSurface.copy(alpha = 0.1f), 
                                         RoundedCornerShape(8.dp)
                                     )
                                     .padding(12.dp),
@@ -301,14 +306,14 @@ fun SettingsModal(
                                     BasicText(
                                         text = "GPU Offload (Vulkan)",
                                         style = DaexTheme.typography.body1.copy(
-                                            color = if (useGPU) Color(0xFFA855F7) else Color.White,
+                                            color = if (useGPU) Color(0xFFA855F7) else DaexTheme.colors.onBackground,
                                             fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                                         )
                                     )
                                     BasicText(
                                         text = if (useGPU) "Offloading to GPU • Faster but uses more power" else "CPU only • Stable and power efficient",
                                         style = DaexTheme.typography.mono.copy(
-                                            color = Color.White.copy(alpha = 0.4f),
+                                            color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
                                             fontSize = 11.sp
                                         ),
                                         modifier = Modifier.padding(top = 4.dp)
@@ -323,36 +328,96 @@ fun SettingsModal(
                             Spacer(modifier = Modifier.height(32.dp))
 
                             // Theme Section
-                            SectionHeader("THEME")
+                            SectionHeader("APPEARANCE")
+                            
+                            // Dark Mode Switch
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
-                                    .background(DaexTheme.colors.primary.copy(alpha = 0.08f))
-                                    .border(1.dp, DaexTheme.colors.primary.copy(alpha = 0.4f), RoundedCornerShape(8.dp))
+                                    .background(DaexTheme.colors.onSurface.copy(alpha = 0.03f))
+                                    .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
                                     .padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Column {
                                     BasicText(
-                                        text = "OLED Dark",
+                                        text = "Dark Mode",
                                         style = DaexTheme.typography.body1.copy(
-                                            color = DaexTheme.colors.primary,
+                                            color = DaexTheme.colors.onBackground,
                                             fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                                         )
                                     )
                                     BasicText(
-                                        text = "Optimized for AMOLED displays",
+                                        text = "High contrast OLED optimized",
                                         style = DaexTheme.typography.mono.copy(
-                                            color = Color.White.copy(alpha = 0.4f),
+                                            color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
                                             fontSize = 11.sp
                                         ),
                                         modifier = Modifier.padding(top = 4.dp)
                                     )
                                 }
-                                BasicText("✓", style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.primary))
+                                DaexSwitch(
+                                    checked = isDark,
+                                    onCheckedChange = onToggleDark
+                                )
                             }
+                            
+                            Spacer(modifier = Modifier.height(16.dp))
+                            
+                            // Primary Color Selector
+                            BasicText(
+                                text = "PRIMARY COLOR",
+                                style = DaexTheme.typography.mono.copy(
+                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                    fontSize = 10.sp,
+                                    letterSpacing = 1.sp
+                                ),
+                                modifier = Modifier.padding(start = 4.dp, bottom = 12.dp)
+                            )
+                            
+                            val themeColors = listOf(
+                                Color(0xFF00FFFF), // Cyan
+                                Color(0xFFA855F7), // Purple
+                                Color(0xFF4ADE80), // Green
+                                Color(0xFF3B82F6), // Blue
+                                Color(0xFFF59E0B), // Amber
+                                Color(0xFFFF003C)  // Cyber Red
+                            )
+                            
+                            LazyRow(
+                                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                contentPadding = PaddingValues(horizontal = 4.dp)
+                            ) {
+                                items(themeColors) { color ->
+                                    val isSelected = color == primaryColor
+                                    Box(
+                                        modifier = Modifier
+                                            .size(44.dp)
+                                            .clip(CircleShape)
+                                            .background(color)
+                                            .border(
+                                                width = if (isSelected) 3.dp else 0.dp,
+                                                color = if (isDark) Color.White else Color.Black,
+                                                shape = CircleShape
+                                            )
+                                            .clickable { onSelectColor(color) },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isSelected) {
+                                            BasicText(
+                                                text = "✓",
+                                                style = DaexTheme.typography.body1.copy(
+                                                    color = if (color == Color.White) Color.Black else Color.White,
+                                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
                             Spacer(modifier = Modifier.height(32.dp))
 
                             // Data Management Section
@@ -377,18 +442,16 @@ fun SettingsModal(
                             // Footer
                             Box(
                                 modifier = Modifier
-                                    .fillMaxWidth()
-                                    .border(width = 0.dp, color = Color.Transparent)
-                                    .background(Color.Transparent),
+                                    .fillMaxWidth(),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(Color.White.copy(alpha = 0.08f)))
+                                    Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(DaexTheme.colors.onSurface.copy(alpha = 0.08f)))
                                     Spacer(modifier = Modifier.height(12.dp))
                                     BasicText(
                                         text = "v0.1.0 • Powered by llama.cpp",
                                         style = DaexTheme.typography.mono.copy(
-                                            color = Color.White.copy(alpha = 0.25f),
+                                            color = DaexTheme.colors.onSurface.copy(alpha = 0.25f),
                                             fontSize = 11.sp
                                         )
                                     )
@@ -408,7 +471,7 @@ private fun SectionHeader(text: String) {
     BasicText(
         text = text,
         style = DaexTheme.typography.mono.copy(
-            color = Color.White.copy(alpha = 0.5f),
+            color = DaexTheme.colors.onSurface.copy(alpha = 0.5f),
             fontSize = 11.sp,
             letterSpacing = 1.sp
         ),

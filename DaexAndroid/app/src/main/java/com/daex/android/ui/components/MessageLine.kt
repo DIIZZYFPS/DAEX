@@ -8,7 +8,13 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -37,10 +43,10 @@ fun MessageLine(
                 modifier = Modifier
                     .fillMaxWidth(0.8f)
                     .clip(RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 24.dp, bottomEnd = 0.dp))
-                    .background(Color(0xFF00FFFF).copy(alpha = 0.15f))
+                    .background(DaexTheme.colors.primary.copy(alpha = 0.15f))
                     .border(
                         width = 1.dp,
-                        color = Color(0xFF00FFFF).copy(alpha = 0.3f),
+                        color = DaexTheme.colors.primary.copy(alpha = 0.3f),
                         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 24.dp, bottomEnd = 0.dp)
                     )
                     .padding(horizontal = 16.dp, vertical = 12.dp)
@@ -48,7 +54,7 @@ fun MessageLine(
                 BasicText(
                     text = message.content,
                     style = DaexTheme.typography.body1.copy(
-                        color = Color(0xFF00FFFF),
+                        color = DaexTheme.colors.primary,
                         fontSize = 15.sp,
                         lineHeight = 22.sp
                     )
@@ -65,22 +71,89 @@ fun MessageLine(
             BasicText(
                 text = "ICARUS",
                 style = DaexTheme.typography.mono.copy(
-                    color = Color(0xFF00FFFF).copy(alpha = 0.6f),
+                    color = DaexTheme.colors.primary.copy(alpha = 0.6f),
                     fontSize = 11.sp
                 )
             )
             
             Spacer(modifier = Modifier.height(8.dp))
 
-            if (message.content.isEmpty()) {
+            if (!message.thoughtContent.isNullOrEmpty()) {
+                var isExpanded by remember { mutableStateOf(false) }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(DaexTheme.colors.onSurface.copy(alpha = 0.05f))
+                        .border(1.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { isExpanded = !isExpanded }
+                            .padding(12.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(DaexTheme.colors.primary.copy(alpha = if (isGenerating) 1f else 0.5f))
+                                )
+                                BasicText(
+                                    text = if (isGenerating && message.content.isEmpty()) "THINKING..." else "THOUGHT PROCESS",
+                                    style = DaexTheme.typography.mono.copy(
+                                        color = DaexTheme.colors.primary.copy(alpha = 0.8f),
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        letterSpacing = 1.sp
+                                    )
+                                )
+                            }
+                            BasicText(
+                                text = if (isExpanded) "▲" else "▼",
+                                style = DaexTheme.typography.mono.copy(
+                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                    fontSize = 10.sp
+                                )
+                            )
+                        }
+                        
+                        AnimatedVisibility(visible = isExpanded) {
+                            Column {
+                                Spacer(modifier = Modifier.height(8.dp))
+                                BasicText(
+                                    text = message.thoughtContent,
+                                    style = DaexTheme.typography.body1.copy(
+                                        color = DaexTheme.colors.onSurface.copy(alpha = 0.7f),
+                                        fontSize = 13.sp,
+                                        lineHeight = 18.sp
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (message.content.isEmpty() && isGenerating && message.thoughtContent.isNullOrEmpty()) {
                 BasicText(
                     text = "▊",
                     style = DaexTheme.typography.body1.copy(
-                        color = Color.White.copy(alpha = 0.3f),
+                        color = DaexTheme.colors.onSurface.copy(alpha = 0.3f),
                         fontSize = 14.sp
                     )
                 )
-            } else {
+            } else if (message.content.isNotEmpty()) {
                 Markdown(
                     content = message.content,
                     modifier = Modifier.fillMaxWidth()
@@ -89,7 +162,7 @@ fun MessageLine(
 
             if (isLastModel && tokenSpeed > 0) {
                 Spacer(modifier = Modifier.height(8.dp))
-                Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(Color.White.copy(alpha = 0.06f)))
+                Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(DaexTheme.colors.onSurface.copy(alpha = 0.06f)))
                 Spacer(modifier = Modifier.height(8.dp))
                 
                 Row(
@@ -99,7 +172,7 @@ fun MessageLine(
                     BasicText(
                         text = "⚡ $tokenSpeed tok/s",
                         style = DaexTheme.typography.mono.copy(
-                            color = if (isGenerating) Color(0xFFA855F7) else Color.White.copy(alpha = 0.35f),
+                            color = if (isGenerating) Color(0xFFA855F7) else DaexTheme.colors.onSurface.copy(alpha = 0.35f),
                             fontSize = 10.sp
                         )
                     )

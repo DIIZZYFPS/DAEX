@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.daex.android.ui.theme.DaexTheme
 
 @Composable
 fun DaexLogo(
@@ -27,22 +28,22 @@ fun DaexLogo(
         BladeData(
             body = listOf(Offset(20f, 80f), Offset(40f, 40f), Offset(46f, 40f), Offset(26f, 80f)),
             tip = listOf(Offset(40f, 40f), Offset(70f, 16f), Offset(72f, 18f), Offset(46f, 40f)),
-            color = Color(0xFF00FFFF)
+            color = DaexTheme.colors.primary
         ),
         BladeData(
             body = listOf(Offset(34f, 80f), Offset(49f, 50f), Offset(55f, 50f), Offset(40f, 80f)),
             tip = listOf(Offset(49f, 50f), Offset(74f, 30f), Offset(76f, 32f), Offset(55f, 50f)),
-            color = Color(0xFF00FFFF).copy(alpha = 0.7f)
+            color = DaexTheme.colors.primary.copy(alpha = 0.7f)
         ),
         BladeData(
             body = listOf(Offset(48f, 80f), Offset(58f, 60f), Offset(64f, 60f), Offset(54f, 80f)),
             tip = listOf(Offset(58f, 60f), Offset(78f, 44f), Offset(80f, 46f), Offset(64f, 60f)),
-            color = Color(0xFF00FFFF).copy(alpha = 0.4f)
+            color = DaexTheme.colors.primary.copy(alpha = 0.4f)
         ),
         BladeData(
             body = listOf(Offset(62f, 80f), Offset(67f, 70f), Offset(73f, 70f), Offset(68f, 80f)),
             tip = listOf(Offset(67f, 70f), Offset(82f, 58f), Offset(84f, 60f), Offset(73f, 70f)),
-            color = Color(0xFF00FFFF).copy(alpha = 0.2f)
+            color = DaexTheme.colors.primary.copy(alpha = 0.2f)
         )
     )
 
@@ -113,6 +114,7 @@ private data class BladeData(
 fun DaexLoader(
     size: Dp = 40.dp
 ) {
+    val colors = DaexTheme.colors
     val infiniteTransition = rememberInfiniteTransition(label = "loader_transition")
     
     val ring1Rotation by infiniteTransition.animateFloat(
@@ -152,7 +154,7 @@ fun DaexLoader(
         
         // Core
         drawCircle(
-            color = Color(0xFF00FFFF).copy(alpha = coreOpacity),
+            color = colors.primary.copy(alpha = coreOpacity),
             radius = canvasSize * 0.08f,
             center = Offset(cx, cy)
         )
@@ -162,7 +164,7 @@ fun DaexLoader(
             rotate(ring1Rotation, Offset(cx, cy))
         }) {
             drawCircle(
-                color = Color(0xFF00FFFF),
+                color = colors.primary,
                 radius = canvasSize * 0.18f,
                 center = Offset(cx, cy),
                 style = Stroke(
@@ -185,7 +187,7 @@ fun DaexLoader(
             rotate(ring2Rotation, Offset(cx, cy))
         }) {
             drawCircle(
-                color = Color(0xFF00FFFF).copy(alpha = 0.4f),
+                color = colors.primary.copy(alpha = 0.4f),
                 radius = canvasSize * 0.26f,
                 center = Offset(cx, cy),
                 style = Stroke(

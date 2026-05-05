@@ -3,6 +3,7 @@ package com.daex.android.ui.theme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
@@ -63,20 +64,6 @@ val LocalDaexTypography = staticCompositionLocalOf {
     )
 }
 
-// OLED Black Theme
-private val defaultDaexColors = DaexColors(
-    primary = Color(0xFF00FFFF), // Hacker Cyan
-    background = Color(0xFF000000), // OLED Black
-    surface = Color(0xFF0D0D0D), // Dark Gray
-    surfaceVariant = Color(0x2600FFFF), // Cyan 15% opacity
-    onBackground = Color(0xFFFFFFFF),
-    onSurface = Color(0xFFE2E8F0),
-    onPrimary = Color(0xFF000000),
-    error = Color(0xFFEF4444),
-    warning = Color(0xFFF59E0B),
-    success = Color(0xFF4ADE80)
-)
-
 private val defaultDaexTypography = DaexTypography(
     h1 = TextStyle(
         fontFamily = FontFamily.Default,
@@ -123,21 +110,61 @@ object DaexTheme {
 
 @Composable
 fun DaexAppTheme(
+    primaryColor: Color = Color(0xFF00FFFF),
+    isDark: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    // We force the dark OLED theme regardless of system setting for Daex
-    val colors = defaultDaexColors
+    val colors = if (isDark) {
+        DaexColors(
+            primary = primaryColor,
+            background = Color(0xFF000000),
+            surface = Color(0xFF0D0D0D),
+            surfaceVariant = primaryColor.copy(alpha = 0.15f),
+            onBackground = Color(0xFFFFFFFF),
+            onSurface = Color(0xFFE2E8F0),
+            onPrimary = Color(0xFF000000),
+            error = Color(0xFFEF4444),
+            warning = Color(0xFFF59E0B),
+            success = Color(0xFF4ADE80)
+        )
+    } else {
+        DaexColors(
+            primary = primaryColor,
+            background = Color(0xFFF8FAFC),
+            surface = Color(0xFFFFFFFF),
+            surfaceVariant = primaryColor.copy(alpha = 0.1f),
+            onBackground = Color(0xFF0F172A),
+            onSurface = Color(0xFF334155),
+            onPrimary = Color(0xFFFFFFFF),
+            error = Color(0xFFDC2626),
+            warning = Color(0xFFD97706),
+            success = Color(0xFF16A34A)
+        )
+    }
+
     val typography = defaultDaexTypography
 
-    val materialColors = darkColorScheme(
-        primary = colors.primary,
-        background = colors.background,
-        surface = colors.surface,
-        onPrimary = colors.onPrimary,
-        onBackground = Color.White,
-        onSurface = Color.White,
-        error = colors.error
-    )
+    val materialColors = if (isDark) {
+        darkColorScheme(
+            primary = colors.primary,
+            background = colors.background,
+            surface = colors.surface,
+            onPrimary = colors.onPrimary,
+            onBackground = Color.White,
+            onSurface = Color.White,
+            error = colors.error
+        )
+    } else {
+        lightColorScheme(
+            primary = colors.primary,
+            background = colors.background,
+            surface = colors.surface,
+            onPrimary = colors.onPrimary,
+            onBackground = Color.Black,
+            onSurface = Color.Black,
+            error = colors.error
+        )
+    }
 
     CompositionLocalProvider(
         LocalDaexColors provides colors,

@@ -188,3 +188,22 @@ cython_debug/
 #  refer to https://docs.cursor.com/context/ignore-files
 .cursorignore
 .cursorindexingignore
+# Android/Kotlin
+*.apk
+*.ap_
+*.aab
+*.dex
+*.class
+bin/
+gen/
+out/
+.gradle/
+build/
+local.properties
+proguard/
+captures/
+.externalNativeBuild/
+.cxx/
+DaexAndroid/build/
+DaexAndroid/app/build/
+

@@ -31,7 +31,8 @@ import com.daex.android.ui.theme.DaexTheme
 fun ExecutionScreen(
     viewModel: DaexInferenceViewModel,
     modelManager: ModelManager,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onOpenGallery: () -> Unit
 ) {
     val messages by viewModel.messages.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
@@ -125,6 +126,7 @@ fun ExecutionScreen(
                 .fillMaxSize()
                 .background(DaexTheme.colors.background)
                 .windowInsetsPadding(WindowInsets.statusBars)
+                .windowInsetsPadding(WindowInsets.navigationBars)
                 .windowInsetsPadding(WindowInsets.ime) // Root Column handles the IME
         ) {
             // Header
@@ -153,7 +155,7 @@ fun ExecutionScreen(
                         BasicText(
                             text = "DAEX", 
                             style = DaexTheme.typography.h1.copy(
-                                color = Color.White,
+                                color = DaexTheme.colors.onBackground,
                                 fontSize = 16.sp,
                                 letterSpacing = 2.sp
                             )
@@ -190,7 +192,7 @@ fun ExecutionScreen(
                         )
                         BasicText(
                             text = statusBadgeText,
-                            style = DaexTheme.typography.mono.copy(color = Color(0xFFE2E8F0), fontSize = 10.sp)
+                            style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.onSurface, fontSize = 10.sp)
                         )
                     }
 
@@ -334,8 +336,8 @@ fun ExecutionScreen(
                                     .asComposeRenderEffect()
                             }
                         }
-                        .background(Color.Black.copy(alpha = 0.5f))
-                        .border(0.5.dp, Color.White.copy(alpha = 0.1f))
+                        .background(DaexTheme.colors.background.copy(alpha = 0.5f))
+                        .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f))
                 )
 
                 // 2. Foreground Content Layer (SHARP)
@@ -349,8 +351,8 @@ fun ExecutionScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(alpha = 0.05f))
-                            .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                            .background(DaexTheme.colors.onSurface.copy(alpha = 0.05f))
+                            .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
                             .padding(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -381,7 +383,7 @@ fun ExecutionScreen(
                                     modifier = Modifier
                                         .size(14.dp)
                                         .clip(CircleShape)
-                                        .background(if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else Color.Black)
+                                        .background(if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary)
                                 )
                             }
                         }
@@ -400,6 +402,10 @@ fun ExecutionScreen(
                 selectorVisible = false
                 viewModel.loadModel(it)
             },
+            onOpenMarketplace = {
+                selectorVisible = false
+                onOpenGallery()
+            },
             modelManager = modelManager
         )
 
@@ -413,7 +419,9 @@ fun ExecutionScreen(
             onOpenSettings = {
                 sidebarVisible = false
                 settingsVisible = true
-            }
+            },
+            onOpenGallery = onOpenGallery,
+            viewModel = viewModel
         )
 
         SettingsModal(
@@ -422,7 +430,11 @@ fun ExecutionScreen(
             modelStatus = modelStatus,
             selectedModel = currentModel ?: selectedModel,
             useGPU = viewModel.useGPU.collectAsState().value,
+            isDark = viewModel.isDarkMode.collectAsState().value,
+            primaryColor = viewModel.primaryColor.collectAsState().value,
             onToggleGPU = { viewModel.toggleGPU() },
+            onToggleDark = { viewModel.setDarkMode(it) },
+            onSelectColor = { viewModel.setThemeColor(it) },
             onDownloadModel = { 
                 currentModel?.let { viewModel.downloadModel(it) } ?: run { selectorVisible = true }
             },

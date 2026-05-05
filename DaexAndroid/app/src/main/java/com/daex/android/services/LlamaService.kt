@@ -21,7 +21,9 @@ import kotlin.math.absoluteValue
 data class Message(
     val id: String,
     val role: String, // "user" or "model"
-    val content: String
+    val content: String,
+    val tokensPerSecond: Double = 0.0,
+    val thoughtContent: String? = null
 )
 
 interface LlamaService {
@@ -51,7 +53,7 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
     private val TURN_START = "<|turn>"
     private val TURN_END = "<turn|>"
 
-    private val SYSTEM_PROMPT = "You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed."
+    private val SYSTEM_PROMPT = "<|think|>You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed."
 
     private fun formatPrompt(messages: List<Message>): String {
         val sb = StringBuilder()
@@ -86,10 +88,13 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
                     "model_fd" to modelFd,
                     "use_mmap" to true,
                     "use_mlock" to false,
-                    "n_ctx" to 2048,
+                    "n_ctx" to 131072,
+                    "cache_type_k" to "q4_0",
+                    "cache_type_v" to "q4_0",
                     "embedding" to false,
-                    "n_batch" to 512,
-                    "n_threads" to 4,
+                    "n_batch" to 2048,
+                    "n_threads" to 8,
+                    "flash_attn" to true,
                     "n_gpu_layers" to (if (useGPU) 99 else 0),
                     "vocab_only" to false,
                     "lora" to "",
