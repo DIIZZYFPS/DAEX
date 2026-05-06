@@ -94,21 +94,44 @@ class DaexMemory(private val boxStore: BoxStore) {
             messageBox.remove(messages)
         }
     }
-    fun searchSimilarContext(queryVector: FloatArray, maxResults: Int = 5): List<Message> {
+    fun searchSimilarContext(queryVector: FloatArray, maxResults: Int = 5, queryText: String = ""): List<Message> {
         val count = messageBox.count()
         android.util.Log.d("DaexMemory", "Searching across $count messages")
 
-        val results = messageBox.query()
-            .nearestNeighbors(MessageEntity_.embedding, queryVector, maxResults)
+        val results = messageBox
+            .query(MessageEntity_.embedding.nearestNeighbors(queryVector, maxResults))
             .build()
-            .find()
+            .findWithScores()
         
-        android.util.Log.d("DaexMemory", "Search vector length: ${queryVector.size}")
-        results.forEach { 
-            android.util.Log.d("DaexMemory", "Match found: id=${it.uuid}, role=${it.role}, content=${it.content.take(30)}...")
+        val contextMessages = mutableListOf<MessageEntity>()
+        val seenIds = mutableSetOf<Long>()
+
+        results.forEach { result ->
+            val entity = result.get()
+            
+            // Skip exact duplicate questions to avoid useless self-referencing context
+            val isExactMatch = queryText.isNotBlank() && entity.content.trim().equals(queryText.trim(), ignoreCase = true)
+            
+            if (!isExactMatch && seenIds.add(entity.id)) {
+                contextMessages.add(entity)
+            }
+
+            // CONTEXT EXPANSION:
+            // If the user's current question matched a previous question (even if skipped above), 
+            // the actually useful information is the answer that followed it!
+            // Fetch the very next message in that conversation.
+            val nextMessage = messageBox.query {
+                equal(MessageEntity_.conversationId, entity.conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+                greater(MessageEntity_.id, entity.id)
+                order(MessageEntity_.id)
+            }.findFirst()
+                
+            if (nextMessage != null && seenIds.add(nextMessage.id)) {
+                contextMessages.add(nextMessage)
+            }
         }
 
-        return results.map { it.toDomain() }
+        return contextMessages.map { it.toDomain() }
     }
 
     private fun ConversationEntity.toDomain() = Conversation(

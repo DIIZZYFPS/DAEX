@@ -24,7 +24,7 @@ class DaexRagImpl(
             val queryVector = embedder.generateEmbedding(query, isQuery = true)
             
             // 2. Search ObjectBox for the closest matching messages
-            val results = memory.searchSimilarContext(queryVector, maxResults = 5)
+            val results = memory.searchSimilarContext(queryVector, maxResults = 5, queryText = query)
             Log.d("DaexRag", "Retrieved ${results.size} context messages")
             results
         } catch (e: Exception) {
