@@ -36,7 +36,7 @@ fun ModelSelectorModal(
     onOpenMarketplace: () -> Unit,
     modelManager: ModelManager?
 ) {
-    val allModels = ModelBank.models
+    val allModels = ModelBank.generativeModels
     var downloadedModels by remember { mutableStateOf<List<Model>>(emptyList()) }
 
     LaunchedEffect(visible) {

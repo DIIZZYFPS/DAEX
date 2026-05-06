@@ -17,6 +17,11 @@ class DaexPreferences(private val context: Context) {
         val IS_DARK_MODE = booleanPreferencesKey("is_dark_mode")
         val PRIMARY_COLOR = intPreferencesKey("primary_color")
         val HAS_COMPLETED_LANDING = booleanPreferencesKey("has_completed_landing")
+        val IS_REASONING_ENABLED = booleanPreferencesKey("is_reasoning_enabled")
+    }
+
+    val isReasoningEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[IS_REASONING_ENABLED] ?: true
     }
 
     val isDarkModeFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -46,6 +51,12 @@ class DaexPreferences(private val context: Context) {
     suspend fun completeLandingPage() {
         context.dataStore.edit { preferences ->
             preferences[HAS_COMPLETED_LANDING] = true
+        }
+    }
+
+    suspend fun setReasoningEnabled(isEnabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[IS_REASONING_ENABLED] = isEnabled
         }
     }
 }

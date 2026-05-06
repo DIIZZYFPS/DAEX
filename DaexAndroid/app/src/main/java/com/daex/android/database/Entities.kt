@@ -1,36 +1,30 @@
 package com.daex.android.database
 
-import androidx.room.Entity
-import androidx.room.PrimaryKey
-import androidx.room.ForeignKey
-import androidx.room.Index
+import io.objectbox.annotation.Entity
+import io.objectbox.annotation.Id
+import io.objectbox.annotation.Unique
+import io.objectbox.annotation.HnswIndex
 
-@Entity(tableName = "conversations")
+@Entity
 data class ConversationEntity(
-    @PrimaryKey val id: String,
-    val title: String,
-    val modelId: String,
-    val createdAt: Long = System.currentTimeMillis()
+    @Id var id: Long = 0,
+    @Unique var uuid: String = "",
+    var title: String = "",
+    var modelId: String = "",
+    var createdAt: Long = System.currentTimeMillis()
 )
 
-@Entity(
-    tableName = "messages",
-    foreignKeys = [
-        ForeignKey(
-            entity = ConversationEntity::class,
-            parentColumns = ["id"],
-            childColumns = ["conversationId"],
-            onDelete = ForeignKey.CASCADE
-        )
-    ],
-    indices = [Index(value = ["conversationId"])]
-)
+@Entity
 data class MessageEntity(
-    @PrimaryKey val id: String,
-    val conversationId: String,
-    val role: String,
-    val content: String,
-    val timestamp: Long = System.currentTimeMillis(),
-    val tokensPerSecond: Double = 0.0,
-    val thoughtContent: String? = null
+    @Id var id: Long = 0,
+    @Unique var uuid: String = "",
+    var conversationId: String = "",
+    var role: String = "",
+    var content: String = "",
+    var timestamp: Long = System.currentTimeMillis(),
+    var tokensPerSecond: Double = 0.0,
+    var thoughtContent: String? = null,
+    
+    @HnswIndex(dimensions = 768)
+    var embedding: FloatArray? = null
 )

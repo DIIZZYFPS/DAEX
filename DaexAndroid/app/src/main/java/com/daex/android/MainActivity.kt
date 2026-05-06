@@ -5,11 +5,13 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.remember
-import com.daex.android.database.DaexDatabase
+import com.daex.android.database.MyObjectBox
 import com.daex.android.services.DaexInferenceViewModel
 import com.daex.android.services.DaexMemory
 import com.daex.android.services.DeviceService
 import com.daex.android.services.ModelManager
+import com.daex.android.services.DaexEmbedder
+import com.daex.android.services.DaexRagImpl
 import com.daex.android.ui.theme.DaexAppTheme
 import com.daex.android.ui.ExecutionScreen
 import com.daex.android.ui.GalleryScreen
@@ -37,11 +39,13 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        val database = DaexDatabase.getDatabase(this)
-        val daexMemory = DaexMemory(database.daexDao())
+        val boxStore = MyObjectBox.builder().androidContext(this.applicationContext).build()
+        val daexMemory = DaexMemory(boxStore)
         val deviceService = DeviceService(this)
         val llamaService = com.daex.android.services.LlamaServiceImpl(this)
         val modelManager = ModelManager(this)
+        val daexEmbedder = DaexEmbedder(this, modelManager)
+        val daexRag = DaexRagImpl(daexMemory, daexEmbedder)
 
         setContent {
             val daexPreferences = remember { DaexPreferences(this@MainActivity) }
@@ -51,7 +55,8 @@ class MainActivity : ComponentActivity() {
                     modelManager = modelManager,
                     deviceService = deviceService,
                     daexMemory = daexMemory,
-                    preferences = daexPreferences
+                    preferences = daexPreferences,
+                    daexRag = daexRag
                 ) 
             }
             var currentScreen by remember { mutableStateOf<Screen?>(null) }
@@ -80,7 +85,8 @@ class MainActivity : ComponentActivity() {
                             onContinue = { 
                                 currentScreen = Screen.EXECUTION 
                             },
-                            daexPreferences = daexPreferences
+                            daexPreferences = daexPreferences,
+                            viewModel = viewModel
                         )
                     }
                     Screen.EXECUTION -> {

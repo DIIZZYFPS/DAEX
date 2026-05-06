@@ -23,7 +23,8 @@ class DaexInferenceViewModel(
     private val modelManager: ModelManager? = null,
     private val deviceService: DeviceService? = null,
     private val daexMemory: DaexMemory? = null,
-    private val preferences: DaexPreferences? = null
+    private val preferences: DaexPreferences? = null,
+    private val daexRag: DaexRag? = null
 ) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -34,6 +35,9 @@ class DaexInferenceViewModel(
 
     private val _downloadProgress = MutableStateFlow(0)
     val downloadProgress: StateFlow<Int> = _downloadProgress.asStateFlow()
+
+    private val _embeddingDownloadProgress = MutableStateFlow<Int?>(null)
+    val embeddingDownloadProgress: StateFlow<Int?> = _embeddingDownloadProgress.asStateFlow()
 
     private val _isGenerating = MutableStateFlow(false)
     val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
@@ -66,6 +70,9 @@ class DaexInferenceViewModel(
     private val _isDarkMode = MutableStateFlow(true)
     val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
 
+    private val _isReasoningEnabled = MutableStateFlow(true)
+    val isReasoningEnabled: StateFlow<Boolean> = _isReasoningEnabled.asStateFlow()
+
     private var generationJob: Job? = null
 
     init {
@@ -78,6 +85,12 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             preferences?.isDarkModeFlow?.collectLatest { isDark ->
                 _isDarkMode.value = isDark
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.isReasoningEnabledFlow?.collectLatest { enabled ->
+                _isReasoningEnabled.value = enabled
             }
         }
 
@@ -98,6 +111,32 @@ class DaexInferenceViewModel(
                 _messages.value = it
             }
         }
+
+        // Silent Background Initialization of the Embedding Model
+        viewModelScope.launch {
+            if (modelManager != null && daexRag != null) {
+                val embedModel = ModelBank.embeddingModel
+                val isDownloaded = modelManager.isModelDownloaded(embedModel)
+                if (!isDownloaded) {
+                    try {
+                        modelManager.downloadModel(embedModel) { progress ->
+                            _embeddingDownloadProgress.value = progress.percent
+                        }
+                        daexRag.initRag() // Initialize after download finishes
+                        _embeddingDownloadProgress.value = null
+                    } catch (e: Exception) {
+                        _embeddingDownloadProgress.value = null
+                        // Silently fail or log for background downloads
+                    }
+                } else {
+                    try {
+                        daexRag.initRag() // Initialize immediately if already downloaded
+                    } catch (e: Exception) {
+                        // Handle potential load failures
+                    }
+                }
+            }
+        }
     }
 
     fun setThemeColor(color: Color) {
@@ -114,13 +153,21 @@ class DaexInferenceViewModel(
         }
     }
 
+    fun toggleReasoning() {
+        val newValue = !_isReasoningEnabled.value
+        _isReasoningEnabled.value = newValue
+        viewModelScope.launch {
+            preferences?.setReasoningEnabled(newValue)
+        }
+    }
+
     fun selectConversation(id: String) {
         _currentConversationId.value = id
         // Optionally load the model associated with the conversation
         viewModelScope.launch {
             val conv = _conversations.value.find { it.id == id }
             if (conv != null) {
-                val model = ModelBank.models.find { it.id == conv.modelId }
+                val model = ModelBank.generativeModels.find { it.id == conv.modelId }
                 if (model != null && _currentModel.value?.id != model.id) {
                     loadModel(model)
                 }
@@ -260,7 +307,7 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             var convId = _currentConversationId.value
             if (convId == null) {
-                val modelId = _currentModel.value?.id ?: ModelBank.models.first().id
+                val modelId = _currentModel.value?.id ?: ModelBank.generativeModels.first().id
                 convId = daexMemory?.createConversation(modelId, prompt.take(20) + "...")
                 _currentConversationId.value = convId
             }
@@ -270,21 +317,71 @@ class DaexInferenceViewModel(
             val userMsgId = System.currentTimeMillis().toString()
             val modelMsgId = (System.currentTimeMillis() + 1).toString()
 
+            // --- RAG SYSTEM PROMPT INJECTION ---
+            val retrievedContext = daexRag?.retrieveContext(prompt) ?: emptyList()
+            val augmentedContent = if (retrievedContext.isNotEmpty()) {
+                val contextBlock = retrievedContext.joinToString(separator = "\n---\n") { it.content }
+                """
+                    Use the following retrieved context to help answer the user's query. If the context is irrelevant, ignore it.
+                    
+                    <context>
+                    $contextBlock
+                    </context>
+                    
+                    User Query: $prompt
+                """.trimIndent()
+            } else {
+                prompt
+            }
+            // -----------------------------------
+
+            // Create messages: userMsg is CLEAN for UI and DB.
             val userMsg = Message(id = userMsgId, role = "user", content = prompt)
             val modelMsg = Message(id = modelMsgId, role = "model", content = "")
 
-            daexMemory?.saveMessage(convId, userMsg)
-            daexMemory?.saveMessage(convId, modelMsg)
+            _messages.value = _messages.value + listOf(userMsg, modelMsg)
+
+            daexRag?.embedAndSaveMessage(convId, userMsg)
+            daexRag?.embedAndSaveMessage(convId, modelMsg)
             
             _isGenerating.value = true
             _tokenSpeed.value = 0.0
 
             generationJob = viewModelScope.launch {
                 try {
-                    val history = daexMemory?.getRecentHistory(convId) ?: emptyList()
+                    // Filter out the placeholder model message from history sent to model
+                    val fullHistory = (daexMemory?.getRecentHistory(convId) ?: emptyList())
+                        .filter { it.id != modelMsgId }
+                    
+                    // SLIDING WINDOW LOGIC
+                    val MAX_CHARS = 8192
+                    var currentCharCount = 0
+                    val windowedHistory = mutableListOf<Message>()
+                    
+                    for (msg in fullHistory.reversed()) {
+                        val msgLength = msg.content.length + (msg.thoughtContent?.length ?: 0)
+                        if (currentCharCount + msgLength > MAX_CHARS && windowedHistory.isNotEmpty()) {
+                            break 
+                        }
+                        currentCharCount += msgLength
+                        windowedHistory.add(0, msg)
+                    }
+
+                    // --- APPLY AUGMENTATION FOR INFERENCE ONLY ---
+                    // Replace the clean message in history with the augmented version
+                    val inferenceHistory = windowedHistory.toMutableList()
+                    if (inferenceHistory.isNotEmpty() && augmentedContent != prompt) {
+                        val lastIdx = inferenceHistory.size - 1
+                        if (inferenceHistory[lastIdx].id == userMsgId) {
+                            inferenceHistory[lastIdx] = inferenceHistory[lastIdx].copy(content = augmentedContent)
+                            android.util.Log.d("DaexInference", "RAG Augmentation applied to prompt")
+                        } else {
+                            android.util.Log.w("DaexInference", "Failed to apply RAG: last msg ID ${inferenceHistory[lastIdx].id} != $userMsgId")
+                        }
+                    }
                     
                     var rawText = ""
-                    val result = llamaService.generateResponse(history) { token ->
+                    val result = llamaService.generateResponse(inferenceHistory, _isReasoningEnabled.value) { token ->
                         if (!isActive) return@generateResponse
                         rawText += token
                         
@@ -327,7 +424,7 @@ class DaexInferenceViewModel(
                     val finalMsg = updatedList.find { it.id == modelMsgId }
                     if (finalMsg != null) {
                         val finalModelMsg = finalMsg.copy(tokensPerSecond = result.tokensPerSecond)
-                        daexMemory?.saveMessage(convId, finalModelMsg)
+                        daexRag?.embedAndSaveMessage(convId, finalModelMsg)
                     }
 
                 } catch (e: Exception) {
@@ -337,7 +434,7 @@ class DaexInferenceViewModel(
                         val errorContent = updated[idx].content + "\n[Error: ${e.message ?: "Generation failed"}]"
                         updated[idx] = updated[idx].copy(content = errorContent)
                         _messages.value = updated
-                        daexMemory?.saveMessage(convId, updated[idx])
+                        daexRag?.embedAndSaveMessage(convId, updated[idx])
                     }
                 } finally {
                     _isGenerating.value = false
@@ -356,6 +453,15 @@ class DaexInferenceViewModel(
         _currentConversationId.value = null
         _messages.value = emptyList()
         _tokenSpeed.value = 0.0
+    }
+
+    fun deleteConversation(id: String) {
+        viewModelScope.launch {
+            daexMemory?.deleteConversation(id)
+            if (_currentConversationId.value == id) {
+                clearMessages()
+            }
+        }
     }
 
     fun disconnect() {

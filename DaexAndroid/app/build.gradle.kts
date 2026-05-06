@@ -3,6 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
+    id("io.objectbox")
 }
 
 android {
@@ -77,14 +78,14 @@ dependencies {
     // Markdown
     implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.25.0")
 
-    // Llama Inference
-    implementation("io.github.ljcamargo:llamacpp-kotlin:0.4.0")
+    // Llama Inference (Using locally patched AAR to fix JNI embedding crash)
+    implementation(files("libs/llamacpp-kotlin-0.4.0-patched.aar"))
 
-    // Room
-    val room_version = "2.6.1"
-    implementation("androidx.room:room-runtime:$room_version")
-    implementation("androidx.room:room-ktx:$room_version")
-    ksp("androidx.room:room-compiler:$room_version")
+    // ObjectBox Kotlin Extensions
+    implementation("io.objectbox:objectbox-kotlin:4.0.0")
+
+    // Room (Removed - Migrated to ObjectBox)
+
 
     // Debug tooling
     debugImplementation("androidx.compose.ui:ui-tooling")

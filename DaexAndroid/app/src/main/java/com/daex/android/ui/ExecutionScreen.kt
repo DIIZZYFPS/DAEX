@@ -42,11 +42,12 @@ fun ExecutionScreen(
     val tokenSpeed by viewModel.tokenSpeed.collectAsState()
     val hardwareState by viewModel.hardwareState.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
+    val isReasoningEnabled by viewModel.isReasoningEnabled.collectAsState()
     
     var inputText by remember { mutableStateOf("") }
     var sidebarVisible by remember { mutableStateOf(false) }
     var selectorVisible by remember { mutableStateOf(false) }
-    var selectedModel by remember { mutableStateOf(ModelBank.models.first()) }
+    var selectedModel by remember { mutableStateOf(ModelBank.generativeModels.first()) }
     
     val listState = rememberLazyListState()
     var autoScrollEnabled by remember { mutableStateOf(true) }
@@ -345,8 +346,40 @@ fun ExecutionScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
-                        .padding(bottom = 16.dp, top = 16.dp, start = 16.dp, end = 16.dp)
+                        .padding(bottom = 16.dp, top = 8.dp, start = 16.dp, end = 16.dp)
                 ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(if (isReasoningEnabled) DaexTheme.colors.primary.copy(alpha=0.15f) else DaexTheme.colors.onSurface.copy(alpha=0.1f))
+                                .border(0.5.dp, if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.2f), RoundedCornerShape(16.dp))
+                                .clickable { viewModel.toggleReasoning() }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.4f))
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                BasicText(
+                                    text = if (isReasoningEnabled) "REASONING" else "FAST",
+                                    style = DaexTheme.typography.mono.copy(
+                                        color = if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.6f),
+                                        fontSize = 10.sp,
+                                        letterSpacing = 1.sp
+                                    )
+                                )
+                            }
+                        }
+                    }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()

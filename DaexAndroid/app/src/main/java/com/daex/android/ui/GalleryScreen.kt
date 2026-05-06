@@ -80,7 +80,7 @@ fun GalleryScreen(
             contentPadding = PaddingValues(24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            items(ModelBank.models) { model ->
+            items(ModelBank.generativeModels) { model ->
                 GalleryModelCard(
                     model = model,
                     viewModel = viewModel,

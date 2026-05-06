@@ -31,6 +31,7 @@ interface LlamaService {
     suspend fun releaseContext()
     suspend fun generateResponse(
         messages: List<Message>,
+        isReasoningEnabled: Boolean = true,
         onToken: (String) -> Unit
     ): GenerationResult
     fun isLoaded(): Boolean
@@ -53,11 +54,12 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
     private val TURN_START = "<|turn>"
     private val TURN_END = "<turn|>"
 
-    private val SYSTEM_PROMPT = "<|think|>You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed."
-
-    private fun formatPrompt(messages: List<Message>): String {
+    private fun formatPrompt(messages: List<Message>, isReasoningEnabled: Boolean): String {
         val sb = StringBuilder()
-        sb.append("$BOS${TURN_START}system\n$SYSTEM_PROMPT$TURN_END\n")
+        val thinkPrefix = if (isReasoningEnabled) "<|think|>" else ""
+        val systemPrompt = "${thinkPrefix}You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed."
+        
+        sb.append("$BOS${TURN_START}system\n$systemPrompt$TURN_END\n")
         
         for (msg in messages) {
             sb.append("${TURN_START}${msg.role}\n${msg.content}$TURN_END\n")
@@ -138,11 +140,12 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
 
     override suspend fun generateResponse(
         messages: List<Message>,
+        isReasoningEnabled: Boolean,
         onToken: (String) -> Unit
     ): GenerationResult {
         val contextId = currentContextId ?: throw Exception("Model not loaded.")
         
-        val prompt = formatPrompt(messages)
+        val prompt = formatPrompt(messages, isReasoningEnabled)
         val startTime = System.currentTimeMillis()
         var tokenCount = 0
         val fullText = StringBuilder()

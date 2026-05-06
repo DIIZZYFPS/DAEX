@@ -4,17 +4,25 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.DropdownMenu
+import androidx.compose.material.DropdownMenuItem
+import androidx.compose.material.Text
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -26,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import com.daex.android.services.DaexInferenceViewModel
 import com.daex.android.ui.theme.DaexTheme
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun Sidebar(
     visible: Boolean,
@@ -114,15 +123,22 @@ fun Sidebar(
                 ) {
                     items(conversations) { conv ->
                         val isSelected = conv.id == currentConvId
+                        var showMenu by remember { mutableStateOf(false) }
+                        
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(8.dp))
                                 .background(if (isSelected) DaexTheme.colors.onSurface.copy(alpha = 0.05f) else Color.Transparent)
-                                .clickable { 
-                                    viewModel.selectConversation(conv.id)
-                                    onClose()
-                                }
+                                .combinedClickable(
+                                    onClick = { 
+                                        viewModel.selectConversation(conv.id)
+                                        onClose()
+                                    },
+                                    onLongClick = {
+                                        showMenu = true
+                                    }
+                                )
                                 .padding(horizontal = 12.dp, vertical = 12.dp)
                         ) {
                             Column {
@@ -142,6 +158,22 @@ fun Sidebar(
                                         fontSize = 8.sp
                                     )
                                 )
+                            }
+                            
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false },
+                                modifier = Modifier.background(DaexTheme.colors.surface)
+                            ) {
+                                DropdownMenuItem(onClick = { showMenu = false }) {
+                                    BasicText("Pin (Coming Soon)", style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.onSurface.copy(alpha=0.5f)))
+                                }
+                                DropdownMenuItem(onClick = { 
+                                    viewModel.deleteConversation(conv.id)
+                                    showMenu = false 
+                                }) {
+                                    BasicText("Delete Session", style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.error))
+                                }
                             }
                         }
                     }

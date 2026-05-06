@@ -26,9 +26,11 @@ import com.daex.android.services.DaexPreferences
 @Composable
 fun LandingScreen(
     onContinue: () -> Unit,
-    daexPreferences: DaexPreferences
+    daexPreferences: DaexPreferences,
+    viewModel: DaexInferenceViewModel
 ) {
     var animateSpacing by remember { mutableStateOf(false) }
+    val downloadProgress by viewModel.embeddingDownloadProgress.collectAsState()
     
     val spacing by animateFloatAsState(
         targetValue = if (animateSpacing) 16f else 0f,
@@ -99,21 +101,37 @@ fun LandingScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.fillMaxWidth()
         ) {
+            val isDownloading = downloadProgress != null
+            
             DaexButton(
                 onClick = { 
-                    coroutineScope.launch {
-                        daexPreferences.completeLandingPage()
-                        onContinue()
+                    if (!isDownloading) {
+                        coroutineScope.launch {
+                            daexPreferences.completeLandingPage()
+                            onContinue()
+                        }
                     }
                 },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth(),
+                // If your DaexButton supports an enabled parameter, pass it here:
+                // enabled = !isDownloading
             ) {
-                BasicText(
-                    text = "START SESSION",
-                    style = DaexTheme.typography.mono.copy(
-                        color = DaexTheme.colors.onPrimary
+                if (isDownloading) {
+                    BasicText(
+                        text = "INITIALIZING CORE MEMORY... ${downloadProgress}%",
+                        style = DaexTheme.typography.mono.copy(
+                            color = DaexTheme.colors.onPrimary.copy(alpha = 0.7f),
+                            fontSize = 12.sp
+                        )
                     )
-                )
+                } else {
+                    BasicText(
+                        text = "START SESSION",
+                        style = DaexTheme.typography.mono.copy(
+                            color = DaexTheme.colors.onPrimary
+                        )
+                    )
+                }
             }
         }
     }
