@@ -74,7 +74,7 @@ class DaexRagImpl(
             var chunks: List<String> = emptyList()
             var fetchLimit = maxResults * 3
 
-            while (fetchLimit <= totalChunks) {
+            while (chunks.size < maxResults && fetchLimit <= totalChunks) {
                 val results = chunkBox
                     .query(DocumentChunkEntity_.embedding.nearestNeighbors(queryVector, fetchLimit))
                     .build()
@@ -103,25 +103,24 @@ class DaexRagImpl(
 
     override suspend fun getVaultDocuments(): List<VaultDocument> {
         return try {
-            val allDocIdsQuery = chunkBox.query().build()
-            val documentIds = allDocIdsQuery
-                .property(DocumentChunkEntity_.documentId)
-                .distinct()
-                .findStrings()
-                .filterNotNull()
-            allDocIdsQuery.close()
+            val documentIds = chunkBox.query().build().use { query ->
+                query.property(DocumentChunkEntity_.documentId)
+                    .distinct()
+                    .findStrings()
+                    .filterNotNull()
+            }
 
             documentIds.mapNotNull { docId ->
-                val query = chunkBox.query {
+                chunkBox.query {
                     equal(DocumentChunkEntity_.documentId, docId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
-                }
-                val firstChunk = query.findFirst()
-                val chunkCount = query.count().toInt()
-                firstChunk?.let {
+                }.use { query ->
+                    val chunkCount = query.count().toInt()
+                    if (chunkCount == 0) return@use null
+                    val firstChunk = query.findFirst() ?: return@use null
                     VaultDocument(
                         documentId = docId,
-                        fileName = it.fileName ?: "unknown",
-                        displayName = (it.displayName ?: "").ifBlank { it.fileName ?: "unknown" },
+                        fileName = firstChunk.fileName ?: "unknown",
+                        displayName = (firstChunk.displayName ?: "").ifBlank { firstChunk.fileName ?: "unknown" },
                         chunkCount = chunkCount
                     )
                 }
