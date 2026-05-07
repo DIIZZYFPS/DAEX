@@ -11,7 +11,8 @@ data class ConversationEntity(
     @Unique var uuid: String = "",
     var title: String = "",
     var modelId: String = "",
-    var createdAt: Long = System.currentTimeMillis()
+    var createdAt: Long = System.currentTimeMillis(),
+    var attachedDocumentIds: String = ""
 )
 
 @Entity
@@ -32,10 +33,11 @@ data class MessageEntity(
 @Entity
 data class DocumentChunkEntity(
     @Id var id: Long = 0,
-    var documentId: String = "",
-    var fileName: String = "",
+    var documentId: String? = null,
+    var fileName: String? = null,
+    var displayName: String? = null,
     var chunkIndex: Int = 0,
-    var content: String = "",
+    var content: String? = null,
     var createdAt: Long = System.currentTimeMillis(),
 
     @HnswIndex(dimensions = 768)

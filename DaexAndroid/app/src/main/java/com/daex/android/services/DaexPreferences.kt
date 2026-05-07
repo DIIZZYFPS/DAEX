@@ -18,6 +18,11 @@ class DaexPreferences(private val context: Context) {
         val PRIMARY_COLOR = intPreferencesKey("primary_color")
         val HAS_COMPLETED_LANDING = booleanPreferencesKey("has_completed_landing")
         val IS_REASONING_ENABLED = booleanPreferencesKey("is_reasoning_enabled")
+        val LAST_CONVERSATION_ID = stringPreferencesKey("last_conversation_id")
+    }
+
+    val lastConversationIdFlow: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[LAST_CONVERSATION_ID]
     }
 
     val isReasoningEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -57,6 +62,16 @@ class DaexPreferences(private val context: Context) {
     suspend fun setReasoningEnabled(isEnabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[IS_REASONING_ENABLED] = isEnabled
+        }
+    }
+
+    suspend fun setLastConversationId(id: String?) {
+        context.dataStore.edit { preferences ->
+            if (id == null) {
+                preferences.remove(LAST_CONVERSATION_ID)
+            } else {
+                preferences[LAST_CONVERSATION_ID] = id
+            }
         }
     }
 }
