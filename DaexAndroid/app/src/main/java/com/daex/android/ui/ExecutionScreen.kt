@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -18,8 +19,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import com.daex.android.services.DaexInferenceViewModel
 import com.daex.android.services.ModelBank
 import com.daex.android.services.ModelManager
@@ -36,6 +40,7 @@ fun ExecutionScreen(
 ) {
     val messages by viewModel.messages.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
+    val isReflecting by viewModel.isReflecting.collectAsState()
     val modelStatus by viewModel.modelStatus.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
     val currentModel by viewModel.currentModel.collectAsState()
@@ -43,10 +48,55 @@ fun ExecutionScreen(
     val hardwareState by viewModel.hardwareState.collectAsState()
     val errorMessage by viewModel.errorMessage.collectAsState()
     val isReasoningEnabled by viewModel.isReasoningEnabled.collectAsState()
+    val isVectorizing by viewModel.isVectorizing.collectAsState()
+    val uploadedFiles by viewModel.uploadedFiles.collectAsState()
     
+    val context = LocalContext.current
     var inputText by remember { mutableStateOf("") }
     var sidebarVisible by remember { mutableStateOf(false) }
     var selectorVisible by remember { mutableStateOf(false) }
+
+    // File picker launcher
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        uri?.let {
+            try {
+                val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "uploaded_file"
+                val mimeType = context.contentResolver.getType(uri) ?: ""
+                
+                val textContent = if (mimeType == "application/pdf") {
+                    // PDF extraction using iText
+                    val inputStream = context.contentResolver.openInputStream(uri)
+                    inputStream?.use { stream ->
+                        val reader = com.itextpdf.kernel.pdf.PdfReader(stream)
+                        val pdfDoc = com.itextpdf.kernel.pdf.PdfDocument(reader)
+                        val sb = StringBuilder()
+                        for (i in 1..pdfDoc.numberOfPages) {
+                            val page = pdfDoc.getPage(i)
+                            val text = com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor.getTextFromPage(page)
+                            sb.appendLine(text)
+                        }
+                        pdfDoc.close()
+                        sb.toString()
+                    } ?: ""
+                } else {
+                    // Plain text files
+                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: ""
+                }
+
+                if (textContent.isNotBlank()) {
+                    viewModel.uploadFile(fileName, textContent)
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("ExecutionScreen", "Failed to read file", e)
+            }
+        }
+    }
+
+    LaunchedEffect(Unit) {
+        viewModel.refreshUploadedFiles()
+    }
     var selectedModel by remember { mutableStateOf(ModelBank.generativeModels.first()) }
     
     val listState = rememberLazyListState()
@@ -107,6 +157,8 @@ fun ExecutionScreen(
     val isModelReady = modelStatus == ModelStatus.READY
 
     val statusBadgeText = when {
+        isVectorizing -> "Vectorizing..."
+        isReflecting -> "Updating memory..."
         isGenerating && tokenSpeed > 0 -> "$tokenSpeed tok/s"
         isGenerating -> "Generating..."
         modelStatus == ModelStatus.LOADING -> "Loading..."
@@ -117,7 +169,12 @@ fun ExecutionScreen(
     val statusColor = when (modelStatus) {
         ModelStatus.ERROR -> DaexTheme.colors.error
         ModelStatus.DOWNLOADING, ModelStatus.LOADING -> DaexTheme.colors.warning
-        ModelStatus.READY -> if (isGenerating) Color(0xFFA855F7) else DaexTheme.colors.success
+        ModelStatus.READY -> when {
+            isVectorizing -> DaexTheme.colors.warning
+            isReflecting -> DaexTheme.colors.warning
+            isGenerating -> Color(0xFFA855F7)
+            else -> DaexTheme.colors.success
+        }
         else -> DaexTheme.colors.warning
     }
 
@@ -380,6 +437,52 @@ fun ExecutionScreen(
                         }
                     }
 
+                    // Uploaded file chips
+                    if (uploadedFiles.isNotEmpty()) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(uploadedFiles.size) { index ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(DaexTheme.colors.primary.copy(alpha = 0.12f))
+                                        .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    BasicText(
+                                        text = "📄 ${uploadedFiles[index]}",
+                                        style = DaexTheme.typography.caption.copy(
+                                            color = DaexTheme.colors.primary
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (isVectorizing) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = DaexTheme.colors.warning,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            BasicText(
+                                text = "Vectorizing file...",
+                                style = DaexTheme.typography.caption.copy(
+                                    color = DaexTheme.colors.warning
+                                )
+                            )
+                        }
+                    }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -389,6 +492,21 @@ fun ExecutionScreen(
                             .padding(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        // Attachment button
+                        DaexButton(
+                            onClick = { filePickerLauncher.launch("*/*") },
+                            enabled = !isGenerating && !isVectorizing && isModelReady,
+                            modifier = Modifier.size(36.dp),
+                            backgroundColor = Color.Transparent,
+                            useDefaultPadding = false
+                        ) {
+                            BasicText(
+                                text = "📎",
+                                style = DaexTheme.typography.body1.copy(
+                                    fontSize = 18.sp
+                                )
+                            )
+                        }
                         DaexTextField(
                             value = inputText,
                             onValueChange = { inputText = it },
@@ -410,7 +528,7 @@ fun ExecutionScreen(
                             useDefaultPadding = false
                         ) {
                             if (isGenerating) {
-                                DaexLoader(size = 28.dp) // Adjusted slightly to fit better without padding
+                                DaexLoader(size = 28.dp)
                             } else {
                                 Box(
                                     modifier = Modifier
@@ -426,6 +544,7 @@ fun ExecutionScreen(
         }
         
         var settingsVisible by remember { mutableStateOf(false) }
+        var memoryEditorVisible by remember { mutableStateOf(false) }
 
         ModelSelectorModal(
             visible = selectorVisible,
@@ -479,6 +598,21 @@ fun ExecutionScreen(
             onClearConversations = { 
                 viewModel.clearMessages()
                 settingsVisible = false
+            },
+            onEditMemory = {
+                settingsVisible = false
+                memoryEditorVisible = true
+                viewModel.loadCoreMemory()
+            }
+        )
+
+        MemoryEditorModal(
+            visible = memoryEditorVisible,
+            onClose = { memoryEditorVisible = false },
+            initialContent = viewModel.coreMemoryText.collectAsState().value,
+            onSave = { 
+                viewModel.saveCoreMemory(it)
+                memoryEditorVisible = false
             }
         )
     }

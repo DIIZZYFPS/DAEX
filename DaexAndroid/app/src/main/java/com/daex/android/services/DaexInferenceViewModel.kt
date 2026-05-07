@@ -23,6 +23,7 @@ class DaexInferenceViewModel(
     private val modelManager: ModelManager? = null,
     private val deviceService: DeviceService? = null,
     private val daexMemory: DaexMemory? = null,
+    private val daexCoreMemory: DaexCoreMemory? = null,
     private val preferences: DaexPreferences? = null,
     private val daexRag: DaexRag? = null
 ) : ViewModel() {
@@ -42,6 +43,15 @@ class DaexInferenceViewModel(
     private val _isGenerating = MutableStateFlow(false)
     val isGenerating: StateFlow<Boolean> = _isGenerating.asStateFlow()
 
+    private val _isReflecting = MutableStateFlow(false)
+    val isReflecting: StateFlow<Boolean> = _isReflecting.asStateFlow()
+
+    private val _isVectorizing = MutableStateFlow(false)
+    val isVectorizing: StateFlow<Boolean> = _isVectorizing.asStateFlow()
+
+    private val _uploadedFiles = MutableStateFlow<List<String>>(emptyList())
+    val uploadedFiles: StateFlow<List<String>> = _uploadedFiles.asStateFlow()
+
     private val _tokenSpeed = MutableStateFlow(0.0)
     val tokenSpeed: StateFlow<Double> = _tokenSpeed.asStateFlow()
 
@@ -60,6 +70,9 @@ class DaexInferenceViewModel(
     private val _currentConversationId = MutableStateFlow<String?>(null)
     val currentConversationId: StateFlow<String?> = _currentConversationId.asStateFlow()
 
+    private val _coreMemoryText = MutableStateFlow("")
+    val coreMemoryText: StateFlow<String> = _coreMemoryText.asStateFlow()
+
     private val _conversations = MutableStateFlow<List<Conversation>>(emptyList())
     val conversations: StateFlow<List<Conversation>> = _conversations.asStateFlow()
 
@@ -74,6 +87,8 @@ class DaexInferenceViewModel(
     val isReasoningEnabled: StateFlow<Boolean> = _isReasoningEnabled.asStateFlow()
 
     private var generationJob: Job? = null
+    private var exchangesSinceCompaction = 0
+    private val COMPACTION_INTERVAL = 5
 
     init {
         viewModelScope.launch {
@@ -317,32 +332,14 @@ class DaexInferenceViewModel(
             val userMsgId = System.currentTimeMillis().toString()
             val modelMsgId = (System.currentTimeMillis() + 1).toString()
 
-            // --- RAG SYSTEM PROMPT INJECTION ---
-            val retrievedContext = daexRag?.retrieveContext(prompt) ?: emptyList()
-            val augmentedContent = if (retrievedContext.isNotEmpty()) {
-                val contextBlock = retrievedContext.joinToString(separator = "\n---\n") { it.content }
-                """
-                    Use the following retrieved context to help answer the user's query. If the context is irrelevant, ignore it.
-                    
-                    <context>
-                    $contextBlock
-                    </context>
-                    
-                    User Query: $prompt
-                """.trimIndent()
-            } else {
-                prompt
-            }
-            // -----------------------------------
-
             // Create messages: userMsg is CLEAN for UI and DB.
             val userMsg = Message(id = userMsgId, role = "user", content = prompt)
             val modelMsg = Message(id = modelMsgId, role = "model", content = "")
 
             _messages.value = _messages.value + listOf(userMsg, modelMsg)
 
-            daexRag?.embedAndSaveMessage(convId, userMsg)
-            daexRag?.embedAndSaveMessage(convId, modelMsg)
+            daexMemory?.saveMessage(convId, userMsg)
+            daexMemory?.saveMessage(convId, modelMsg)
             
             _isGenerating.value = true
             _tokenSpeed.value = 0.0
@@ -367,34 +364,40 @@ class DaexInferenceViewModel(
                         windowedHistory.add(0, msg)
                     }
 
-                    // --- APPLY AUGMENTATION FOR INFERENCE ONLY ---
-                    // Replace the clean message in history with the augmented version
                     val inferenceHistory = windowedHistory.toMutableList()
-                    if (inferenceHistory.isNotEmpty() && augmentedContent != prompt) {
-                        val lastIdx = inferenceHistory.size - 1
-                        if (inferenceHistory[lastIdx].id == userMsgId) {
-                            inferenceHistory[lastIdx] = inferenceHistory[lastIdx].copy(content = augmentedContent)
-                            android.util.Log.d("DaexInference", "RAG Augmentation applied to prompt")
-                        } else {
-                            android.util.Log.w("DaexInference", "Failed to apply RAG: last msg ID ${inferenceHistory[lastIdx].id} != $userMsgId")
-                        }
-                    }
                     
                     var rawText = ""
-                    val result = llamaService.generateResponse(inferenceHistory, _isReasoningEnabled.value) { token ->
+                    val coreMemoryContent = daexCoreMemory?.getMemoryContent() ?: ""
+
+                    // --- FILE RAG CONTEXT INJECTION ---
+                    var systemContext = coreMemoryContent
+                    if (daexRag != null && daexRag.hasDocuments()) {
+                        try {
+                            val relevantChunks = daexRag.queryDocuments(prompt)
+                            if (relevantChunks.isNotEmpty()) {
+                                val contextBlock = relevantChunks.joinToString("\n---\n")
+                                systemContext += "\n\n<uploaded_documents>\n$contextBlock\n</uploaded_documents>\n"
+                                systemContext += "Use the above document excerpts to help answer the user's query. If the excerpts are not relevant, ignore them.\n"
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("DaexInference", "RAG query failed, continuing without context", e)
+                        }
+                    }
+                    val result = llamaService.generateResponse(inferenceHistory, systemContext, _isReasoningEnabled.value) { token ->
                         if (!isActive) return@generateResponse
                         rawText += token
                         
                         var thought: String? = null
                         var actual = rawText
                         
-                        val tags = listOf(
+                        // Parse think/channel tags only — no reflection parsing needed
+                        val thinkTags = listOf(
                             Pair("<|channel>", "<channel|>"),
                             Pair("<|think|>", "</think|>"),
                             Pair("<think>", "</think>")
                         )
                         
-                        for (tagPair in tags) {
+                        for (tagPair in thinkTags) {
                             val startIdx = rawText.indexOf(tagPair.first)
                             if (startIdx != -1) {
                                 val endIdx = rawText.indexOf(tagPair.second, startIdx + tagPair.first.length)
@@ -418,13 +421,27 @@ class DaexInferenceViewModel(
                     }
                     _tokenSpeed.value = result.tokensPerSecond
                     
-                    // Save final result to DB. The rawText contains tags, but we'll save the parsed version.
-                    // If you want to keep tags in DB, use rawText. But saving parsed is better for history context.
+                    // Save final result to DB
                     val updatedList = _messages.value
                     val finalMsg = updatedList.find { it.id == modelMsgId }
                     if (finalMsg != null) {
                         val finalModelMsg = finalMsg.copy(tokensPerSecond = result.tokensPerSecond)
-                        daexRag?.embedAndSaveMessage(convId, finalModelMsg)
+                        daexMemory?.saveMessage(convId, finalModelMsg)
+                    }
+
+                    // --- MEMORY COMPACTION TRIGGER ---
+                    exchangesSinceCompaction++
+                    if (exchangesSinceCompaction >= COMPACTION_INTERVAL && daexCoreMemory != null) {
+                        _isReflecting.value = true
+                        try {
+                            val recentMsgs = daexMemory?.getRecentHistory(convId, limit = 20) ?: emptyList()
+                            daexCoreMemory.compactMemory(recentMsgs, llamaService)
+                            exchangesSinceCompaction = 0
+                        } catch (e: Exception) {
+                            android.util.Log.e("DaexInference", "Memory compaction failed", e)
+                        } finally {
+                            _isReflecting.value = false
+                        }
                     }
 
                 } catch (e: Exception) {
@@ -434,7 +451,7 @@ class DaexInferenceViewModel(
                         val errorContent = updated[idx].content + "\n[Error: ${e.message ?: "Generation failed"}]"
                         updated[idx] = updated[idx].copy(content = errorContent)
                         _messages.value = updated
-                        daexRag?.embedAndSaveMessage(convId, updated[idx])
+                        daexMemory?.saveMessage(convId, updated[idx])
                     }
                 } finally {
                     _isGenerating.value = false
@@ -468,5 +485,40 @@ class DaexInferenceViewModel(
         unloadModel()
         clearMessages()
         _errorMessage.value = null
+    }
+
+    fun loadCoreMemory() {
+        viewModelScope.launch {
+            val content = daexCoreMemory?.getMemoryContent() ?: ""
+            _coreMemoryText.value = content
+        }
+    }
+
+    fun saveCoreMemory(content: String) {
+        viewModelScope.launch {
+            daexCoreMemory?.overwriteMemory(content)
+            _coreMemoryText.value = content
+        }
+    }
+
+    fun uploadFile(fileName: String, content: String) {
+        viewModelScope.launch {
+            _isVectorizing.value = true
+            try {
+                daexRag?.ingestFile(fileName, content)
+                refreshUploadedFiles()
+            } catch (e: Exception) {
+                android.util.Log.e("DaexInference", "File upload failed", e)
+                _errorMessage.value = "Failed to process file: ${e.message}"
+            } finally {
+                _isVectorizing.value = false
+            }
+        }
+    }
+
+    fun refreshUploadedFiles() {
+        viewModelScope.launch {
+            _uploadedFiles.value = daexRag?.getUploadedFiles() ?: emptyList()
+        }
     }
 }

@@ -28,3 +28,16 @@ data class MessageEntity(
     @HnswIndex(dimensions = 768)
     var embedding: FloatArray? = null
 )
+
+@Entity
+data class DocumentChunkEntity(
+    @Id var id: Long = 0,
+    var documentId: String = "",
+    var fileName: String = "",
+    var chunkIndex: Int = 0,
+    var content: String = "",
+    var createdAt: Long = System.currentTimeMillis(),
+
+    @HnswIndex(dimensions = 768)
+    var embedding: FloatArray? = null
+)

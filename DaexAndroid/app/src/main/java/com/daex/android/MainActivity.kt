@@ -45,7 +45,8 @@ class MainActivity : ComponentActivity() {
         val llamaService = com.daex.android.services.LlamaServiceImpl(this)
         val modelManager = ModelManager(this)
         val daexEmbedder = DaexEmbedder(this, modelManager)
-        val daexRag = DaexRagImpl(daexMemory, daexEmbedder)
+        val daexCoreMemory = com.daex.android.services.DaexCoreMemoryImpl(this)
+        val daexRag = DaexRagImpl(boxStore, daexEmbedder)
 
         setContent {
             val daexPreferences = remember { DaexPreferences(this@MainActivity) }
@@ -55,6 +56,7 @@ class MainActivity : ComponentActivity() {
                     modelManager = modelManager,
                     deviceService = deviceService,
                     daexMemory = daexMemory,
+                    daexCoreMemory = daexCoreMemory,
                     preferences = daexPreferences,
                     daexRag = daexRag
                 ) 

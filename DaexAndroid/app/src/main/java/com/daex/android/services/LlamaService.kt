@@ -31,9 +31,11 @@ interface LlamaService {
     suspend fun releaseContext()
     suspend fun generateResponse(
         messages: List<Message>,
+        systemContext: String = "",
         isReasoningEnabled: Boolean = true,
         onToken: (String) -> Unit
     ): GenerationResult
+    suspend fun generateSilent(prompt: String, maxTokens: Int = 512): String
     fun isLoaded(): Boolean
 }
 
@@ -54,10 +56,20 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
     private val TURN_START = "<|turn>"
     private val TURN_END = "<turn|>"
 
-    private fun formatPrompt(messages: List<Message>, isReasoningEnabled: Boolean): String {
+    private fun formatPrompt(messages: List<Message>, systemContext: String, isReasoningEnabled: Boolean): String {
         val sb = StringBuilder()
         val thinkPrefix = if (isReasoningEnabled) "<|think|>" else ""
-        val systemPrompt = "${thinkPrefix}You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed."
+        
+        val systemPrompt = buildString {
+            append(thinkPrefix)
+            append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n\n")
+            if (systemContext.isNotBlank()) {
+                append("<global_memory>\n")
+                append(systemContext)
+                append("\n</global_memory>\n\n")
+                append("The above is your persistent memory. Use it to personalize your responses. Do NOT attempt to update it yourself.\n")
+            }
+        }
         
         sb.append("$BOS${TURN_START}system\n$systemPrompt$TURN_END\n")
         
@@ -140,12 +152,13 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
 
     override suspend fun generateResponse(
         messages: List<Message>,
+        systemContext: String,
         isReasoningEnabled: Boolean,
         onToken: (String) -> Unit
     ): GenerationResult {
         val contextId = currentContextId ?: throw Exception("Model not loaded.")
         
-        val prompt = formatPrompt(messages, isReasoningEnabled)
+        val prompt = formatPrompt(messages, systemContext, isReasoningEnabled)
         val startTime = System.currentTimeMillis()
         var tokenCount = 0
         val fullText = StringBuilder()
@@ -200,5 +213,40 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
     
     fun cancelGeneration() {
         isGenerating = false
+    }
+
+    override suspend fun generateSilent(prompt: String, maxTokens: Int): String {
+        val contextId = currentContextId ?: throw Exception("Model not loaded.")
+        val fullText = StringBuilder()
+
+        isGenerating = true
+        try {
+            val params = mutableMapOf<String, Any>(
+                "prompt" to prompt,
+                "emit_partial_completion" to true,
+                "temperature" to 0.3,
+                "n_predict" to maxTokens
+            )
+
+            val collectionJob = CoroutineScope(Dispatchers.Default).launch {
+                tokenFlow.collect { token ->
+                    fullText.append(token)
+                }
+            }
+
+            withContext(Dispatchers.IO) {
+                llamaAndroid.launchCompletion(contextId, params)
+            }
+
+            delay(100)
+            collectionJob.cancel()
+        } catch (e: Exception) {
+            Log.e("LlamaService", "Silent generation failed", e)
+            throw e
+        } finally {
+            isGenerating = false
+        }
+
+        return fullText.toString()
     }
 }

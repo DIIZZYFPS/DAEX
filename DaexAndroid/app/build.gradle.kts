@@ -84,6 +84,9 @@ dependencies {
     // ObjectBox Kotlin Extensions
     implementation("io.objectbox:objectbox-kotlin:4.0.0")
 
+    // PDF Parsing
+    implementation("com.itextpdf:itext7-core:7.2.5")
+
     // Room (Removed - Migrated to ObjectBox)
 
 

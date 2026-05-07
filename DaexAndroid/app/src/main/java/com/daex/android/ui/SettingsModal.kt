@@ -49,7 +49,8 @@ fun SettingsModal(
     onDownloadModel: () -> Unit,
     onChangeModel: () -> Unit,
     onDeleteModel: () -> Unit,
-    onClearConversations: () -> Unit
+    onClearConversations: () -> Unit,
+    onEditMemory: () -> Unit
 ) {
     if (!visible) return
 
@@ -284,7 +285,47 @@ fun SettingsModal(
                                     }
                                 }
                             }
-                            Spacer(modifier = Modifier.height(32.dp))
+                            
+                            Spacer(modifier = Modifier.height(24.dp))
+                            
+                            // Memory Section
+                            SectionHeader("GLOBAL MEMORY")
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { 
+                                        dismiss()
+                                        onEditMemory() 
+                                    }
+                                    .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                    .padding(16.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column {
+                                        BasicText(
+                                            text = "Edit Core Memory",
+                                            style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.onSurface)
+                                        )
+                                        BasicText(
+                                            text = "Review and edit the markdown file manually.",
+                                            style = DaexTheme.typography.body2.copy(
+                                                color = DaexTheme.colors.onSurface.copy(alpha = 0.5f)
+                                            )
+                                        )
+                                    }
+                                    BasicText(
+                                        text = "→",
+                                        style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.primary)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(24.dp))
 
                             // Inference Section
                             SectionHeader("INFERENCE")
