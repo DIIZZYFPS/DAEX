@@ -125,13 +125,15 @@ class DaexInferenceViewModel(
                     .take(1)
                     .collect { (lastId, convs) ->
                         if (_currentConversationId.value == null) {
-                            _currentConversationId.value = lastId
                             val conv = convs.find { it.id == lastId }
                             if (conv != null) {
+                                _currentConversationId.value = conv.id
                                 val model = ModelBank.generativeModels.find { it.id == conv.modelId }
                                 if (model != null && _currentModel.value == null) {
                                     loadModel(model)
                                 }
+                            } else {
+                                preferences?.setLastConversationId(null)
                             }
                         }
                     }
@@ -624,8 +626,8 @@ class DaexInferenceViewModel(
     fun deleteVaultDocument(documentId: String) {
         viewModelScope.launch {
             daexRag?.deleteDocument(documentId)
-            // Also detach from current conversation if attached
-            detachDocument(documentId)
+            daexMemory?.removeDocumentFromAllConversationAttachments(documentId)
+            _attachedDocumentIds.value = _attachedDocumentIds.value.filter { it != documentId }
             refreshVault()
         }
     }

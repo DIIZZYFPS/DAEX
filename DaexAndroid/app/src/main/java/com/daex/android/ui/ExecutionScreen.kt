@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -715,11 +716,10 @@ fun ExecutionScreen(
                         )
                     } else {
                         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            items(vaultDocuments.size) { index ->
-                                val doc = vaultDocuments[index]
+                            items(items = vaultDocuments, key = { it.documentId }) { doc ->
                                 val isAttached = doc.documentId in attachedDocumentIds
-                                var isEditing by remember { mutableStateOf(false) }
-                                var editName by remember { mutableStateOf(doc.displayName) }
+                                var isEditing by remember(doc.documentId) { mutableStateOf(false) }
+                                var editName by remember(doc.documentId) { mutableStateOf(doc.displayName) }
                                 Row(
                                     modifier = Modifier.fillMaxWidth()
                                         .clip(RoundedCornerShape(10.dp))

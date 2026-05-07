@@ -67,18 +67,34 @@ class DaexRagImpl(
             if (allowedDocumentIds.isEmpty()) return emptyList()
 
             val queryVector = embedder.generateEmbedding(query, isQuery = true)
+            val allowedIdSet = allowedDocumentIds.toSet()
+            val totalChunks = chunkBox.count().toInt()
+            if (totalChunks == 0) return emptyList()
 
-            // Get nearest neighbors across all chunks, then filter to allowed documents
-            val results = chunkBox
-                .query(DocumentChunkEntity_.embedding.nearestNeighbors(queryVector, maxResults * 3))
-                .build()
-                .findWithScores()
+            val chunks = mutableListOf<String>()
+            var fetchLimit = (maxResults * 3).coerceAtLeast(maxResults)
 
-            val chunks = results
-                .map { it.get() }
-                .filter { it.documentId != null && it.documentId!! in allowedDocumentIds }
-                .take(maxResults)
-                .mapNotNull { it.content }
+            while (chunks.size < maxResults && fetchLimit <= totalChunks) {
+                val results = chunkBox
+                    .query(DocumentChunkEntity_.embedding.nearestNeighbors(queryVector, fetchLimit))
+                    .build()
+                    .findWithScores()
+
+                chunks.clear()
+                chunks.addAll(
+                    results
+                        .map { it.get() }
+                        .filter { entity ->
+                            val docId = entity.documentId
+                            docId != null && docId in allowedIdSet
+                        }
+                        .take(maxResults)
+                        .mapNotNull { it.content }
+                )
+
+                if (chunks.size >= maxResults || fetchLimit == totalChunks) break
+                fetchLimit = (fetchLimit * 2).coerceAtMost(totalChunks)
+            }
 
             Log.d("DaexRag", "Targeted query returned ${chunks.size} chunks for: ${query.take(50)}")
             chunks
@@ -90,17 +106,29 @@ class DaexRagImpl(
 
     override suspend fun getVaultDocuments(): List<VaultDocument> {
         return try {
-            val allChunks = chunkBox.all
-            allChunks.filter { it.documentId != null && it.fileName != null }
-                .groupBy { it.documentId }.map { (docId, chunks) ->
-                    val firstChunk = chunks.first()
+            val allDocIdsQuery = chunkBox.query().build()
+            val documentIds = allDocIdsQuery
+                .property(DocumentChunkEntity_.documentId)
+                .distinct()
+                .findStrings()
+                .filterNotNull()
+            allDocIdsQuery.close()
+
+            documentIds.mapNotNull { docId ->
+                val query = chunkBox.query {
+                    equal(DocumentChunkEntity_.documentId, docId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+                }
+                val firstChunk = query.findFirst()
+                val chunkCount = query.count().toInt()
+                firstChunk?.let {
                     VaultDocument(
-                        documentId = docId!!,
-                        fileName = firstChunk.fileName ?: "unknown",
-                        displayName = (firstChunk.displayName ?: "").ifBlank { firstChunk.fileName ?: "unknown" },
-                        chunkCount = chunks.size
+                        documentId = docId,
+                        fileName = it.fileName ?: "unknown",
+                        displayName = (it.displayName ?: "").ifBlank { it.fileName ?: "unknown" },
+                        chunkCount = chunkCount
                     )
                 }
+            }
         } catch (e: Exception) {
             Log.e("DaexRag", "Failed to get vault documents", e)
             emptyList()
@@ -135,7 +163,11 @@ class DaexRagImpl(
     override fun hasDocuments(documentIds: List<String>): Boolean {
         if (documentIds.isEmpty()) return false
         return try {
-            chunkBox.count() > 0
+            documentIds.any { documentId ->
+                chunkBox.query {
+                    equal(DocumentChunkEntity_.documentId, documentId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+                }.count() > 0
+            }
         } catch (e: Exception) {
             false
         }

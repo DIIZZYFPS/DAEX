@@ -115,6 +115,23 @@ class DaexMemory(private val boxStore: BoxStore) {
             ?.filter { it.isNotBlank() }
             ?: emptyList()
     }
+
+    suspend fun removeDocumentFromAllConversationAttachments(documentId: String) {
+        val conversations = conversationBox.all
+        val updated = conversations.mapNotNull { entity ->
+            val currentIds = entity.attachedDocumentIds.split(",").filter { it.isNotBlank() }
+            if (documentId in currentIds) {
+                entity.attachedDocumentIds = currentIds.filter { it != documentId }.joinToString(",")
+                entity
+            } else {
+                null
+            }
+        }
+        if (updated.isNotEmpty()) {
+            conversationBox.put(updated)
+        }
+    }
+
     fun searchSimilarContext(queryVector: FloatArray, maxResults: Int = 5, queryText: String = ""): List<Message> {
         val count = messageBox.count()
         android.util.Log.d("DaexMemory", "Searching across $count messages")
