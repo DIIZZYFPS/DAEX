@@ -71,26 +71,23 @@ class DaexRagImpl(
             val totalChunks = chunkBox.count().toInt()
             if (totalChunks == 0) return emptyList()
 
-            val chunks = mutableListOf<String>()
-            var fetchLimit = (maxResults * 3).coerceAtLeast(maxResults)
+            var chunks: List<String> = emptyList()
+            var fetchLimit = maxResults * 3
 
-            while (chunks.size < maxResults && fetchLimit <= totalChunks) {
+            while (fetchLimit <= totalChunks) {
                 val results = chunkBox
                     .query(DocumentChunkEntity_.embedding.nearestNeighbors(queryVector, fetchLimit))
                     .build()
                     .findWithScores()
 
-                chunks.clear()
-                chunks.addAll(
-                    results
-                        .map { it.get() }
-                        .filter { entity ->
-                            val docId = entity.documentId
-                            docId != null && docId in allowedIdSet
-                        }
-                        .take(maxResults)
-                        .mapNotNull { it.content }
-                )
+                chunks = results
+                    .map { it.get() }
+                    .filter { entity ->
+                        val docId = entity.documentId
+                        docId != null && docId in allowedIdSet
+                    }
+                    .take(maxResults)
+                    .mapNotNull { it.content }
 
                 if (chunks.size >= maxResults || fetchLimit == totalChunks) break
                 fetchLimit = (fetchLimit * 2).coerceAtMost(totalChunks)
