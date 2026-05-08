@@ -71,8 +71,11 @@ class DaexRagImpl(
             val totalChunks = chunkBox.count().toInt()
             if (totalChunks == 0) return emptyList()
 
+            // Fetch a larger pool of neighbors to increase the chance of finding matches for the specific allowed documents.
+            // HNSW search in ObjectBox doesn't currently support pre-filtering by property in the index search itself,
+            // so we must over-fetch and filter in memory.
+            var fetchLimit = (maxResults * 10).coerceAtMost(500).coerceAtMost(totalChunks)
             var chunks: List<String> = emptyList()
-            var fetchLimit = maxResults * 3
 
             while (chunks.size < maxResults && fetchLimit <= totalChunks) {
                 val results = chunkBox
@@ -89,11 +92,11 @@ class DaexRagImpl(
                     .take(maxResults)
                     .mapNotNull { it.content }
 
-                if (chunks.size >= maxResults || fetchLimit == totalChunks) break
+                if (chunks.size >= maxResults || fetchLimit >= 1000 || fetchLimit >= totalChunks) break
                 fetchLimit = (fetchLimit * 2).coerceAtMost(totalChunks)
             }
 
-            Log.d("DaexRag", "Targeted query returned ${chunks.size} chunks for: ${query.take(50)}")
+            Log.d("DaexRag", "Targeted query returned ${chunks.size} chunks for query: '${query.take(50)}...' across documents: $allowedDocumentIds")
             chunks
         } catch (e: Exception) {
             Log.e("DaexRag", "Document query failed", e)

@@ -5,7 +5,7 @@
   "entities": [
     {
       "id": "1:4095657031921874799",
-      "lastPropertyId": "6:3951602212242598787",
+      "lastPropertyId": "7:6189723090251879441",
       "name": "ConversationEntity",
       "properties": [
         {
@@ -35,6 +35,11 @@
           "id": "5:4614395859049049603",
           "name": "createdAt",
           "type": 6
+        },
+        {
+          "id": "7:6189723090251879441",
+          "name": "attachedDocumentIds",
+          "type": 9
         }
       ],
       "relations": []
@@ -99,7 +104,7 @@
     },
     {
       "id": "3:2228447766859977220",
-      "lastPropertyId": "8:1544963357994103087",
+      "lastPropertyId": "9:5108863757189366555",
       "name": "DocumentChunkEntity",
       "properties": [
         {
@@ -138,6 +143,11 @@
         {
           "id": "8:1544963357994103087",
           "name": "fileName",
+          "type": 9
+        },
+        {
+          "id": "9:5108863757189366555",
+          "name": "displayName",
           "type": 9
         }
       ],

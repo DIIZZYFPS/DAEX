@@ -521,14 +521,17 @@ fun ExecutionScreen(
                             DaexButton(
                                 onClick = { attachmentMenuVisible = true },
                                 enabled = !isGenerating && !isVectorizing && isModelReady,
-                                modifier = Modifier.size(36.dp),
+                                modifier = Modifier.size(48.dp),
                                 backgroundColor = Color.Transparent,
                                 useDefaultPadding = false
                             ) {
                                 BasicText(
                                     text = "\uD83D\uDCCE",
                                     style = DaexTheme.typography.body1.copy(
-                                        fontSize = 18.sp
+                                        fontSize = 20.sp,
+                                        color = if (isGenerating || isVectorizing || !isModelReady) 
+                                            DaexTheme.colors.onSurface.copy(alpha = 0.3f) 
+                                            else DaexTheme.colors.primary
                                     )
                                 )
                             }

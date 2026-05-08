@@ -119,7 +119,7 @@ class DaexMemory(private val boxStore: BoxStore) {
     suspend fun removeDocumentFromAllConversationAttachments(documentId: String) {
         val conversations = conversationBox.all
         val updated = conversations.mapNotNull { entity ->
-            val currentIds = entity.attachedDocumentIds.split(",").filter { it.isNotBlank() }
+            val currentIds = entity.attachedDocumentIds?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
             if (documentId in currentIds) {
                 entity.attachedDocumentIds = currentIds.filter { it != documentId }.joinToString(",")
                 entity
@@ -177,7 +177,7 @@ class DaexMemory(private val boxStore: BoxStore) {
         title = this.title,
         modelId = this.modelId,
         createdAt = this.createdAt,
-        attachedDocumentIds = this.attachedDocumentIds.split(",").filter { it.isNotBlank() }
+        attachedDocumentIds = this.attachedDocumentIds?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
     )
 
     private fun MessageEntity.toDomain() = Message(

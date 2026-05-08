@@ -12,7 +12,7 @@ data class ConversationEntity(
     var title: String = "",
     var modelId: String = "",
     var createdAt: Long = System.currentTimeMillis(),
-    var attachedDocumentIds: String = ""
+    var attachedDocumentIds: String? = null
 )
 
 @Entity

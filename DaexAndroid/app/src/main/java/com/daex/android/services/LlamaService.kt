@@ -64,10 +64,10 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
             append(thinkPrefix)
             append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n\n")
             if (systemContext.isNotBlank()) {
-                append("<global_memory>\n")
+                append("### CONTEXT_START ###\n")
                 append(systemContext)
-                append("\n</global_memory>\n\n")
-                append("The above is your persistent memory. Use it to personalize your responses. Do NOT attempt to update it yourself.\n")
+                append("\n### CONTEXT_END ###\n\n")
+                append("The above block contains relevant excerpts from your memory or uploaded documents. Prioritize this information to answer the user's request accurately. If the context is not relevant, rely on your internal knowledge.\n")
             }
         }
         
