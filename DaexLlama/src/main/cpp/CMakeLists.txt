@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.22.1)
 project("daex-llama" VERSION 1.0.0 LANGUAGES C CXX)
 
 set(CMAKE_C_STANDARD 11)
@@ -25,8 +25,10 @@ if(DEFINED ANDROID_ABI)
 endif()
 
 # --------------------------------------------------------------------------
-# llama.cpp submodule
+# llama.cpp submodule — Force building common library
 # --------------------------------------------------------------------------
+set(LLAMA_BUILD_COMMON ON CACHE BOOL "Force building common library" FORCE)
+
 set(LLAMA_SRC ${CMAKE_CURRENT_LIST_DIR}/external/llama.cpp)
 add_subdirectory(${LLAMA_SRC} build-llama)
 
@@ -61,7 +63,8 @@ target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE
         ${LLAMA_SRC}/common
         ${LLAMA_SRC}/include
         ${LLAMA_SRC}/ggml/include
-        ${LLAMA_SRC}/ggml/src)
+        ${LLAMA_SRC}/ggml/src
+        ${LLAMA_SRC}/vendor)
 
 target_link_libraries(${CMAKE_PROJECT_NAME}
         llama

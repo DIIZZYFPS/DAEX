@@ -1,18 +1,5 @@
 /**
  * DaexLlama JNI Bridge
- * 
- * Native C++ bridge for llama.cpp inference on Android.
- * Based on ARM's llama.android reference implementation with extensions:
- *   - Multi-context support (for RAG session management)
- *   - Session save/load
- *   - KV-cache export/import
- *   - Dynamic backend detection
- *   - Configurable sampling parameters
- *
- * Architecture:
- *   - All native calls serialized through a single-threaded dispatcher in Kotlin
- *   - Contexts are identified by integer IDs managed by the native layer
- *   - Dynamic backend loading via ggml_backend_load_all_from_path()
  */
 
 #include <android/log.h>
@@ -27,12 +14,14 @@
 #include <sstream>
 #include <algorithm>
 #include <cmath>
+#include <unistd.h>
 
 #include "llama.h"
 #include "ggml.h"
 #include "ggml-backend.h"
 #include "common.h"
-#include "common-sampling.h"
+#include "sampling.h"
+#include "chat.h"
 
 #define LOG_TAG "DaexLlama"
 #define LOGI(...) __android_log_print(ANDROID_LOG_INFO, LOG_TAG, __VA_ARGS__)
@@ -42,7 +31,7 @@
 #define LOGV(...) __android_log_print(ANDROID_LOG_VERBOSE, LOG_TAG, __VA_ARGS__)
 
 // --------------------------------------------------------------------------
-// Context struct — holds all per-model-state
+// Context struct
 // --------------------------------------------------------------------------
 
 struct LlamaContext {
@@ -72,11 +61,14 @@ struct LlamaContext {
     float sampler_temp = 0.3f;
     int n_predict = 1024;
 
-    LlamaContext(int ctx_id) : id(ctx_id) {}
+    LlamaContext(int ctx_id) : id(ctx_id) {
+        batch = {};
+    }
 
     ~LlamaContext() {
         if (sampler) common_sampler_free(sampler);
         if (chat_templates) chat_templates.reset();
+        llama_batch_free(batch);
         if (ctx) llama_free(ctx);
         if (model) llama_model_free(model);
     }
@@ -133,10 +125,6 @@ static LlamaContext* get_context(JNIEnv* env, jint ctx_id) {
     return it->second.get();
 }
 
-// --------------------------------------------------------------------------
-// Backend detection
-// --------------------------------------------------------------------------
-
 static std::string get_active_backends() {
     std::vector<std::string> backends;
     for (size_t i = 0; i < ggml_backend_reg_count(); i++) {
@@ -150,12 +138,12 @@ static std::string get_active_backends() {
 }
 
 // --------------------------------------------------------------------------
-// JNI: init() — load backends and initialize
+// JNI: nativeInit()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_init(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeInit(
         JNIEnv* env, jobject /*this*/, jstring nativeLibDir) {
     llama_log_set([](enum ggml_log_level level, const char* text, void* /*user_data*/) {
         if (level == GGML_LOG_LEVEL_ERROR)
@@ -178,12 +166,12 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_init(
 }
 
 // --------------------------------------------------------------------------
-// JNI: create_context() — allocate a new context
+// JNI: nativeCreateContext()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_createContext(JNIEnv* env, jobject /*this*/) {
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeCreateContext(JNIEnv* env, jobject /*this*/) {
     std::lock_guard<std::mutex> lock(g_contexts_mutex);
     int id = g_next_context_id++;
     g_contexts[id] = std::make_unique<LlamaContext>(id);
@@ -192,12 +180,12 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_createContext(JNIEnv* env, jobj
 }
 
 // --------------------------------------------------------------------------
-// JNI: destroyContext() — free a context
+// JNI: nativeDestroyContext()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_destroyContext(JNIEnv* env, jobject /*this*/, jint ctx_id) {
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeDestroyContext(JNIEnv* env, jobject /*this*/, jint ctx_id) {
     std::lock_guard<std::mutex> lock(g_contexts_mutex);
     auto it = g_contexts.find(ctx_id);
     if (it != g_contexts.end()) {
@@ -207,12 +195,12 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_destroyContext(JNIEnv* env, job
 }
 
 // --------------------------------------------------------------------------
-// JNI: loadModel() — load a GGUF model into a context
+// JNI: nativeLoadModel()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_loadModel(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeLoadModel(
         JNIEnv* env, jobject /*this*/, jint ctx_id, jstring jmodel_path) {
     auto* ctx = get_context(env, ctx_id);
     if (!ctx) return -1;
@@ -229,30 +217,27 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_loadModel(
         return -1;
     }
 
-    LOGI("Model loaded: %s (%zu MB, %.1fB params)",
-         llama_model_desc(ctx->model, nullptr, 0),
+    LOGI("Model loaded: (%zu MB, %.1fB params)",
          llama_model_size(ctx->model) / 1024 / 1024,
          llama_model_n_params(ctx->model) / 1e9);
     return 0;
 }
 
 // --------------------------------------------------------------------------
-// JNI: prepareContext() — create llama_context, batch, sampler, chat templates
+// JNI: nativePrepareContext()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_prepareContext(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativePrepareContext(
         JNIEnv* env, jobject /*this*/, jint ctx_id) {
     auto* ctx = get_context(env, ctx_id);
     if (!ctx || !ctx->model) return -1;
 
-    // Determine thread count
     int n_threads = std::max(2, (int)sysconf(_SC_NPROCESSORS_ONLN) - 2);
     ctx->n_threads = n_threads;
     LOGI("Context %d: using %d threads", ctx_id, n_threads);
 
-    // Context params
     llama_context_params cparams = llama_context_default_params();
     int trained_ctx = llama_model_n_ctx_train(ctx->model);
     ctx->n_ctx = std::min(ctx->n_ctx, trained_ctx > 0 ? trained_ctx : 8192);
@@ -268,13 +253,9 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_prepareContext(
         return -1;
     }
 
-    // Batch
     ctx->batch = llama_batch_init(ctx->n_batch, 0, 1);
-
-    // Chat templates
     ctx->chat_templates = common_chat_templates_init(ctx->model, "");
 
-    // Sampler
     common_params_sampling sparams;
     sparams.temp = ctx->sampler_temp;
     ctx->sampler = common_sampler_init(ctx->model, sparams);
@@ -285,12 +266,12 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_prepareContext(
 }
 
 // --------------------------------------------------------------------------
-// JNI: setConfig() — set context/sampling parameters
+// JNI: nativeSetConfig()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_setConfig(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeSetConfig(
         JNIEnv* env, jobject /*this*/, jint ctx_id,
         jint n_ctx, jint n_batch, jfloat temp, jint n_predict) {
     auto* ctx = get_context(env, ctx_id);
@@ -301,24 +282,19 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_setConfig(
     ctx->n_predict = n_predict;
 }
 
-// --------------------------------------------------------------------------
-// Decode tokens in batches
-// --------------------------------------------------------------------------
-
 static int decode_tokens_batched(LlamaContext* ctx, const llama_tokens& tokens,
                                   llama_pos start_pos, bool compute_last_logit = false) {
     for (int i = 0; i < (int)tokens.size(); i += ctx->n_batch) {
         int cur_batch_size = std::min((int)tokens.size() - i, ctx->n_batch);
 
-        // Context shift if needed
         if (start_pos + i + cur_batch_size >= ctx->n_ctx - 4) {
             LOGW("Context %d: shifting context (overflow at %d)", ctx->id,
                  (int)(start_pos + i + cur_batch_size));
             int n_discard = (ctx->current_position - ctx->system_prompt_position) / 2;
             if (n_discard > 0) {
-                llama_memory_seq_rm(ctx->ctx, 0, ctx->system_prompt_position,
+                llama_memory_seq_rm(llama_get_memory(ctx->ctx), 0, ctx->system_prompt_position,
                                     ctx->system_prompt_position + n_discard);
-                llama_memory_seq_add(ctx->ctx, 0, ctx->system_prompt_position + n_discard,
+                llama_memory_seq_add(llama_get_memory(ctx->ctx), 0, ctx->system_prompt_position + n_discard,
                                      ctx->current_position, -n_discard);
                 ctx->current_position -= n_discard;
             }
@@ -340,10 +316,6 @@ static int decode_tokens_batched(LlamaContext* ctx, const llama_tokens& tokens,
     return 0;
 }
 
-// --------------------------------------------------------------------------
-// Format and add a chat message
-// --------------------------------------------------------------------------
-
 static std::string chat_add_and_format(LlamaContext* ctx,
                                         const std::string& role,
                                         const std::string& content) {
@@ -351,9 +323,8 @@ static std::string chat_add_and_format(LlamaContext* ctx,
     new_msg.role = role;
     new_msg.content = content;
 
-    bool has_explicit = common_chat_templates_was_explicit(ctx->chat_templates.get());
     auto formatted = common_chat_format_single(
-        ctx->chat_templates.get(), ctx->chat_msgs, new_msg, role == "user", false);
+        ctx->chat_templates.get(), ctx->chat_msgs, new_msg, role == "user", true);
 
     ctx->chat_msgs.push_back(new_msg);
     LOGI("Context %d: added %s message", ctx->id, role.c_str());
@@ -361,17 +332,16 @@ static std::string chat_add_and_format(LlamaContext* ctx,
 }
 
 // --------------------------------------------------------------------------
-// JNI: processSystemPrompt()
+// JNI: nativeProcessSystemPrompt()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_processSystemPrompt(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeProcessSystemPrompt(
         JNIEnv* env, jobject /*this*/, jint ctx_id, jstring jsystem_prompt) {
     auto* ctx = get_context(env, ctx_id);
     if (!ctx) return -1;
 
-    // Reset states
     ctx->chat_msgs.clear();
     ctx->system_prompt_position = 0;
     ctx->current_position = 0;
@@ -389,10 +359,8 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_processSystemPrompt(
     }
     env->ReleaseStringUTFChars(jsystem_prompt, sys_prompt);
 
-    // Tokenize
     auto sys_tokens = common_tokenize(ctx->ctx, formatted, has_explicit, has_explicit);
 
-    // Decode
     if (decode_tokens_batched(ctx, sys_tokens, ctx->current_position) != 0) {
         LOGE("Context %d: system prompt decode failed", ctx->id);
         return 1;
@@ -404,17 +372,16 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_processSystemPrompt(
 }
 
 // --------------------------------------------------------------------------
-// JNI: processUserPrompt()
+// JNI: nativeProcessUserPrompt()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_processUserPrompt(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeProcessUserPrompt(
         JNIEnv* env, jobject /*this*/, jint ctx_id, jstring juser_prompt) {
     auto* ctx = get_context(env, ctx_id);
     if (!ctx) return -1;
 
-    // Reset short-term states
     ctx->cached_token_chars.clear();
     ctx->assistant_ss.str("");
     ctx->cancel_generation = false;
@@ -430,7 +397,6 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_processUserPrompt(
 
     auto user_tokens = common_tokenize(ctx->ctx, formatted, has_explicit, has_explicit);
 
-    // Truncate if needed
     int max_tokens = ctx->n_ctx - 4;
     if ((int)user_tokens.size() > max_tokens) {
         user_tokens.resize(max_tokens);
@@ -450,27 +416,24 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_processUserPrompt(
 }
 
 // --------------------------------------------------------------------------
-// JNI: generateNextToken()
+// JNI: nativeGenerateNextToken()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT jstring JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_generateNextToken(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeGenerateNextToken(
         JNIEnv* env, jobject /*this*/, jint ctx_id) {
     auto* ctx = get_context(env, ctx_id);
     if (!ctx) return nullptr;
 
-    // Check stop
     if (ctx->cancel_generation || ctx->current_position >= ctx->gen_stop_position) {
         LOGI("Context %d: generation stopped", ctx->id);
         return nullptr;
     }
 
-    // Sample
     llama_token new_token = common_sampler_sample(ctx->sampler, ctx->ctx, -1);
     common_sampler_accept(ctx->sampler, new_token, true);
 
-    // Decode
     common_batch_clear(ctx->batch);
     common_batch_add(ctx->batch, new_token, ctx->current_position, {0}, true);
     if (llama_decode(ctx->ctx, ctx->batch) != 0) {
@@ -479,10 +442,8 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_generateNextToken(
     }
     ctx->current_position++;
 
-    // Check EOG
     if (llama_vocab_is_eog(llama_model_get_vocab(ctx->model), new_token)) {
         LOGI("Context %d: EOG token %d", ctx->id, new_token);
-        // Add to chat history
         common_chat_msg msg;
         msg.role = "assistant";
         msg.content = ctx->assistant_ss.str();
@@ -490,7 +451,6 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_generateNextToken(
         return nullptr;
     }
 
-    // Convert to text
     auto token_str = common_token_to_piece(ctx->ctx, new_token);
     ctx->cached_token_chars += token_str;
 
@@ -506,24 +466,24 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_generateNextToken(
 }
 
 // --------------------------------------------------------------------------
-// JNI: cancelGeneration()
+// JNI: nativeCancelGeneration()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_cancelGeneration(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeCancelGeneration(
         JNIEnv* env, jobject /*this*/, jint ctx_id) {
     auto* ctx = get_context(env, ctx_id);
     if (ctx) ctx->cancel_generation = true;
 }
 
 // --------------------------------------------------------------------------
-// JNI: resetConversation()
+// JNI: nativeResetConversation()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_resetConversation(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeResetConversation(
         JNIEnv* env, jobject /*this*/, jint ctx_id) {
     auto* ctx = get_context(env, ctx_id);
     if (!ctx) return;
@@ -539,34 +499,34 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_resetConversation(
 }
 
 // --------------------------------------------------------------------------
-// JNI: systemInfo() — print llama.cpp compiled features
+// JNI: nativeSystemInfo()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT jstring JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_systemInfo(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeSystemInfo(
         JNIEnv* env, jobject /*this*/) {
     return env->NewStringUTF(llama_print_system_info());
 }
 
 // --------------------------------------------------------------------------
-// JNI: activeBackends()
+// JNI: nativeActiveBackends()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT jstring JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_activeBackends(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeActiveBackends(
         JNIEnv* env, jobject /*this*/) {
     return env->NewStringUTF(get_active_backends().c_str());
 }
 
 // --------------------------------------------------------------------------
-// JNI: unloadModel() — free model/context but keep engine alive
+// JNI: nativeUnloadModel()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_unloadModel(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeUnloadModel(
         JNIEnv* env, jobject /*this*/, jint ctx_id) {
     std::lock_guard<std::mutex> lock(g_contexts_mutex);
     auto it = g_contexts.find(ctx_id);
@@ -577,12 +537,12 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_unloadModel(
 }
 
 // --------------------------------------------------------------------------
-// JNI: loadEmbeddingModel() — load an embedding model
+// JNI: nativeLoadEmbeddingModel()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT jint JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_loadEmbeddingModel(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeLoadEmbeddingModel(
         JNIEnv* env, jobject /*this*/, jint ctx_id, jstring jmodel_path) {
     auto* ctx = get_context(env, ctx_id);
     if (!ctx) return -1;
@@ -591,7 +551,6 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_loadEmbeddingModel(
     LOGI("Loading embedding model for context %d: %s", ctx_id, model_path);
 
     llama_model_params mparams = llama_model_default_params();
-    mparams.no_kv_offload = false;
     ctx->model = llama_model_load_from_file(model_path, mparams);
     env->ReleaseStringUTFChars(jmodel_path, model_path);
 
@@ -600,7 +559,6 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_loadEmbeddingModel(
         return -1;
     }
 
-    // Context params for embedding
     llama_context_params cparams = llama_context_default_params();
     int trained_ctx = llama_model_n_ctx_train(ctx->model);
     ctx->n_ctx = std::min(ctx->n_ctx, trained_ctx > 0 ? trained_ctx : 2048);
@@ -609,7 +567,7 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_loadEmbeddingModel(
     cparams.n_ubatch = std::min(ctx->n_batch, ctx->n_ctx);
     cparams.n_threads = std::max(2, (int)sysconf(_SC_NPROCESSORS_ONLN) - 2);
     cparams.n_threads_batch = cparams.n_threads;
-    cparams.embeddings = true;  // Enable embedding mode
+    cparams.embeddings = true;
 
     ctx->ctx = llama_init_from_model(ctx->model, cparams);
     if (!ctx->ctx) {
@@ -623,44 +581,38 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_loadEmbeddingModel(
 }
 
 // --------------------------------------------------------------------------
-// JNI: getEmbedding() — compute embedding vector for text
+// JNI: nativeGetEmbedding()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT jfloatArray JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_getEmbedding(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeGetEmbedding(
         JNIEnv* env, jobject /*this*/, jint ctx_id, jstring jtext) {
     auto* ctx = get_context(env, ctx_id);
     if (!ctx || !ctx->ctx) return nullptr;
 
     const auto* text = env->GetStringUTFChars(jtext, nullptr);
-
-    // Tokenize
     auto tokens = common_tokenize(ctx->ctx, std::string(text), false, false);
     if (tokens.empty()) {
         env->ReleaseStringUTFChars(jtext, text);
         return env->NewFloatArray(0);
     }
 
-    // Truncate to batch size
     if ((int)tokens.size() > ctx->n_batch) {
         tokens.resize(ctx->n_batch);
     }
 
-    // Build batch
     common_batch_clear(ctx->batch);
     for (int i = 0; i < (int)tokens.size(); i++) {
         common_batch_add(ctx->batch, tokens[i], (llama_pos)i, {0}, false);
     }
 
-    // Decode
     if (llama_decode(ctx->ctx, ctx->batch) != 0) {
         LOGE("Context %d: embedding decode failed", ctx_id);
         env->ReleaseStringUTFChars(jtext, text);
         return nullptr;
     }
 
-    // Get embedding — use last token's embedding by default
     const float* embedding = llama_get_embeddings_seq(ctx->ctx, 0);
     if (!embedding) {
         LOGE("Context %d: no embeddings available", ctx_id);
@@ -668,10 +620,7 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_getEmbedding(
         return nullptr;
     }
 
-    // Determine embedding dimension
     int n_embd = llama_model_n_embd(ctx->model);
-
-    // Copy to Java float array
     jfloatArray result = env->NewFloatArray(n_embd);
     env->SetFloatArrayRegion(result, 0, n_embd, embedding);
 
@@ -680,12 +629,12 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_getEmbedding(
 }
 
 // --------------------------------------------------------------------------
-// JNI: shutdown() — free all backends
+// JNI: nativeShutdown()
 // --------------------------------------------------------------------------
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_com_daex_llama_internal_DaexLlamaEngineImpl_shutdown(
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeShutdown(
         JNIEnv* env, jobject /*this*/) {
     {
         std::lock_guard<std::mutex> lock(g_contexts_mutex);
