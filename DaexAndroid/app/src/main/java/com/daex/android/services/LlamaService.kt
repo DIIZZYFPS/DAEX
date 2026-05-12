@@ -200,13 +200,7 @@ class LlamaServiceImpl(
                 }
             }.trim()
 
-            // Process user prompt — returns Flow<String>
-            val userOk = engine?.processUserPrompt(ctxId, userContent)
-            if (userOk != true) {
-                throw IllegalStateException("Failed to process user prompt")
-            }
-
-            // Collect the flow (already serialized by the engine)
+            // Process user prompt and collect results — returns Flow<String>
             engine?.processUserPrompt(ctxId, userContent)?.collect { token ->
                 if (token.isNotEmpty()) {
                     tokenCount++
@@ -242,13 +236,7 @@ class LlamaServiceImpl(
                 throw IllegalStateException("Failed to process system prompt")
             }
 
-            // Process user prompt
-            val userOk = engine?.processUserPrompt(ctxId, prompt)
-            if (userOk != true) {
-                throw IllegalStateException("Failed to process user prompt")
-            }
-
-            // Collect tokens silently
+            // Process user prompt and collect tokens silently
             engine?.processUserPrompt(ctxId, prompt)?.collect { token ->
                 if (token.isNotEmpty()) {
                     fullText.append(token)

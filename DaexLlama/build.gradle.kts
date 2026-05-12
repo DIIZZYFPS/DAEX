@@ -8,12 +8,10 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        minSdk = 34
+        minSdk = 26
 
         externalNativeBuild {
             cmake {
-                path = file("src/main/cpp/CMakeLists.txt")
-                version = "3.24.0"
                 // Pass native library output directory for dynamic backend loading
                 arguments += "-DANDROID_STL=c++_shared"
             }
@@ -37,6 +35,7 @@ android {
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
         }
     }
 
