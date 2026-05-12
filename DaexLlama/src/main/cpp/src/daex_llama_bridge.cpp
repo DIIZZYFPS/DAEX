@@ -323,8 +323,10 @@ static std::string chat_add_and_format(LlamaContext* ctx,
     new_msg.role = role;
     new_msg.content = content;
 
+    bool has_explicit = common_chat_templates_was_explicit(ctx->chat_templates.get());
+    // add_ass=false: don't add assistant turn — we only format the new message
     auto formatted = common_chat_format_single(
-        ctx->chat_templates.get(), ctx->chat_msgs, new_msg, role == "user", true);
+        ctx->chat_templates.get(), ctx->chat_msgs, new_msg, false, false);
 
     ctx->chat_msgs.push_back(new_msg);
     LOGI("Context %d: added %s message", ctx->id, role.c_str());
@@ -359,7 +361,8 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeProcessSystemPrompt(
     }
     env->ReleaseStringUTFChars(jsystem_prompt, sys_prompt);
 
-    auto sys_tokens = common_tokenize(ctx->ctx, formatted, has_explicit, has_explicit);
+    // Tokenize (formatted output already has BOS/EOS from chat template)
+    auto sys_tokens = common_tokenize(ctx->ctx, formatted, false, false);
 
     if (decode_tokens_batched(ctx, sys_tokens, ctx->current_position) != 0) {
         LOGE("Context %d: system prompt decode failed", ctx->id);
@@ -395,7 +398,7 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeProcessUserPrompt(
     }
     env->ReleaseStringUTFChars(juser_prompt, user_prompt);
 
-    auto user_tokens = common_tokenize(ctx->ctx, formatted, has_explicit, has_explicit);
+    auto user_tokens = common_tokenize(ctx->ctx, formatted, false, false);
 
     int max_tokens = ctx->n_ctx - 4;
     if ((int)user_tokens.size() > max_tokens) {
