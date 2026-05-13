@@ -94,6 +94,7 @@ interface DaexLlamaEngine {
     /**
      * Configure Hexagon NPU backend parameters.
      * For best results, call this before the engine's nativeInit() is invoked.
+     * This call is synchronous; invoke it from a background thread.
      * 
      * @param nDevices Number of NPU sessions. Use 1 for <4B models, 2 for 8B, 4 for 20B.
      * @param nHvxThreads Number of HVX hardware threads. 0 = use all available.

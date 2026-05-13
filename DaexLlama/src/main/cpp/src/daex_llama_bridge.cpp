@@ -208,17 +208,17 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeConfigureNPU(
     bool ok = true;
     char buf[16];
     snprintf(buf, sizeof(buf), "%d", nDevices);
-    ok = set_env_var("GGML_HEXAGON_NDEV", buf) && ok;
+    ok &= set_env_var("GGML_HEXAGON_NDEV", buf);
 
     snprintf(buf, sizeof(buf), "%d", nHvxThreads);
-    ok = set_env_var("GGML_HEXAGON_NHVX", buf) && ok;
+    ok &= set_env_var("GGML_HEXAGON_NHVX", buf);
 
     snprintf(buf, sizeof(buf), "%d", verbose);
-    ok = set_env_var("GGML_HEXAGON_VERBOSE", buf) && ok;
+    ok &= set_env_var("GGML_HEXAGON_VERBOSE", buf);
 
     // Also set hostbuf and profile to safe defaults
-    ok = set_env_var("GGML_HEXAGON_HOSTBUF", "1") && ok;
-    ok = set_env_var("GGML_HEXAGON_PROFILE", "0") && ok;
+    ok &= set_env_var("GGML_HEXAGON_HOSTBUF", "1");
+    ok &= set_env_var("GGML_HEXAGON_PROFILE", "0");
 
     if (!ok) {
         LOGE("NPU configuration failed due to setenv error");

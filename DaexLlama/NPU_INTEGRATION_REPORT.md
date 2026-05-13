@@ -53,7 +53,7 @@
 - **Logging fix** (2026-05-13): Replaced incorrect `LOGI`/`LOGW` macros with `Log.i`/`Log.w` (Android `Log` class)
 
 #### `NPU_INTEGRATION_REPORT.md`
-- Added integration report with build status, architecture, prerequisites, and runtime notes
+- Updated integration report totals and file inventory to match the branch contents
 
 ---
 

@@ -1,6 +1,7 @@
 package com.daex.llama.internal
 
 import android.content.Context
+import android.os.Looper
 import android.util.Log
 import com.daex.llama.DaexLlamaEngine
 import kotlinx.coroutines.Dispatchers
@@ -266,6 +267,9 @@ class DaexLlamaEngineImpl(
         // For best results, call this before nativeInit() is called.
         // If called after init, the native side logs a warning but still applies the settings.
         return try {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                Log.w(TAG, "configureNpu() called on main thread; this call is synchronous")
+            }
             val result = runBlocking(nativeDispatcher) {
                 nativeMutex.withLock {
                     nativeConfigureNPU(nDevices, nHvxThreads, verbose)
