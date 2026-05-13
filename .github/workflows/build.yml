@@ -1,16 +1,48 @@
-name: DAEX Build
+name: DAEX CI
 
 on:
   push:
-    branches: [main, needs-fix, develop]
+    branches: [main, needs-fix, gradle-test-ci]
   pull_request:
-    branches: [main, develop]
+    branches: [main, needs-fix]
   workflow_dispatch:
 
+env:
+  JAVA_VERSION: '17'
+  ANDROID_API: 34
+
 jobs:
+  # ─── Unit Tests ───────────────────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+
+      - name: Run unit tests
+        working-directory: DaexAndroid
+        run: ./gradlew test --no-daemon
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: DaexAndroid/app/build/reports/tests/test/
+          retention-days: 7
+
   # ─── C++ Bridge Compilation ───────────────────────────────────────────────
   cpp-compile:
-    name: C++ Bridge (Android NDK)
+    name: C++ Bridge (${{ matrix.abi }})
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -25,54 +57,38 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
 
       - name: Set up Android NDK
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r28
-          local-cache: true
 
-      - name: Build C++ bridge (arm64-v8a)
-        if: matrix.abi == 'arm64-v8a'
+      - name: Build C++ bridge
         working-directory: DaexLlama/src/main/cpp
         run: |
           cmake -B build \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-34 \
+            -DANDROID_ABI=${{ matrix.abi }} \
+            -DANDROID_PLATFORM=android-${{ env.ANDROID_API }} \
             -DANDROID_STL=c++_shared \
             -DCMAKE_BUILD_TYPE=Release \
             -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
             -DGEMM_LOWPRECISION=OFF
           cmake --build build --target daex-llama -j$(nproc)
-          echo "✅ arm64-v8a build succeeded"
 
-      - name: Build C++ bridge (x86_64)
-        if: matrix.abi == 'x86_64'
-        working-directory: DaexLlama/src/main/cpp
-        run: |
-          cmake -B build \
-            -DANDROID_ABI=x86_64 \
-            -DANDROID_PLATFORM=android-34 \
-            -DANDROID_STL=c++_shared \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake \
-            -DGEMM_LOWPRECISION=OFF
-          cmake --build build --target daex-llama -j$(nproc)
-          echo "✅ x86_64 build succeeded"
-
-      - name: Upload artifact
+      - name: Upload native library
         uses: actions/upload-artifact@v4
         with:
           name: libdaex-llama-${{ matrix.abi }}
           path: DaexLlama/src/main/cpp/build/libdaex-llama.so
           retention-days: 7
 
-  # ─── Gradle Build ─────────────────────────────────────────────────────────
+  # ─── Full Gradle Build ────────────────────────────────────────────────────
   gradle-build:
-    name: Gradle Build (API 34)
+    name: Gradle Build (APK)
     runs-on: ubuntu-latest
+    needs: [unit-tests]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -82,50 +98,7 @@ jobs:
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: 11076708
-
-      - name: Accept Android licenses
-        run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
-
-      - name: Install build tools
-        run: $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0"
-
-      - name: Gradle assemble (debug)
-        working-directory: DaexLlama
-        run: |
-          chmod +x gradlew 2>/dev/null || true
-          ./gradlew assembleDebug --no-daemon 2>&1 || \
-          gradle assembleDebug --no-daemon 2>&1 || \
-          echo "No gradle wrapper found — checking build.gradle.kts..."
-
-      - name: Gradle assemble (release)
-        working-directory: DaexLlama
-        run: |
-          chmod +x gradlew 2>/dev/null || true
-          ./gradlew assembleRelease --no-daemon 2>&1 || \
-          gradle assembleRelease --no-daemon 2>&1 || \
-          echo "Release build skipped (no wrapper or signing config)"
-
-  # ─── Kotlin Compilation Check ─────────────────────────────────────────────
-  kotlin-check:
-    name: Kotlin Compilation
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
+          java-version: ${{ env.JAVA_VERSION }}
           distribution: 'temurin'
 
       - name: Setup Android SDK
@@ -137,32 +110,15 @@ jobs:
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses
 
       - name: Install SDK components
-        run: $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-36"
+        run: $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Check Kotlin compilation
-        working-directory: DaexLlama
-        run: |
-          chmod +x gradlew 2>/dev/null || true
-          ./gradlew compileDebugKotlin --no-daemon 2>&1 || \
-          gradle compileDebugKotlin --no-daemon 2>&1
+      - name: Assemble APK
+        working-directory: DaexAndroid
+        run: ./gradlew assembleDebug --no-daemon
 
-  # ─── Summary ──────────────────────────────────────────────────────────────
-  summary:
-    name: Build Summary
-    needs: [cpp-compile, gradle-build, kotlin-check]
-    runs-on: ubuntu-latest
-    if: always()
-    steps:
-      - name: Check results
-        run: |
-          echo "## Build Summary"
-          echo ""
-          for job in cpp-compile gradle-build kotlin-check; do
-            if [ "${{ needs.$job.result }}" == "success" ]; then
-              echo "✅ $job"
-            elif [ "${{ needs.$job.result }}" == "failure" ]; then
-              echo "❌ $job"
-            else
-              echo "⏭️ $job (skipped/cancelled)"
-            fi
-          done
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: daex-debug-apk
+          path: DaexAndroid/app/build/outputs/apk/debug/*.apk
+          retention-days: 7
