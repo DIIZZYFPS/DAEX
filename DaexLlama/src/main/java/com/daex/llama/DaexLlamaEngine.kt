@@ -92,6 +92,23 @@ interface DaexLlamaEngine {
     fun getActiveBackends(): String
 
     /**
+     * Configure Hexagon NPU backend parameters.
+     * For best results, call this before the engine's nativeInit() is invoked.
+     * 
+     * @param nDevices Number of NPU sessions. Use 1 for <4B models, 2 for 8B, 4 for 20B.
+     * @param nHvxThreads Number of HVX hardware threads. 0 = use all available.
+     * @param verbose Verbosity level: 0=off, 1=on (logs NPU operations).
+     * @return true if the native library is loaded (settings applied), false if not.
+     */
+    fun configureNpu(nDevices: Int = 1, nHvxThreads: Int = 0, verbose: Int = 0): Boolean
+
+    /**
+     * Check if any NPU/GPU backend is available (Hexagon/HTP, OpenCL, etc.).
+     * @return true if a non-CPU backend is registered.
+     */
+    fun isNpuAvailable(): Boolean
+
+    /**
      * Get system info from llama.cpp.
      */
     fun getSystemInfo(): String
