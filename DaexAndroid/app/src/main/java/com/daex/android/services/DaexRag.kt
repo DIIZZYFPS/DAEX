@@ -7,13 +7,21 @@ import io.objectbox.BoxStore
 import io.objectbox.kotlin.query
 import java.util.UUID
 
+data class VaultDocument(
+    val documentId: String,
+    val fileName: String,
+    val displayName: String,
+    val chunkCount: Int
+)
+
 interface DaexRag {
     suspend fun initRag()
-    suspend fun ingestFile(fileName: String, content: String, onProgress: (Int, Int) -> Unit = { _, _ -> })
-    suspend fun queryDocuments(query: String, maxResults: Int = 5): List<String>
-    suspend fun getUploadedFiles(): List<String>
-    suspend fun deleteFile(documentId: String)
-    fun hasDocuments(): Boolean
+    suspend fun ingestFile(fileName: String, content: String, onProgress: (Int, Int) -> Unit = { _, _ -> }): String
+    suspend fun queryDocuments(query: String, allowedDocumentIds: List<String>, maxResults: Int = 5): List<String>
+    suspend fun getVaultDocuments(): List<VaultDocument>
+    suspend fun renameDocument(documentId: String, newName: String)
+    suspend fun deleteDocument(documentId: String)
+    fun hasDocuments(documentIds: List<String>): Boolean
 }
 
 class DaexRagImpl(
@@ -27,7 +35,7 @@ class DaexRagImpl(
         embedder.initEmbeddingContext()
     }
 
-    override suspend fun ingestFile(fileName: String, content: String, onProgress: (Int, Int) -> Unit) {
+    override suspend fun ingestFile(fileName: String, content: String, onProgress: (Int, Int) -> Unit): String {
         val documentId = UUID.randomUUID().toString()
         val chunks = chunkText(content)
         Log.d("DaexRag", "Ingesting file '$fileName': ${chunks.size} chunks")
@@ -38,6 +46,7 @@ class DaexRagImpl(
                 val entity = DocumentChunkEntity(
                     documentId = documentId,
                     fileName = fileName,
+                    displayName = fileName,
                     chunkIndex = index,
                     content = chunkText,
                     embedding = vector
@@ -50,21 +59,44 @@ class DaexRagImpl(
             }
         }
         Log.d("DaexRag", "File '$fileName' ingested: $documentId")
+        return documentId
     }
 
-    override suspend fun queryDocuments(query: String, maxResults: Int): List<String> {
+    override suspend fun queryDocuments(query: String, allowedDocumentIds: List<String>, maxResults: Int): List<String> {
         return try {
-            if (chunkBox.count() == 0L) return emptyList()
+            if (allowedDocumentIds.isEmpty()) return emptyList()
 
             val queryVector = embedder.generateEmbedding(query, isQuery = true)
+            val allowedIdSet = allowedDocumentIds.toSet()
+            val totalChunks = chunkBox.count().toInt()
+            if (totalChunks == 0) return emptyList()
 
-            val results = chunkBox
-                .query(DocumentChunkEntity_.embedding.nearestNeighbors(queryVector, maxResults))
-                .build()
-                .findWithScores()
+            // Fetch a larger pool of neighbors to increase the chance of finding matches for the specific allowed documents.
+            // HNSW search in ObjectBox doesn't currently support pre-filtering by property in the index search itself,
+            // so we must over-fetch and filter in memory.
+            var fetchLimit = (maxResults * 10).coerceAtMost(500).coerceAtMost(totalChunks)
+            var chunks: List<String> = emptyList()
 
-            val chunks = results.map { it.get().content }
-            Log.d("DaexRag", "Query returned ${chunks.size} chunks for: ${query.take(50)}")
+            while (chunks.size < maxResults && fetchLimit <= totalChunks) {
+                val results = chunkBox
+                    .query(DocumentChunkEntity_.embedding.nearestNeighbors(queryVector, fetchLimit))
+                    .build()
+                    .findWithScores()
+
+                chunks = results
+                    .map { it.get() }
+                    .filter { entity ->
+                        val docId = entity.documentId
+                        docId != null && docId in allowedIdSet
+                    }
+                    .take(maxResults)
+                    .mapNotNull { it.content }
+
+                if (chunks.size >= maxResults || fetchLimit >= 1000 || fetchLimit >= totalChunks) break
+                fetchLimit = (fetchLimit * 2).coerceAtMost(totalChunks)
+            }
+
+            Log.d("DaexRag", "Targeted query returned ${chunks.size} chunks for query: '${query.take(50)}...' across documents: $allowedDocumentIds")
             chunks
         } catch (e: Exception) {
             Log.e("DaexRag", "Document query failed", e)
@@ -72,18 +104,50 @@ class DaexRagImpl(
         }
     }
 
-    override suspend fun getUploadedFiles(): List<String> {
+    override suspend fun getVaultDocuments(): List<VaultDocument> {
         return try {
-            chunkBox.all
-                .map { it.fileName }
-                .distinct()
+            val documentIds = chunkBox.query().build().use { query ->
+                query.property(DocumentChunkEntity_.documentId)
+                    .distinct()
+                    .findStrings()
+                    .filterNotNull()
+            }
+
+            documentIds.mapNotNull { docId ->
+                chunkBox.query {
+                    equal(DocumentChunkEntity_.documentId, docId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+                }.use { query ->
+                    val chunkCount = query.count().toInt()
+                    if (chunkCount == 0) return@use null
+                    val firstChunk = query.findFirst() ?: return@use null
+                    VaultDocument(
+                        documentId = docId,
+                        fileName = firstChunk.fileName ?: "unknown",
+                        displayName = (firstChunk.displayName ?: "").ifBlank { firstChunk.fileName ?: "unknown" },
+                        chunkCount = chunkCount
+                    )
+                }
+            }
         } catch (e: Exception) {
-            Log.e("DaexRag", "Failed to get uploaded files", e)
+            Log.e("DaexRag", "Failed to get vault documents", e)
             emptyList()
         }
     }
 
-    override suspend fun deleteFile(documentId: String) {
+    override suspend fun renameDocument(documentId: String, newName: String) {
+        try {
+            val chunks = chunkBox.query {
+                equal(DocumentChunkEntity_.documentId, documentId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+            }.find()
+            chunks.forEach { it.displayName = newName }
+            chunkBox.put(chunks)
+            Log.d("DaexRag", "Renamed document $documentId to '$newName'")
+        } catch (e: Exception) {
+            Log.e("DaexRag", "Failed to rename document", e)
+        }
+    }
+
+    override suspend fun deleteDocument(documentId: String) {
         try {
             val chunks = chunkBox.query {
                 equal(DocumentChunkEntity_.documentId, documentId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
@@ -91,13 +155,18 @@ class DaexRagImpl(
             chunkBox.remove(chunks)
             Log.d("DaexRag", "Deleted ${chunks.size} chunks for document $documentId")
         } catch (e: Exception) {
-            Log.e("DaexRag", "Failed to delete file", e)
+            Log.e("DaexRag", "Failed to delete document", e)
         }
     }
 
-    override fun hasDocuments(): Boolean {
+    override fun hasDocuments(documentIds: List<String>): Boolean {
+        if (documentIds.isEmpty()) return false
         return try {
-            chunkBox.count() > 0
+            documentIds.any { documentId ->
+                chunkBox.query {
+                    equal(DocumentChunkEntity_.documentId, documentId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+                }.count() > 0
+            }
         } catch (e: Exception) {
             false
         }

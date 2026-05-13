@@ -78,8 +78,10 @@ dependencies {
     // Markdown
     implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.25.0")
 
-    // Llama Inference (Using locally patched AAR to fix JNI embedding crash)
-    implementation(files("libs/llamacpp-kotlin-0.4.0-patched.aar"))
+    // Llama Inference — new DaexLlama module (replaces legacy AAR)
+    implementation(project(":DaexLlama"))
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
 
     // ObjectBox Kotlin Extensions
     implementation("io.objectbox:objectbox-kotlin:4.0.0")

@@ -11,8 +11,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.take
 
 enum class ModelStatus {
     NOT_DOWNLOADED, DOWNLOADING, LOADING, READY, ERROR
@@ -49,8 +52,11 @@ class DaexInferenceViewModel(
     private val _isVectorizing = MutableStateFlow(false)
     val isVectorizing: StateFlow<Boolean> = _isVectorizing.asStateFlow()
 
-    private val _uploadedFiles = MutableStateFlow<List<String>>(emptyList())
-    val uploadedFiles: StateFlow<List<String>> = _uploadedFiles.asStateFlow()
+    private val _attachedDocumentIds = MutableStateFlow<List<String>>(emptyList())
+    val attachedDocumentIds: StateFlow<List<String>> = _attachedDocumentIds.asStateFlow()
+
+    private val _vaultDocuments = MutableStateFlow<List<VaultDocument>>(emptyList())
+    val vaultDocuments: StateFlow<List<VaultDocument>> = _vaultDocuments.asStateFlow()
 
     private val _tokenSpeed = MutableStateFlow(0.0)
     val tokenSpeed: StateFlow<Double> = _tokenSpeed.asStateFlow()
@@ -110,6 +116,31 @@ class DaexInferenceViewModel(
         }
 
         viewModelScope.launch {
+            if (preferences != null) {
+                combine(
+                    preferences.lastConversationIdFlow,
+                    _conversations
+                ) { lastId, convs -> lastId to convs }
+                    .filter { it.first != null && it.second.isNotEmpty() }
+                    .take(1)
+                    .collect { (lastId, convs) ->
+                        if (_currentConversationId.value == null) {
+                            val conv = convs.find { it.id == lastId }
+                            if (conv != null) {
+                                _currentConversationId.value = conv.id
+                                val model = ModelBank.generativeModels.find { it.id == conv.modelId }
+                                if (model != null && _currentModel.value == null) {
+                                    loadModel(model)
+                                }
+                            } else {
+                                preferences?.setLastConversationId(null)
+                            }
+                        }
+                    }
+            }
+        }
+
+        viewModelScope.launch {
             daexMemory?.getAllConversations()?.collect {
                 _conversations.value = it
             }
@@ -124,6 +155,18 @@ class DaexInferenceViewModel(
                 }
             }.collectLatest {
                 _messages.value = it
+            }
+        }
+
+        // Load attachments when conversation changes
+        viewModelScope.launch {
+            _currentConversationId.collectLatest { id ->
+                if (id != null) {
+                    val attachments = daexMemory?.getConversationAttachments(id) ?: emptyList()
+                    _attachedDocumentIds.value = attachments
+                } else {
+                    _attachedDocumentIds.value = emptyList()
+                }
             }
         }
 
@@ -178,6 +221,9 @@ class DaexInferenceViewModel(
 
     fun selectConversation(id: String) {
         _currentConversationId.value = id
+        viewModelScope.launch {
+            preferences?.setLastConversationId(id)
+        }
         // Optionally load the model associated with the conversation
         viewModelScope.launch {
             val conv = _conversations.value.find { it.id == id }
@@ -320,142 +366,154 @@ class DaexInferenceViewModel(
         }
 
         viewModelScope.launch {
-            var convId = _currentConversationId.value
-            if (convId == null) {
-                val modelId = _currentModel.value?.id ?: ModelBank.generativeModels.first().id
-                convId = daexMemory?.createConversation(modelId, prompt.take(20) + "...")
-                _currentConversationId.value = convId
-            }
+            try {
+                var convId = _currentConversationId.value
+                if (convId == null) {
+                    val modelId = _currentModel.value?.id ?: ModelBank.generativeModels.first().id
+                    convId = daexMemory?.createConversation(modelId, prompt.take(20) + "...")
+                    _currentConversationId.value = convId
+                    preferences?.setLastConversationId(convId)
+                }
 
-            if (convId == null) return@launch
+                if (convId == null) {
+                    _errorMessage.value = "Failed to create conversation."
+                    return@launch
+                }
 
-            val userMsgId = System.currentTimeMillis().toString()
-            val modelMsgId = (System.currentTimeMillis() + 1).toString()
+                val userMsgId = System.currentTimeMillis().toString()
+                val modelMsgId = (System.currentTimeMillis() + 1).toString()
 
-            // Create messages: userMsg is CLEAN for UI and DB.
-            val userMsg = Message(id = userMsgId, role = "user", content = prompt)
-            val modelMsg = Message(id = modelMsgId, role = "model", content = "")
+                // Create messages: userMsg is CLEAN for UI and DB.
+                val userMsg = Message(id = userMsgId, role = "user", content = prompt)
+                val modelMsg = Message(id = modelMsgId, role = "model", content = "")
 
-            _messages.value = _messages.value + listOf(userMsg, modelMsg)
+                _messages.value = _messages.value + listOf(userMsg, modelMsg)
 
-            daexMemory?.saveMessage(convId, userMsg)
-            daexMemory?.saveMessage(convId, modelMsg)
-            
-            _isGenerating.value = true
-            _tokenSpeed.value = 0.0
+                daexMemory?.saveMessage(convId, userMsg)
+                daexMemory?.saveMessage(convId, modelMsg)
+                
+                _isGenerating.value = true
+                _tokenSpeed.value = 0.0
 
-            generationJob = viewModelScope.launch {
-                try {
-                    // Filter out the placeholder model message from history sent to model
-                    val fullHistory = (daexMemory?.getRecentHistory(convId) ?: emptyList())
-                        .filter { it.id != modelMsgId }
-                    
-                    // SLIDING WINDOW LOGIC
-                    val MAX_CHARS = 8192
-                    var currentCharCount = 0
-                    val windowedHistory = mutableListOf<Message>()
-                    
-                    for (msg in fullHistory.reversed()) {
-                        val msgLength = msg.content.length + (msg.thoughtContent?.length ?: 0)
-                        if (currentCharCount + msgLength > MAX_CHARS && windowedHistory.isNotEmpty()) {
-                            break 
-                        }
-                        currentCharCount += msgLength
-                        windowedHistory.add(0, msg)
-                    }
-
-                    val inferenceHistory = windowedHistory.toMutableList()
-                    
-                    var rawText = ""
-                    val coreMemoryContent = daexCoreMemory?.getMemoryContent() ?: ""
-
-                    // --- FILE RAG CONTEXT INJECTION ---
-                    var systemContext = coreMemoryContent
-                    if (daexRag != null && daexRag.hasDocuments()) {
-                        try {
-                            val relevantChunks = daexRag.queryDocuments(prompt)
-                            if (relevantChunks.isNotEmpty()) {
-                                val contextBlock = relevantChunks.joinToString("\n---\n")
-                                systemContext += "\n\n<uploaded_documents>\n$contextBlock\n</uploaded_documents>\n"
-                                systemContext += "Use the above document excerpts to help answer the user's query. If the excerpts are not relevant, ignore them.\n"
+                generationJob = viewModelScope.launch {
+                    try {
+                        // Filter out the placeholder model message from history sent to model
+                        val fullHistory = (daexMemory?.getRecentHistory(convId) ?: emptyList())
+                            .filter { it.id != modelMsgId }
+                        
+                        // SLIDING WINDOW LOGIC
+                        val MAX_CHARS = 8192
+                        var currentCharCount = 0
+                        val windowedHistory = mutableListOf<Message>()
+                        
+                        for (msg in fullHistory.reversed()) {
+                            val msgLength = msg.content.length + (msg.thoughtContent?.length ?: 0)
+                            if (currentCharCount + msgLength > MAX_CHARS && windowedHistory.isNotEmpty()) {
+                                break 
                             }
-                        } catch (e: Exception) {
-                            android.util.Log.e("DaexInference", "RAG query failed, continuing without context", e)
+                            currentCharCount += msgLength
+                            windowedHistory.add(0, msg)
                         }
-                    }
-                    val result = llamaService.generateResponse(inferenceHistory, systemContext, _isReasoningEnabled.value) { token ->
-                        if (!isActive) return@generateResponse
-                        rawText += token
+
+                        val inferenceHistory = windowedHistory.toMutableList()
                         
-                        var thought: String? = null
-                        var actual = rawText
-                        
-                        // Parse think/channel tags only — no reflection parsing needed
-                        val thinkTags = listOf(
-                            Pair("<|channel>", "<channel|>"),
-                            Pair("<|think|>", "</think|>"),
-                            Pair("<think>", "</think>")
-                        )
-                        
-                        for (tagPair in thinkTags) {
-                            val startIdx = rawText.indexOf(tagPair.first)
-                            if (startIdx != -1) {
-                                val endIdx = rawText.indexOf(tagPair.second, startIdx + tagPair.first.length)
-                                if (endIdx != -1) {
-                                    thought = rawText.substring(startIdx + tagPair.first.length, endIdx).trim()
-                                    actual = rawText.substring(0, startIdx) + rawText.substring(endIdx + tagPair.second.length)
-                                } else {
-                                    thought = rawText.substring(startIdx + tagPair.first.length).trim()
-                                    actual = rawText.substring(0, startIdx)
+                        var rawText = ""
+                        val coreMemoryContent = daexCoreMemory?.getMemoryContent() ?: ""
+
+                        // --- FILE RAG CONTEXT INJECTION (targeted to attached docs) ---
+                        var systemContext = coreMemoryContent
+                        val attachedIds = _attachedDocumentIds.value
+                        if (daexRag != null && attachedIds.isNotEmpty()) {
+                            try {
+                                val relevantChunks = daexRag.queryDocuments(prompt, attachedIds)
+                                if (relevantChunks.isNotEmpty()) {
+                                    val contextBlock = relevantChunks.joinToString("\n---\n")
+                                    systemContext += "\n\n<uploaded_documents>\n$contextBlock\n</uploaded_documents>\n"
+                                    systemContext += "Use the above document excerpts to help answer the user's query. If the excerpts are not relevant, ignore them.\n"
                                 }
-                                break
+                            } catch (e: Exception) {
+                                android.util.Log.e("DaexInference", "RAG query failed, continuing without context", e)
                             }
                         }
+                        val result = llamaService.generateResponse(inferenceHistory, systemContext, _isReasoningEnabled.value) { token ->
+                            if (!isActive) return@generateResponse
+                            rawText += token
+                            
+                            var thought: String? = null
+                            var actual = rawText
+                            
+                            // Parse think/channel tags only — no reflection parsing needed
+                            val thinkTags = listOf(
+                                Pair("<|channel>", "<channel|>"),
+                                Pair("<|think|>", "</think|>"),
+                                Pair("<think>", "</think>")
+                            )
+                            
+                            for (tagPair in thinkTags) {
+                                val startIdx = rawText.indexOf(tagPair.first)
+                                if (startIdx != -1) {
+                                    val endIdx = rawText.indexOf(tagPair.second, startIdx + tagPair.first.length)
+                                    if (endIdx != -1) {
+                                        thought = rawText.substring(startIdx + tagPair.first.length, endIdx).trim()
+                                        actual = rawText.substring(0, startIdx) + rawText.substring(endIdx + tagPair.second.length)
+                                    } else {
+                                        thought = rawText.substring(startIdx + tagPair.first.length).trim()
+                                        actual = rawText.substring(0, startIdx)
+                                    }
+                                    break
+                                }
+                            }
+                            
+                            val updated = _messages.value.toMutableList()
+                            val idx = updated.indexOfFirst { it.id == modelMsgId }
+                            if (idx != -1) {
+                                updated[idx] = updated[idx].copy(content = actual.trimStart(), thoughtContent = thought)
+                                _messages.value = updated
+                            }
+                        }
+                        _tokenSpeed.value = result.tokensPerSecond
                         
+                        // Save final result to DB
+                        val updatedList = _messages.value
+                        val finalMsg = updatedList.find { it.id == modelMsgId }
+                        if (finalMsg != null) {
+                            val finalModelMsg = finalMsg.copy(tokensPerSecond = result.tokensPerSecond)
+                            daexMemory?.saveMessage(convId, finalModelMsg)
+                        }
+
+                        // --- MEMORY COMPACTION TRIGGER ---
+                        exchangesSinceCompaction++
+                        if (exchangesSinceCompaction >= COMPACTION_INTERVAL && daexCoreMemory != null) {
+                            _isReflecting.value = true
+                            try {
+                                val recentMsgs = daexMemory?.getRecentHistory(convId, limit = 20) ?: emptyList()
+                                daexCoreMemory.compactMemory(recentMsgs, llamaService)
+                                exchangesSinceCompaction = 0
+                            } catch (e: Exception) {
+                                android.util.Log.e("DaexInference", "Memory compaction failed", e)
+                            } finally {
+                                _isReflecting.value = false
+                            }
+                        }
+
+                    } catch (e: Exception) {
+                        android.util.Log.e("DaexInference", "Generation job failed", e)
                         val updated = _messages.value.toMutableList()
                         val idx = updated.indexOfFirst { it.id == modelMsgId }
                         if (idx != -1) {
-                            updated[idx] = updated[idx].copy(content = actual.trimStart(), thoughtContent = thought)
+                            val errorContent = updated[idx].content + "\n[Error: ${e.message ?: "Generation failed"}]"
+                            updated[idx] = updated[idx].copy(content = errorContent)
                             _messages.value = updated
+                            daexMemory?.saveMessage(convId, updated[idx])
                         }
+                    } finally {
+                        _isGenerating.value = false
                     }
-                    _tokenSpeed.value = result.tokensPerSecond
-                    
-                    // Save final result to DB
-                    val updatedList = _messages.value
-                    val finalMsg = updatedList.find { it.id == modelMsgId }
-                    if (finalMsg != null) {
-                        val finalModelMsg = finalMsg.copy(tokensPerSecond = result.tokensPerSecond)
-                        daexMemory?.saveMessage(convId, finalModelMsg)
-                    }
-
-                    // --- MEMORY COMPACTION TRIGGER ---
-                    exchangesSinceCompaction++
-                    if (exchangesSinceCompaction >= COMPACTION_INTERVAL && daexCoreMemory != null) {
-                        _isReflecting.value = true
-                        try {
-                            val recentMsgs = daexMemory?.getRecentHistory(convId, limit = 20) ?: emptyList()
-                            daexCoreMemory.compactMemory(recentMsgs, llamaService)
-                            exchangesSinceCompaction = 0
-                        } catch (e: Exception) {
-                            android.util.Log.e("DaexInference", "Memory compaction failed", e)
-                        } finally {
-                            _isReflecting.value = false
-                        }
-                    }
-
-                } catch (e: Exception) {
-                    val updated = _messages.value.toMutableList()
-                    val idx = updated.indexOfFirst { it.id == modelMsgId }
-                    if (idx != -1) {
-                        val errorContent = updated[idx].content + "\n[Error: ${e.message ?: "Generation failed"}]"
-                        updated[idx] = updated[idx].copy(content = errorContent)
-                        _messages.value = updated
-                        daexMemory?.saveMessage(convId, updated[idx])
-                    }
-                } finally {
-                    _isGenerating.value = false
                 }
+            } catch (e: Exception) {
+                android.util.Log.e("DaexInference", "Submit prompt outer failure", e)
+                _errorMessage.value = "Failed to start generation: ${e.message}"
+                _isGenerating.value = false
             }
         }
     }
@@ -470,6 +528,9 @@ class DaexInferenceViewModel(
         _currentConversationId.value = null
         _messages.value = emptyList()
         _tokenSpeed.value = 0.0
+        viewModelScope.launch {
+            preferences?.setLastConversationId(null)
+        }
     }
 
     fun deleteConversation(id: String) {
@@ -505,8 +566,18 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             _isVectorizing.value = true
             try {
-                daexRag?.ingestFile(fileName, content)
-                refreshUploadedFiles()
+                val documentId = daexRag?.ingestFile(fileName, content)
+                if (documentId != null) {
+                    // Auto-attach to current conversation
+                    val convId = _currentConversationId.value
+                    if (convId != null) {
+                        val current = _attachedDocumentIds.value.toMutableList()
+                        current.add(documentId)
+                        _attachedDocumentIds.value = current
+                        daexMemory?.updateConversationAttachments(convId, current)
+                    }
+                }
+                refreshVault()
             } catch (e: Exception) {
                 android.util.Log.e("DaexInference", "File upload failed", e)
                 _errorMessage.value = "Failed to process file: ${e.message}"
@@ -516,9 +587,55 @@ class DaexInferenceViewModel(
         }
     }
 
-    fun refreshUploadedFiles() {
+    fun refreshVault() {
         viewModelScope.launch {
-            _uploadedFiles.value = daexRag?.getUploadedFiles() ?: emptyList()
+            _vaultDocuments.value = daexRag?.getVaultDocuments() ?: emptyList()
+        }
+    }
+
+    fun loadConversationAttachments(conversationId: String) {
+        viewModelScope.launch {
+            _attachedDocumentIds.value = daexMemory?.getConversationAttachments(conversationId) ?: emptyList()
+        }
+    }
+
+    fun toggleDocumentAttachment(documentId: String) {
+        viewModelScope.launch {
+            val convId = _currentConversationId.value ?: return@launch
+            val current = _attachedDocumentIds.value.toMutableList()
+            if (documentId in current) {
+                current.remove(documentId)
+            } else {
+                current.add(documentId)
+            }
+            _attachedDocumentIds.value = current
+            daexMemory?.updateConversationAttachments(convId, current)
+        }
+    }
+
+    fun detachDocument(documentId: String) {
+        viewModelScope.launch {
+            val convId = _currentConversationId.value ?: return@launch
+            val current = _attachedDocumentIds.value.toMutableList()
+            current.remove(documentId)
+            _attachedDocumentIds.value = current
+            daexMemory?.updateConversationAttachments(convId, current)
+        }
+    }
+
+    fun deleteVaultDocument(documentId: String) {
+        viewModelScope.launch {
+            daexRag?.deleteDocument(documentId)
+            daexMemory?.removeDocumentFromAllConversationAttachments(documentId)
+            _attachedDocumentIds.value = _attachedDocumentIds.value.filter { it != documentId }
+            refreshVault()
+        }
+    }
+
+    fun renameVaultDocument(documentId: String, newName: String) {
+        viewModelScope.launch {
+            daexRag?.renameDocument(documentId, newName)
+            refreshVault()
         }
     }
 }

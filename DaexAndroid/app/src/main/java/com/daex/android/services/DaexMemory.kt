@@ -15,7 +15,8 @@ data class Conversation(
     val id: String,
     val title: String,
     val modelId: String,
-    val createdAt: Long
+    val createdAt: Long,
+    val attachedDocumentIds: List<String> = emptyList()
 )
 
 class DaexMemory(private val boxStore: BoxStore) {
@@ -94,6 +95,43 @@ class DaexMemory(private val boxStore: BoxStore) {
             messageBox.remove(messages)
         }
     }
+
+    suspend fun updateConversationAttachments(conversationId: String, documentIds: List<String>) {
+        val entity = conversationBox.query {
+            equal(ConversationEntity_.uuid, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+        }.findFirst()
+        if (entity != null) {
+            entity.attachedDocumentIds = documentIds.joinToString(",")
+            conversationBox.put(entity)
+        }
+    }
+
+    suspend fun getConversationAttachments(conversationId: String): List<String> {
+        val entity = conversationBox.query {
+            equal(ConversationEntity_.uuid, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+        }.findFirst()
+        return entity?.attachedDocumentIds
+            ?.split(",")
+            ?.filter { it.isNotBlank() }
+            ?: emptyList()
+    }
+
+    suspend fun removeDocumentFromAllConversationAttachments(documentId: String) {
+        val conversations = conversationBox.all
+        val updated = conversations.mapNotNull { entity ->
+            val currentIds = entity.attachedDocumentIds?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+            if (documentId in currentIds) {
+                entity.attachedDocumentIds = currentIds.filter { it != documentId }.joinToString(",")
+                entity
+            } else {
+                null
+            }
+        }
+        if (updated.isNotEmpty()) {
+            conversationBox.put(updated)
+        }
+    }
+
     fun searchSimilarContext(queryVector: FloatArray, maxResults: Int = 5, queryText: String = ""): List<Message> {
         val count = messageBox.count()
         android.util.Log.d("DaexMemory", "Searching across $count messages")
@@ -138,7 +176,8 @@ class DaexMemory(private val boxStore: BoxStore) {
         id = this.uuid,
         title = this.title,
         modelId = this.modelId,
-        createdAt = this.createdAt
+        createdAt = this.createdAt,
+        attachedDocumentIds = this.attachedDocumentIds?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
     )
 
     private fun MessageEntity.toDomain() = Message(

@@ -6,6 +6,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -49,12 +50,15 @@ fun ExecutionScreen(
     val errorMessage by viewModel.errorMessage.collectAsState()
     val isReasoningEnabled by viewModel.isReasoningEnabled.collectAsState()
     val isVectorizing by viewModel.isVectorizing.collectAsState()
-    val uploadedFiles by viewModel.uploadedFiles.collectAsState()
+    val attachedDocumentIds by viewModel.attachedDocumentIds.collectAsState()
+    val vaultDocuments by viewModel.vaultDocuments.collectAsState()
     
     val context = LocalContext.current
     var inputText by remember { mutableStateOf("") }
     var sidebarVisible by remember { mutableStateOf(false) }
     var selectorVisible by remember { mutableStateOf(false) }
+    var attachmentMenuVisible by remember { mutableStateOf(false) }
+    var librarySheetVisible by remember { mutableStateOf(false) }
 
     // File picker launcher
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -66,7 +70,6 @@ fun ExecutionScreen(
                 val mimeType = context.contentResolver.getType(uri) ?: ""
                 
                 val textContent = if (mimeType == "application/pdf") {
-                    // PDF extraction using iText
                     val inputStream = context.contentResolver.openInputStream(uri)
                     inputStream?.use { stream ->
                         val reader = com.itextpdf.kernel.pdf.PdfReader(stream)
@@ -81,7 +84,6 @@ fun ExecutionScreen(
                         sb.toString()
                     } ?: ""
                 } else {
-                    // Plain text files
                     context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: ""
                 }
 
@@ -94,8 +96,11 @@ fun ExecutionScreen(
         }
     }
 
+    // Derive attached documents from vault for chip display
+    val attachedDocuments = vaultDocuments.filter { it.documentId in attachedDocumentIds }
+
     LaunchedEffect(Unit) {
-        viewModel.refreshUploadedFiles()
+        viewModel.refreshVault()
     }
     var selectedModel by remember { mutableStateOf(ModelBank.generativeModels.first()) }
     
@@ -437,26 +442,45 @@ fun ExecutionScreen(
                         }
                     }
 
-                    // Uploaded file chips
-                    if (uploadedFiles.isNotEmpty()) {
+                    // Attached file chips (only for this conversation)
+                    if (attachedDocuments.isNotEmpty()) {
                         LazyRow(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            items(uploadedFiles.size) { index ->
-                                Box(
+                            items(attachedDocuments.size) { index ->
+                                val doc = attachedDocuments[index]
+                                Row(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(16.dp))
                                         .background(DaexTheme.colors.primary.copy(alpha = 0.12f))
                                         .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                        .padding(start = 10.dp, end = 4.dp, top = 4.dp, bottom = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     BasicText(
-                                        text = "📄 ${uploadedFiles[index]}",
+                                        text = "\uD83D\uDCC4 ${doc.displayName}",
                                         style = DaexTheme.typography.caption.copy(
                                             color = DaexTheme.colors.primary
                                         )
                                     )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Box(
+                                        modifier = Modifier
+                                            .size(18.dp)
+                                            .clip(CircleShape)
+                                            .background(DaexTheme.colors.primary.copy(alpha = 0.2f))
+                                            .clickable { viewModel.detachDocument(doc.documentId) },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        BasicText(
+                                            text = "\u2715",
+                                            style = DaexTheme.typography.caption.copy(
+                                                color = DaexTheme.colors.primary,
+                                                fontSize = 10.sp
+                                            )
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -492,20 +516,56 @@ fun ExecutionScreen(
                             .padding(4.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Attachment button
-                        DaexButton(
-                            onClick = { filePickerLauncher.launch("*/*") },
-                            enabled = !isGenerating && !isVectorizing && isModelReady,
-                            modifier = Modifier.size(36.dp),
-                            backgroundColor = Color.Transparent,
-                            useDefaultPadding = false
-                        ) {
-                            BasicText(
-                                text = "📎",
-                                style = DaexTheme.typography.body1.copy(
-                                    fontSize = 18.sp
+                        // Attachment button with popup menu
+                        Box {
+                            DaexButton(
+                                onClick = { attachmentMenuVisible = true },
+                                enabled = !isGenerating && !isVectorizing && isModelReady,
+                                modifier = Modifier.size(48.dp),
+                                backgroundColor = Color.Transparent,
+                                useDefaultPadding = false
+                            ) {
+                                BasicText(
+                                    text = "\uD83D\uDCCE",
+                                    style = DaexTheme.typography.body1.copy(
+                                        fontSize = 20.sp,
+                                        color = if (isGenerating || isVectorizing || !isModelReady) 
+                                            DaexTheme.colors.onSurface.copy(alpha = 0.3f) 
+                                            else DaexTheme.colors.primary
+                                    )
                                 )
-                            )
+                            }
+                            androidx.compose.material.DropdownMenu(
+                                expanded = attachmentMenuVisible,
+                                onDismissRequest = { attachmentMenuVisible = false },
+                                modifier = Modifier
+                                    .background(DaexTheme.colors.surface)
+                                    .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                            ) {
+                                androidx.compose.material.DropdownMenuItem(
+                                    onClick = {
+                                        attachmentMenuVisible = false
+                                        filePickerLauncher.launch("*/*")
+                                    }
+                                ) {
+                                    BasicText(
+                                        text = "\uD83D\uDCC2 Upload New File",
+                                        style = DaexTheme.typography.body2.copy(color = DaexTheme.colors.onSurface)
+                                    )
+                                }
+                                androidx.compose.material.DropdownMenuItem(
+                                    onClick = {
+                                        attachmentMenuVisible = false
+                                        viewModel.refreshVault()
+                                        librarySheetVisible = true
+                                    }
+                                ) {
+                                    BasicText(
+                                        text = "\uD83D\uDCDA Attach from Library",
+                                        style = DaexTheme.typography.body2.copy(color = DaexTheme.colors.onSurface)
+                                    )
+                                }
+                            }
                         }
                         DaexTextField(
                             value = inputText,
@@ -615,5 +675,99 @@ fun ExecutionScreen(
                 memoryEditorVisible = false
             }
         )
+
+        // --- DOCUMENT LIBRARY BOTTOM SHEET ---
+        if (librarySheetVisible) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .clickable { librarySheetVisible = false }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.55f)
+                        .clip(RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp))
+                        .background(DaexTheme.colors.surface)
+                        .clickable(enabled = false) {}
+                        .padding(20.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .width(40.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(DaexTheme.colors.onSurface.copy(alpha = 0.3f))
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    BasicText(
+                        text = "DOCUMENT LIBRARY",
+                        style = DaexTheme.typography.mono.copy(
+                            color = DaexTheme.colors.primary,
+                            fontSize = 12.sp,
+                            letterSpacing = 2.sp
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    if (vaultDocuments.isEmpty()) {
+                        BasicText(
+                            text = "No documents uploaded yet.",
+                            style = DaexTheme.typography.body2.copy(color = DaexTheme.colors.onSurface.copy(alpha = 0.5f))
+                        )
+                    } else {
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            items(items = vaultDocuments, key = { it.documentId }) { doc ->
+                                val isAttached = doc.documentId in attachedDocumentIds
+                                var isEditing by remember(doc.documentId) { mutableStateOf(false) }
+                                var editName by remember(doc.documentId) { mutableStateOf(doc.displayName) }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(if (isAttached) DaexTheme.colors.primary.copy(alpha = 0.08f) else DaexTheme.colors.onSurface.copy(alpha = 0.04f))
+                                        .border(0.5.dp, if (isAttached) DaexTheme.colors.primary.copy(alpha = 0.25f) else DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(10.dp))
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        if (isEditing) {
+                                            DaexTextField(value = editName, onValueChange = { editName = it }, modifier = Modifier.fillMaxWidth(), placeholder = "Document name")
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Row {
+                                                BasicText(text = "Save", modifier = Modifier.clickable { viewModel.renameVaultDocument(doc.documentId, editName); isEditing = false }, style = DaexTheme.typography.caption.copy(color = DaexTheme.colors.primary))
+                                                Spacer(modifier = Modifier.width(12.dp))
+                                                BasicText(text = "Cancel", modifier = Modifier.clickable { isEditing = false }, style = DaexTheme.typography.caption.copy(color = DaexTheme.colors.onSurface.copy(alpha = 0.5f)))
+                                            }
+                                        } else {
+                                            BasicText(text = doc.displayName, modifier = Modifier.clickable { editName = doc.displayName; isEditing = true }, style = DaexTheme.typography.body2.copy(color = DaexTheme.colors.onSurface))
+                                            BasicText(text = "${doc.fileName} \u2022 ${doc.chunkCount} chunks", style = DaexTheme.typography.caption.copy(color = DaexTheme.colors.onSurface.copy(alpha = 0.4f), fontSize = 10.sp))
+                                        }
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Box(
+                                        modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                                            .background(if (isAttached) DaexTheme.colors.primary.copy(alpha = 0.15f) else Color.Transparent)
+                                            .border(0.5.dp, if (isAttached) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                            .clickable { viewModel.toggleDocumentAttachment(doc.documentId) }
+                                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    ) {
+                                        BasicText(text = if (isAttached) "Detach" else "Attach", style = DaexTheme.typography.caption.copy(color = if (isAttached) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.6f), fontSize = 10.sp))
+                                    }
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Box(
+                                        modifier = Modifier.size(28.dp).clip(CircleShape).background(DaexTheme.colors.error.copy(alpha = 0.1f)).clickable { viewModel.deleteVaultDocument(doc.documentId) },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        BasicText(text = "\u2715", style = DaexTheme.typography.caption.copy(color = DaexTheme.colors.error, fontSize = 11.sp))
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }

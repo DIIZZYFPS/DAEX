@@ -15,3 +15,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "DaexAndroid"
 include(":app")
+include(":DaexLlama")
+project(":DaexLlama").projectDir = file("../DaexLlama")
