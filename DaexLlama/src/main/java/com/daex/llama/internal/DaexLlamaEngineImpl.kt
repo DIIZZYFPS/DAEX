@@ -1,6 +1,7 @@
 package com.daex.llama.internal
 
 import android.content.Context
+import android.os.Looper
 import android.util.Log
 import com.daex.llama.DaexLlamaEngine
 import kotlinx.coroutines.Dispatchers
@@ -10,6 +11,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -85,6 +87,8 @@ class DaexLlamaEngineImpl(
     private external fun nativeShutdown()
     private external fun nativeSystemInfo(): String
     private external fun nativeActiveBackends(): String
+    private external fun nativeConfigureNPU(nDevices: Int, nHvxThreads: Int, verbose: Int): Int
+    private external fun nativeIsNpuAvailable(): Int
     private external fun nativeLoadEmbeddingModel(ctxId: Int, modelPath: String): Int
     private external fun nativeGetEmbedding(ctxId: Int, text: String): FloatArray
 
@@ -255,6 +259,40 @@ class DaexLlamaEngineImpl(
             nativeActiveBackends()
         } catch (e: UnsatisfiedLinkError) {
             "CPU"
+        }
+    }
+
+    override fun configureNpu(nDevices: Int, nHvxThreads: Int, verbose: Int): Boolean {
+        // NOTE: This sets env vars that the Hexagon backend reads at init time.
+        // For best results, call this before nativeInit() is called.
+        // If called after init, the native side logs a warning but still applies the settings.
+        return try {
+            if (Looper.myLooper() == Looper.getMainLooper()) {
+                Log.w(TAG, "configureNpu() called on main thread; this call is synchronous")
+            }
+            val result = runBlocking(nativeDispatcher) {
+                nativeMutex.withLock {
+                    nativeConfigureNPU(nDevices, nHvxThreads, verbose)
+                }
+            }
+            if (result == 0) {
+                Log.i(TAG, "NPU config applied: $nDevices devices, $nHvxThreads HVX threads")
+                true
+            } else {
+                Log.w(TAG, "NPU config rejected or failed (code=$result)")
+                false
+            }
+        } catch (e: UnsatisfiedLinkError) {
+            Log.w(TAG, "NPU config failed: native library not loaded")
+            false
+        }
+    }
+
+    override fun isNpuAvailable(): Boolean {
+        return try {
+            nativeIsNpuAvailable() == 1
+        } catch (e: UnsatisfiedLinkError) {
+            false
         }
     }
 

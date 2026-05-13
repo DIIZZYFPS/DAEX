@@ -16,6 +16,8 @@
 #include <sstream>
 #include <algorithm>
 #include <cmath>
+#include <cerrno>
+#include <cstring>
 #include <unistd.h>
 
 #include "llama.h"
@@ -92,6 +94,7 @@ struct LlamaContext {
 static std::map<int, std::unique_ptr<LlamaContext>> g_contexts;
 static std::mutex g_contexts_mutex;
 static int g_next_context_id = 1;
+static bool g_llama_init_done = false;  // Tracks whether nativeInit() has completed
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -149,6 +152,111 @@ static std::string get_active_backends() {
 }
 
 // --------------------------------------------------------------------------
+// NPU Configuration helpers
+// --------------------------------------------------------------------------
+
+static bool set_env_var(const char* name, const char* value) {
+    if (setenv(name, value, 1) != 0) {
+        LOGE("NPU config failed: setenv(%s=%s) errno=%d (%s)",
+             name, value, errno, strerror(errno));
+        return false;
+    }
+    LOGI("NPU config: %s=%s", name, value);
+    return true;
+}
+
+// --------------------------------------------------------------------------
+// JNI: nativeConfigureNPU()
+// Configure Hexagon NPU backend parameters before init.
+// Must be called before nativeInit().
+// @param nDevices Number of NPU sessions (1 for <4B, 2 for 8B, 4 for 20B)
+// @param nHvxThreads Number of HVX hardware threads (0 = all)
+// @param verbose Verbosity level (0=off, 1=on)
+// @return 0 on success, non-zero on validation or setenv failure
+// --------------------------------------------------------------------------
+
+// Tracks whether NPU was configured AFTER nativeInit() was called.
+// Used to warn the caller that settings may not take effect.
+static bool g_npu_configured_after_init = false;
+
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeConfigureNPU(
+        JNIEnv* env, jobject /*this*/, jint nDevices, jint nHvxThreads, jint verbose) {
+    // Input validation: reject negative values, clamp verbose range
+    if (nDevices < 1 || nDevices > 4) {
+        LOGW("NPU config rejected: nDevices=%d (valid range: 1-4)", nDevices);
+        return 1;
+    }
+    if (nHvxThreads < 0) {
+        LOGW("NPU config rejected: nHvxThreads=%d (must be >= 0, 0=all)", nHvxThreads);
+        return 1;
+    }
+    if (verbose < 0 || verbose > 1) {
+        LOGW("NPU config rejected: verbose=%d (valid range: 0-1)", verbose);
+        return 1;
+    }
+
+    // Check if init already happened — warn that settings may not take effect
+    // (g_llama_init_done is set in nativeInit())
+    if (g_llama_init_done) {
+        g_npu_configured_after_init = true;
+        LOGW("NPU configured AFTER init — settings may not take effect; call configureNPU() before nativeInit()");
+    }
+
+    // Set Hexagon environment variables for llama.cpp backend
+    bool ok = true;
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%d", nDevices);
+    ok &= set_env_var("GGML_HEXAGON_NDEV", buf);
+
+    snprintf(buf, sizeof(buf), "%d", nHvxThreads);
+    ok &= set_env_var("GGML_HEXAGON_NHVX", buf);
+
+    snprintf(buf, sizeof(buf), "%d", verbose);
+    ok &= set_env_var("GGML_HEXAGON_VERBOSE", buf);
+
+    // Also set hostbuf and profile to safe defaults
+    ok &= set_env_var("GGML_HEXAGON_HOSTBUF", "1");
+    ok &= set_env_var("GGML_HEXAGON_PROFILE", "0");
+
+    if (!ok) {
+        LOGE("NPU configuration failed due to setenv error");
+        return 1;
+    }
+
+    LOGI("NPU configured: devices=%d, hvx_threads=%d, verbose=%d",
+         nDevices, nHvxThreads, verbose);
+    return 0;
+}
+
+// --------------------------------------------------------------------------
+// JNI: nativeIsNpuAvailable()
+// Check if any non-CPU backend (Hexagon/HTP, OpenCL, etc.) is registered.
+// @return 1 if NPU/GPU backend available, 0 otherwise
+// --------------------------------------------------------------------------
+
+extern "C"
+JNIEXPORT jint JNICALL
+Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeIsNpuAvailable(
+        JNIEnv* env, jobject /*this*/) {
+    for (size_t i = 0; i < ggml_backend_reg_count(); i++) {
+        auto* reg = ggml_backend_reg_get(i);
+        std::string name = ggml_backend_reg_name(reg);
+        // Check for known NPU/GPU backends
+        if (name.find("Hexagon") != std::string::npos ||
+            name.find("HTP") != std::string::npos ||
+            name.find("OpenCL") != std::string::npos ||
+            name.find("GPU") != std::string::npos) {
+            LOGI("NPU/GPU backend detected: %s", name.c_str());
+            return 1;
+        }
+    }
+    LOGD("No NPU/GPU backend registered");
+    return 0;
+}
+
+// --------------------------------------------------------------------------
 // JNI: nativeInit()
 // --------------------------------------------------------------------------
 
@@ -173,6 +281,14 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeInit(
     env->ReleaseStringUTFChars(nativeLibDir, path);
 
     llama_backend_init();
+    g_llama_init_done = true;
+
+    // Check if NPU was configured after init — warn the caller
+    if (g_npu_configured_after_init) {
+        LOGW("NPU configuration was applied AFTER nativeInit() — "
+             "settings may not take effect; call configureNPU() before nativeInit()");
+    }
+
     LOGI("Backend init complete. Active backends: %s", get_active_backends().c_str());
 }
 
