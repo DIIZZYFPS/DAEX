@@ -1,5 +1,6 @@
 /**
  * DaexLlama JNI Bridge
+ * Fixed per JNI safety audit (2026-05-12)
  */
 
 #include <android/log.h>
@@ -11,6 +12,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <atomic>
 #include <sstream>
 #include <algorithm>
 #include <cmath>
@@ -29,6 +31,14 @@
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, LOG_TAG, __VA_ARGS__)
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, LOG_TAG, __VA_ARGS__)
 #define LOGV(...) __android_log_print(ANDROID_LOG_VERBOSE, LOG_TAG, __VA_ARGS__)
+
+// --------------------------------------------------------------------------
+// Named constants (replaces magic numbers — Issue 11)
+// --------------------------------------------------------------------------
+static constexpr int DEFAULT_N_CTX = 8192;
+static constexpr int DEFAULT_N_BATCH = 512;
+static constexpr int DEFAULT_N_PREDICT = 1024;
+static constexpr int CONTEXT_OVERFLOW_SAFETY = 4;
 
 // --------------------------------------------------------------------------
 // Context struct
@@ -52,14 +62,14 @@ struct LlamaContext {
     llama_pos gen_stop_position = 0;
     std::string cached_token_chars;
     std::ostringstream assistant_ss;
-    bool cancel_generation = false;
+    std::atomic<bool> cancel_generation{false};  // Issue 6: atomic for thread safety
 
     // Config
-    int n_ctx = 8192;
-    int n_batch = 512;
+    int n_ctx = DEFAULT_N_CTX;
+    int n_batch = DEFAULT_N_BATCH;
     int n_threads = 4;
     float sampler_temp = 0.3f;
-    int n_predict = 1024;
+    int n_predict = DEFAULT_N_PREDICT;
 
     LlamaContext(int ctx_id) : id(ctx_id) {
         batch = {};
@@ -68,7 +78,8 @@ struct LlamaContext {
     ~LlamaContext() {
         if (sampler) common_sampler_free(sampler);
         if (chat_templates) chat_templates.reset();
-        llama_batch_free(batch);
+        // Issue 10: Guard batch.n_tokens > 0 to avoid freeing uninitialized batch
+        if (batch.n_tokens > 0) llama_batch_free(batch);
         if (ctx) llama_free(ctx);
         if (model) llama_model_free(model);
     }
@@ -205,15 +216,18 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeLoadModel(
     auto* ctx = get_context(env, ctx_id);
     if (!ctx) return -1;
 
-    const auto* model_path = env->GetStringUTFChars(jmodel_path, nullptr);
-    LOGI("Loading model for context %d: %s", ctx_id, model_path);
+    // Issue 12: Copy to std::string first to avoid use-after-release
+    const auto* model_path_raw = env->GetStringUTFChars(jmodel_path, nullptr);
+    std::string model_path(model_path_raw);
+    env->ReleaseStringUTFChars(jmodel_path, model_path_raw);
+
+    LOGI("Loading model for context %d: %s", ctx_id, model_path.c_str());
 
     llama_model_params mparams = llama_model_default_params();
-    ctx->model = llama_model_load_from_file(model_path, mparams);
-    env->ReleaseStringUTFChars(jmodel_path, model_path);
+    ctx->model = llama_model_load_from_file(model_path.c_str(), mparams);
 
     if (!ctx->model) {
-        LOGE("Failed to load model from: %s", model_path);
+        LOGE("Failed to load model from: %s", model_path.c_str());
         return -1;
     }
 
@@ -240,7 +254,7 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativePrepareContext(
 
     llama_context_params cparams = llama_context_default_params();
     int trained_ctx = llama_model_n_ctx_train(ctx->model);
-    ctx->n_ctx = std::min(ctx->n_ctx, trained_ctx > 0 ? trained_ctx : 8192);
+    ctx->n_ctx = std::min(ctx->n_ctx, trained_ctx > 0 ? trained_ctx : DEFAULT_N_CTX);
     cparams.n_ctx = ctx->n_ctx;
     cparams.n_batch = ctx->n_batch;
     cparams.n_ubatch = std::min(ctx->n_batch, ctx->n_ctx);
@@ -253,12 +267,23 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativePrepareContext(
         return -1;
     }
 
+    // Issue 8: Free existing batch before re-init to prevent memory leak
+    if (ctx->batch.n_tokens > 0) {
+        llama_batch_free(ctx->batch);
+    }
     ctx->batch = llama_batch_init(ctx->n_batch, 0, 1);
     ctx->chat_templates = common_chat_templates_init(ctx->model, "");
+    if (!ctx->chat_templates) {
+        LOGW("Context %d: chat templates init failed (continuing without)", ctx_id);
+    }
 
     common_params_sampling sparams;
     sparams.temp = ctx->sampler_temp;
     ctx->sampler = common_sampler_init(ctx->model, sparams);
+    if (!ctx->sampler) {
+        LOGE("Context %d: failed to initialize sampler (invalid model vocab?)", ctx_id);
+        return -1;
+    }
 
     LOGI("Context %d prepared (ctx=%d, batch=%d, threads=%d)",
          ctx_id, ctx->n_ctx, ctx->n_batch, ctx->n_threads);
@@ -287,7 +312,7 @@ static int decode_tokens_batched(LlamaContext* ctx, const llama_tokens& tokens,
     for (int i = 0; i < (int)tokens.size(); i += ctx->n_batch) {
         int cur_batch_size = std::min((int)tokens.size() - i, ctx->n_batch);
 
-        if (start_pos + i + cur_batch_size >= ctx->n_ctx - 4) {
+        if (start_pos + i + cur_batch_size >= ctx->n_ctx - CONTEXT_OVERFLOW_SAFETY) {
             LOGW("Context %d: shifting context (overflow at %d)", ctx->id,
                  (int)(start_pos + i + cur_batch_size));
             int n_discard = (ctx->current_position - ctx->system_prompt_position) / 2;
@@ -316,6 +341,10 @@ static int decode_tokens_batched(LlamaContext* ctx, const llama_tokens& tokens,
     return 0;
 }
 
+// --------------------------------------------------------------------------
+// chat_add_and_format helper
+// --------------------------------------------------------------------------
+
 static std::string chat_add_and_format(LlamaContext* ctx,
                                         const std::string& role,
                                         const std::string& content) {
@@ -323,7 +352,8 @@ static std::string chat_add_and_format(LlamaContext* ctx,
     new_msg.role = role;
     new_msg.content = content;
 
-    bool has_explicit = common_chat_templates_was_explicit(ctx->chat_templates.get());
+    // Issue 4: Null check for chat_templates
+    bool has_explicit = ctx->chat_templates ? common_chat_templates_was_explicit(ctx->chat_templates.get()) : false;
     // add_ass=false: don't add assistant turn — we only format the new message
     auto formatted = common_chat_format_single(
         ctx->chat_templates.get(), ctx->chat_msgs, new_msg, false, false);
@@ -349,20 +379,25 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeProcessSystemPrompt(
     ctx->current_position = 0;
     ctx->cached_token_chars.clear();
     ctx->assistant_ss.str("");
-    ctx->cancel_generation = false;
-    llama_memory_clear(llama_get_memory(ctx->ctx), false);
-
-    const auto* sys_prompt = env->GetStringUTFChars(jsystem_prompt, nullptr);
-    std::string formatted = std::string(sys_prompt);
-
-    bool has_explicit = common_chat_templates_was_explicit(ctx->chat_templates.get());
-    if (has_explicit) {
-        formatted = chat_add_and_format(ctx, "system", sys_prompt);
+    ctx->cancel_generation.store(false);  // Issue 6: atomic store
+    // Issue 3: Null check for ctx->ctx before calling llama_get_memory
+    if (ctx->ctx) {
+        llama_memory_clear(llama_get_memory(ctx->ctx), false);
     }
-    env->ReleaseStringUTFChars(jsystem_prompt, sys_prompt);
+
+    // Issue 12: Copy to std::string first to avoid use-after-release
+    const auto* sys_prompt_raw = env->GetStringUTFChars(jsystem_prompt, nullptr);
+    std::string sys_prompt(sys_prompt_raw);
+    env->ReleaseStringUTFChars(jsystem_prompt, sys_prompt_raw);
+
+    // Issue 4: Null check for chat_templates in nativeProcessSystemPrompt too
+    bool has_explicit = ctx->chat_templates ? common_chat_templates_was_explicit(ctx->chat_templates.get()) : false;
+    if (has_explicit) {
+        sys_prompt = chat_add_and_format(ctx, "system", sys_prompt);
+    }
 
     // Tokenize (formatted output already has BOS/EOS from chat template)
-    auto sys_tokens = common_tokenize(ctx->ctx, formatted, false, false);
+    auto sys_tokens = common_tokenize(ctx->ctx, sys_prompt, false, false);
 
     if (decode_tokens_batched(ctx, sys_tokens, ctx->current_position) != 0) {
         LOGE("Context %d: system prompt decode failed", ctx->id);
@@ -387,20 +422,22 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeProcessUserPrompt(
 
     ctx->cached_token_chars.clear();
     ctx->assistant_ss.str("");
-    ctx->cancel_generation = false;
+    ctx->cancel_generation.store(false);  // Issue 6: atomic store
 
-    const auto* user_prompt = env->GetStringUTFChars(juser_prompt, nullptr);
-    std::string formatted = std::string(user_prompt);
+    // Issue 12: Copy to std::string first to avoid use-after-release
+    const auto* user_prompt_raw = env->GetStringUTFChars(juser_prompt, nullptr);
+    std::string user_prompt(user_prompt_raw);
+    env->ReleaseStringUTFChars(juser_prompt, user_prompt_raw);
 
-    bool has_explicit = common_chat_templates_was_explicit(ctx->chat_templates.get());
+    // Issue 4: Null check for chat_templates
+    bool has_explicit = ctx->chat_templates ? common_chat_templates_was_explicit(ctx->chat_templates.get()) : false;
     if (has_explicit) {
-        formatted = chat_add_and_format(ctx, "user", user_prompt);
+        user_prompt = chat_add_and_format(ctx, "user", user_prompt);
     }
-    env->ReleaseStringUTFChars(juser_prompt, user_prompt);
 
-    auto user_tokens = common_tokenize(ctx->ctx, formatted, false, false);
+    auto user_tokens = common_tokenize(ctx->ctx, user_prompt, false, false);
 
-    int max_tokens = ctx->n_ctx - 4;
+    int max_tokens = ctx->n_ctx - CONTEXT_OVERFLOW_SAFETY;
     if ((int)user_tokens.size() > max_tokens) {
         user_tokens.resize(max_tokens);
         LOGW("Context %d: truncated user prompt to %d tokens", ctx->id, max_tokens);
@@ -429,7 +466,14 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeGenerateNextToken(
     auto* ctx = get_context(env, ctx_id);
     if (!ctx) return nullptr;
 
-    if (ctx->cancel_generation || ctx->current_position >= ctx->gen_stop_position) {
+    // Issue 7: Guard sampler null check
+    if (!ctx->sampler) {
+        LOGE("Context %d: sampler is null, cannot generate", ctx->id);
+        return nullptr;
+    }
+
+    // Issue 6: atomic load
+    if (ctx->cancel_generation.load() || ctx->current_position >= ctx->gen_stop_position) {
         LOGI("Context %d: generation stopped", ctx->id);
         return nullptr;
     }
@@ -460,10 +504,22 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeGenerateNextToken(
     jstring result = nullptr;
     if (is_valid_utf8(ctx->cached_token_chars.c_str())) {
         result = env->NewStringUTF(ctx->cached_token_chars.c_str());
+        // Issue 13: Check for OOM exception after NewStringUTF
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            LOGE("Context %d: OOM creating Java string", ctx->id);
+            return nullptr;
+        }
         ctx->assistant_ss << ctx->cached_token_chars;
         ctx->cached_token_chars.clear();
     } else {
         result = env->NewStringUTF("");
+        // Issue 13: Check for OOM exception after NewStringUTF
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();
+            LOGE("Context %d: OOM creating empty Java string", ctx->id);
+            return nullptr;
+        }
     }
     return result;
 }
@@ -477,7 +533,7 @@ JNIEXPORT void JNICALL
 Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeCancelGeneration(
         JNIEnv* env, jobject /*this*/, jint ctx_id) {
     auto* ctx = get_context(env, ctx_id);
-    if (ctx) ctx->cancel_generation = true;
+    if (ctx) ctx->cancel_generation.store(true);  // Issue 6: atomic store
 }
 
 // --------------------------------------------------------------------------
@@ -491,12 +547,25 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeResetConversation(
     auto* ctx = get_context(env, ctx_id);
     if (!ctx) return;
 
+    // Issue 3: Guard ctx->ctx null check — may not be initialized yet
+    if (!ctx->ctx) {
+        LOGW("Context %d: reset called before context prepared, skipping memory clear", ctx->id);
+        // Still reset conversation state even if ctx is null
+        ctx->chat_msgs.clear();
+        ctx->system_prompt_position = 0;
+        ctx->current_position = 0;
+        ctx->cached_token_chars.clear();
+        ctx->assistant_ss.str("");
+        ctx->cancel_generation.store(false);
+        return;
+    }
+
     ctx->chat_msgs.clear();
     ctx->system_prompt_position = 0;
     ctx->current_position = 0;
     ctx->cached_token_chars.clear();
     ctx->assistant_ss.str("");
-    ctx->cancel_generation = false;
+    ctx->cancel_generation.store(false);  // Issue 6: atomic store
     llama_memory_clear(llama_get_memory(ctx->ctx), false);
     LOGI("Context %d: conversation reset", ctx->id);
 }
@@ -509,7 +578,15 @@ extern "C"
 JNIEXPORT jstring JNICALL
 Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeSystemInfo(
         JNIEnv* env, jobject /*this*/) {
-    return env->NewStringUTF(llama_print_system_info());
+    // Issue 13: Check for OOM exception after NewStringUTF
+    const char* info = llama_print_system_info();
+    jstring result = env->NewStringUTF(info);
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        LOGE("OOM creating system info Java string");
+        return nullptr;
+    }
+    return result;
 }
 
 // --------------------------------------------------------------------------
@@ -520,7 +597,15 @@ extern "C"
 JNIEXPORT jstring JNICALL
 Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeActiveBackends(
         JNIEnv* env, jobject /*this*/) {
-    return env->NewStringUTF(get_active_backends().c_str());
+    // Issue 13: Check for OOM exception after NewStringUTF
+    std::string backends = get_active_backends();
+    jstring result = env->NewStringUTF(backends.c_str());
+    if (env->ExceptionCheck()) {
+        env->ExceptionClear();
+        LOGE("OOM creating backends Java string");
+        return nullptr;
+    }
+    return result;
 }
 
 // --------------------------------------------------------------------------
@@ -535,7 +620,9 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeUnloadModel(
     auto it = g_contexts.find(ctx_id);
     if (it != g_contexts.end()) {
         LOGI("Unloading model from context %d", ctx_id);
-        it->second.reset();
+        // Issue 1: erase from map instead of reset() to prevent double-free
+        // when nativeDestroyContext is called afterward
+        g_contexts.erase(it);
     }
 }
 
@@ -550,15 +637,18 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeLoadEmbeddingModel(
     auto* ctx = get_context(env, ctx_id);
     if (!ctx) return -1;
 
-    const auto* model_path = env->GetStringUTFChars(jmodel_path, nullptr);
-    LOGI("Loading embedding model for context %d: %s", ctx_id, model_path);
+    // Issue 12: Copy to std::string first to avoid use-after-release
+    const auto* model_path_raw = env->GetStringUTFChars(jmodel_path, nullptr);
+    std::string model_path(model_path_raw);
+    env->ReleaseStringUTFChars(jmodel_path, model_path_raw);
+
+    LOGI("Loading embedding model for context %d: %s", ctx_id, model_path.c_str());
 
     llama_model_params mparams = llama_model_default_params();
-    ctx->model = llama_model_load_from_file(model_path, mparams);
-    env->ReleaseStringUTFChars(jmodel_path, model_path);
+    ctx->model = llama_model_load_from_file(model_path.c_str(), mparams);
 
     if (!ctx->model) {
-        LOGE("Failed to load embedding model from: %s", model_path);
+        LOGE("Failed to load embedding model from: %s", model_path.c_str());
         return -1;
     }
 
@@ -578,6 +668,10 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeLoadEmbeddingModel(
         return -1;
     }
 
+    // Issue 8: Free existing batch before re-init
+    if (ctx->batch.n_tokens > 0) {
+        llama_batch_free(ctx->batch);
+    }
     ctx->batch = llama_batch_init(ctx->n_batch, 0, 1);
     LOGI("Context %d: embedding model loaded (ctx=%d)", ctx_id, ctx->n_ctx);
     return 0;
@@ -591,8 +685,9 @@ extern "C"
 JNIEXPORT jfloatArray JNICALL
 Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeGetEmbedding(
         JNIEnv* env, jobject /*this*/, jint ctx_id, jstring jtext) {
+    // Issue 5: Add ctx->model to null check
     auto* ctx = get_context(env, ctx_id);
-    if (!ctx || !ctx->ctx) return nullptr;
+    if (!ctx || !ctx->ctx || !ctx->model) return nullptr;
 
     const auto* text = env->GetStringUTFChars(jtext, nullptr);
     auto tokens = common_tokenize(ctx->ctx, std::string(text), false, false);
