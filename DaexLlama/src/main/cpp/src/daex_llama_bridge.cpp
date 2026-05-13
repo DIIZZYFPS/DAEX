@@ -92,6 +92,7 @@ struct LlamaContext {
 static std::map<int, std::unique_ptr<LlamaContext>> g_contexts;
 static std::mutex g_contexts_mutex;
 static int g_next_context_id = 1;
+static bool g_llama_init_done = false;  // Tracks whether nativeInit() has completed
 
 // --------------------------------------------------------------------------
 // Helpers
@@ -164,13 +165,38 @@ static void set_env_var(const char* name, const char* value) {
 // @param nDevices Number of NPU sessions (1 for <4B, 2 for 8B, 4 for 20B)
 // @param nHvxThreads Number of HVX hardware threads (0 = all)
 // @param verbose Verbosity level (0=off, 1=on)
-// @return 0 on success, -1 if not configured
+// @return 0 on success (env vars always set; NPU backend takes effect at init time)
 // --------------------------------------------------------------------------
+
+// Tracks whether NPU was configured AFTER nativeInit() was called.
+// Used to warn the caller that settings may not take effect.
+static bool g_npu_configured_after_init = false;
 
 extern "C"
 JNIEXPORT jint JNICALL
 Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeConfigureNPU(
         JNIEnv* env, jobject /*this*/, jint nDevices, jint nHvxThreads, jint verbose) {
+    // Input validation: reject negative values, clamp verbose range
+    if (nDevices < 1 || nDevices > 4) {
+        LOGW("NPU config rejected: nDevices=%d (valid range: 1-4)", nDevices);
+        return 0;  // still set env vars — let backend decide
+    }
+    if (nHvxThreads < 0) {
+        LOGW("NPU config rejected: nHvxThreads=%d (must be >= 0, 0=all)", nHvxThreads);
+        return 0;  // still set env vars — let backend decide
+    }
+    if (verbose < 0 || verbose > 1) {
+        LOGW("NPU config rejected: verbose=%d (valid range: 0-1)", verbose);
+        return 0;  // still set env vars — let backend decide
+    }
+
+    // Check if init already happened — warn that settings may not take effect
+    // (g_llama_init_done is set in nativeInit())
+    if (g_llama_init_done) {
+        g_npu_configured_after_init = true;
+        LOGW("NPU configured AFTER init — settings may not take effect; call configureNPU() before nativeInit()");
+    }
+
     // Set Hexagon environment variables for llama.cpp backend
     char buf[16];
     snprintf(buf, sizeof(buf), "%d", nDevices);
@@ -242,6 +268,14 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeInit(
     env->ReleaseStringUTFChars(nativeLibDir, path);
 
     llama_backend_init();
+    g_llama_init_done = true;
+
+    // Check if NPU was configured after init — warn the caller
+    if (g_npu_configured_after_init) {
+        LOGW("NPU configuration was applied AFTER nativeInit() — "
+             "settings may not take effect; call configureNPU() before nativeInit()");
+    }
+
     LOGI("Backend init complete. Active backends: %s", get_active_backends().c_str());
 }
 

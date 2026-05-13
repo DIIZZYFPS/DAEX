@@ -263,13 +263,13 @@ class DaexLlamaEngineImpl(
     override fun configureNpu(nDevices: Int, nHvxThreads: Int, verbose: Int): Boolean {
         // NOTE: This sets env vars that the Hexagon backend reads at init time.
         // For best results, call this before nativeInit() is called.
-        // If called after init, it logs a warning but still applies the settings.
+        // If called after init, the native side logs a warning but still applies the settings.
         return try {
             nativeConfigureNPU(nDevices, nHvxThreads, verbose)
-            LOGI("NPU config applied: %d devices, %d HVX threads", nDevices, nHvxThreads)
+            Log.i(TAG, "NPU config applied: $nDevices devices, $nHvxThreads HVX threads")
             true
         } catch (e: UnsatisfiedLinkError) {
-            LOGW("NPU config failed: native library not loaded")
+            Log.w(TAG, "NPU config failed: native library not loaded")
             false
         }
     }

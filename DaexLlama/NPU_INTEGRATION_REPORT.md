@@ -25,9 +25,9 @@
 
 ## 2. Source Code Changes
 
-### Modified Files (3 files, +110 lines)
+### Modified Files (3 files, +130 lines)
 
-#### `src/main/cpp/src/daex_llama_bridge.cpp` (+69 lines)
+#### `src/main/cpp/src/daex_llama_bridge.cpp` (+89 lines)
 - Added `set_env_var()` helper for safe env var setting
 - Added `nativeConfigureNPU()` — sets 5 Hexagon env vars:
   - `GGML_HEXAGON_NDEV` — NPU session count (1/2/4)
@@ -37,6 +37,9 @@
   - `GGML_HEXAGON_PROFILE` — profiling (0 = off)
 - Added `nativeIsNpuAvailable()` — scans registered backends for Hexagon/HTP/OpenCL/GPU
 - Both methods placed before `nativeInit()` so they can be called in correct order
+- **Input validation** (2026-05-13): `nDevices` (1-4), `nHvxThreads` (>=0), `verbose` (0-1) — invalid params log `LOGW` but still set env vars (backend decides)
+- **Init tracking** (2026-05-13): `g_llama_init_done` flag set in `nativeInit()`, `g_npu_configured_after_init` flag set in `nativeConfigureNPU()` if called post-init
+- **Pre-init warning** (2026-05-13): `nativeInit()` logs `LOGW` if `g_npu_configured_after_init` is true, alerting that NPU settings may not take effect
 
 #### `src/main/java/com/daex/llama/DaexLlamaEngine.kt` (+17 lines)
 - Added `configureNpu(nDevices, nHvxThreads, verbose): Boolean` to interface
@@ -47,6 +50,7 @@
 - Added `nativeConfigureNPU()` and `nativeIsNpuAvailable()` external declarations
 - Added `configureNpu()` implementation with try/catch for `UnsatisfiedLinkError`
 - Added `isNpuAvailable()` implementation with try/catch
+- **Logging fix** (2026-05-13): Replaced incorrect `LOGI`/`LOGW` macros with `Log.i`/`Log.w` (Android `Log` class)
 
 ---
 
@@ -117,7 +121,11 @@ cmake --build . -j$(nproc)
 
 ### Without NPU SDK (current)
 - `isNpuAvailable()` → `false`
-- `configureNpu()` → sets env vars, logs config, returns `true` (native lib loaded)
+- `configureNpu()` → validates params, sets env vars, logs config, returns `true` (native lib loaded)
+  - Invalid `nDevices` (not 1-4) → `LOGW` but still sets env vars
+  - Invalid `nHvxThreads` (<0) → `LOGW` but still sets env vars
+  - Invalid `verbose` (not 0/1) → `LOGW` but still sets env vars
+  - Called after `nativeInit()` → `g_npu_configured_after_init=true`, `nativeInit()` logs `LOGW` warning
 - `getActiveBackends()` → `"CPU, KleidiAI"`
 - Inference runs on CPU with KleidiAI optimizations
 
@@ -135,7 +143,7 @@ cmake --build . -j$(nproc)
 1. **No HTP skel packaging** — skels must be manually copied to `assets/backends/`
 2. **No device detection** — doesn't auto-detect Hexagon version on device
 3. **No fallback** — if NPU fails, no automatic fallback to CPU (graceful degradation)
-4. **Env var timing** — `configureNpu()` must be called before `nativeInit()` for env vars to take effect
+4. **Env var timing** — `configureNpu()` must be called before `nativeInit()` for env vars to take effect. **Mitigation:** `nativeInit()` now logs `LOGW` if NPU was configured after init (tracked via `g_npu_configured_after_init` flag)
 
 ### TODO Items
 1. **Auto-detect Hexagon version** — read `/sys/devices/system/cpu/cpu0/cpufreq/scaling_cur_freq` or similar
@@ -175,8 +183,8 @@ engine.loadModel(modelPath)
 
 | File | Lines | Description |
 |------|-------|-------------|
-| `src/main/cpp/src/daex_llama_bridge.cpp` | +69 | NPU config JNI methods |
+| `src/main/cpp/src/daex_llama_bridge.cpp` | +89 | NPU config JNI, input validation, init tracking flags, pre-init warning |
 | `src/main/java/com/daex/llama/DaexLlamaEngine.kt` | +17 | NPU interface methods |
-| `src/main/java/com/daex/llama/internal/DaexLlamaEngineImpl.kt` | +24 | NPU implementation |
+| `src/main/java/com/daex/llama/internal/DaexLlamaEngineImpl.kt` | +24 | NPU implementation, Android Log fix |
 
-**Total:** 3 files, +110 lines, 0 deletions
+**Total:** 3 files, +130 lines, 0 deletions
