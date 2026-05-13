@@ -25,7 +25,7 @@
 
 ## 2. Source Code Changes
 
-### Modified Files (3 files, +130 lines)
+### Modified Files (4 files)
 
 #### `src/main/cpp/src/daex_llama_bridge.cpp` (+89 lines)
 - Added `set_env_var()` helper for safe env var setting
@@ -51,6 +51,9 @@
 - Added `configureNpu()` implementation with try/catch for `UnsatisfiedLinkError`
 - Added `isNpuAvailable()` implementation with try/catch
 - **Logging fix** (2026-05-13): Replaced incorrect `LOGI`/`LOGW` macros with `Log.i`/`Log.w` (Android `Log` class)
+
+#### `NPU_INTEGRATION_REPORT.md`
+- Added integration report with build status, architecture, prerequisites, and runtime notes
 
 ---
 
@@ -186,5 +189,6 @@ engine.loadModel(modelPath)
 | `src/main/cpp/src/daex_llama_bridge.cpp` | +89 | NPU config JNI, input validation, init tracking flags, pre-init warning |
 | `src/main/java/com/daex/llama/DaexLlamaEngine.kt` | +17 | NPU interface methods |
 | `src/main/java/com/daex/llama/internal/DaexLlamaEngineImpl.kt` | +24 | NPU implementation, Android Log fix |
+| `NPU_INTEGRATION_REPORT.md` | +1 file | Integration report and implementation notes |
 
-**Total:** 3 files, +130 lines, 0 deletions
+**Total:** 4 files

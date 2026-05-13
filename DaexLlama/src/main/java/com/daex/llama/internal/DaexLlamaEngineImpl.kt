@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -265,9 +266,18 @@ class DaexLlamaEngineImpl(
         // For best results, call this before nativeInit() is called.
         // If called after init, the native side logs a warning but still applies the settings.
         return try {
-            nativeConfigureNPU(nDevices, nHvxThreads, verbose)
-            Log.i(TAG, "NPU config applied: $nDevices devices, $nHvxThreads HVX threads")
-            true
+            val result = runBlocking(nativeDispatcher) {
+                nativeMutex.withLock {
+                    nativeConfigureNPU(nDevices, nHvxThreads, verbose)
+                }
+            }
+            if (result == 0) {
+                Log.i(TAG, "NPU config applied: $nDevices devices, $nHvxThreads HVX threads")
+                true
+            } else {
+                Log.w(TAG, "NPU config rejected or failed (code=$result)")
+                false
+            }
         } catch (e: UnsatisfiedLinkError) {
             Log.w(TAG, "NPU config failed: native library not loaded")
             false

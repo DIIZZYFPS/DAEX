@@ -16,6 +16,8 @@
 #include <sstream>
 #include <algorithm>
 #include <cmath>
+#include <cerrno>
+#include <cstring>
 #include <unistd.h>
 
 #include "llama.h"
@@ -153,9 +155,14 @@ static std::string get_active_backends() {
 // NPU Configuration helpers
 // --------------------------------------------------------------------------
 
-static void set_env_var(const char* name, const char* value) {
-    setenv(name, value, 1);
+static bool set_env_var(const char* name, const char* value) {
+    if (setenv(name, value, 1) != 0) {
+        LOGE("NPU config failed: setenv(%s=%s) errno=%d (%s)",
+             name, value, errno, strerror(errno));
+        return false;
+    }
     LOGI("NPU config: %s=%s", name, value);
+    return true;
 }
 
 // --------------------------------------------------------------------------
@@ -165,7 +172,7 @@ static void set_env_var(const char* name, const char* value) {
 // @param nDevices Number of NPU sessions (1 for <4B, 2 for 8B, 4 for 20B)
 // @param nHvxThreads Number of HVX hardware threads (0 = all)
 // @param verbose Verbosity level (0=off, 1=on)
-// @return 0 on success (env vars always set; NPU backend takes effect at init time)
+// @return 0 on success, non-zero on validation or setenv failure
 // --------------------------------------------------------------------------
 
 // Tracks whether NPU was configured AFTER nativeInit() was called.
@@ -179,15 +186,15 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeConfigureNPU(
     // Input validation: reject negative values, clamp verbose range
     if (nDevices < 1 || nDevices > 4) {
         LOGW("NPU config rejected: nDevices=%d (valid range: 1-4)", nDevices);
-        return 0;  // still set env vars — let backend decide
+        return 1;
     }
     if (nHvxThreads < 0) {
         LOGW("NPU config rejected: nHvxThreads=%d (must be >= 0, 0=all)", nHvxThreads);
-        return 0;  // still set env vars — let backend decide
+        return 1;
     }
     if (verbose < 0 || verbose > 1) {
         LOGW("NPU config rejected: verbose=%d (valid range: 0-1)", verbose);
-        return 0;  // still set env vars — let backend decide
+        return 1;
     }
 
     // Check if init already happened — warn that settings may not take effect
@@ -198,19 +205,25 @@ Java_com_daex_llama_internal_DaexLlamaEngineImpl_nativeConfigureNPU(
     }
 
     // Set Hexagon environment variables for llama.cpp backend
+    bool ok = true;
     char buf[16];
     snprintf(buf, sizeof(buf), "%d", nDevices);
-    set_env_var("GGML_HEXAGON_NDEV", buf);
+    ok = set_env_var("GGML_HEXAGON_NDEV", buf) && ok;
 
     snprintf(buf, sizeof(buf), "%d", nHvxThreads);
-    set_env_var("GGML_HEXAGON_NHVX", buf);
+    ok = set_env_var("GGML_HEXAGON_NHVX", buf) && ok;
 
     snprintf(buf, sizeof(buf), "%d", verbose);
-    set_env_var("GGML_HEXAGON_VERBOSE", buf);
+    ok = set_env_var("GGML_HEXAGON_VERBOSE", buf) && ok;
 
     // Also set hostbuf and profile to safe defaults
-    set_env_var("GGML_HEXAGON_HOSTBUF", "1");
-    set_env_var("GGML_HEXAGON_PROFILE", "0");
+    ok = set_env_var("GGML_HEXAGON_HOSTBUF", "1") && ok;
+    ok = set_env_var("GGML_HEXAGON_PROFILE", "0") && ok;
+
+    if (!ok) {
+        LOGE("NPU configuration failed due to setenv error");
+        return 1;
+    }
 
     LOGI("NPU configured: devices=%d, hvx_threads=%d, verbose=%d",
          nDevices, nHvxThreads, verbose);

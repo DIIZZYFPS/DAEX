@@ -104,7 +104,7 @@ interface DaexLlamaEngine {
 
     /**
      * Check if any NPU/GPU backend is available (Hexagon/HTP, OpenCL, etc.).
-     * @return true if a non-CPU backend is registered.
+     * @return true if a backend name contains Hexagon, HTP, OpenCL, or GPU.
      */
     fun isNpuAvailable(): Boolean
 
