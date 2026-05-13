@@ -2,9 +2,9 @@ name: DAEX CI
 
 on:
   push:
-    branches: [main, needs-fix, gradle-test-ci]
+    branches: [main, needs-fix, gradle-test-ci, fix/jni-safety-audit]
   pull_request:
-    branches: [main, needs-fix]
+    branches: [main, needs-fix, fix/jni-safety-audit]
   workflow_dispatch:
 
 env:
