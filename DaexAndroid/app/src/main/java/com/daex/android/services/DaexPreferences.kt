@@ -18,6 +18,16 @@ class DaexPreferences(private val context: Context) {
         val PRIMARY_COLOR = intPreferencesKey("primary_color")
         val HAS_COMPLETED_LANDING = booleanPreferencesKey("has_completed_landing")
         val IS_REASONING_ENABLED = booleanPreferencesKey("is_reasoning_enabled")
+        val LAST_USED_MODEL_ID = stringPreferencesKey("last_used_model_id")
+        val LAST_USED_BACKEND = stringPreferencesKey("last_used_backend")
+    }
+
+    val lastUsedModelIdFlow: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[LAST_USED_MODEL_ID]
+    }
+
+    val lastUsedBackendFlow: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[LAST_USED_BACKEND]
     }
 
     val isReasoningEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
@@ -57,6 +67,13 @@ class DaexPreferences(private val context: Context) {
     suspend fun setReasoningEnabled(isEnabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[IS_REASONING_ENABLED] = isEnabled
+        }
+    }
+
+    suspend fun setLastUsedModel(modelId: String, backend: String) {
+        context.dataStore.edit { preferences ->
+            preferences[LAST_USED_MODEL_ID] = modelId
+            preferences[LAST_USED_BACKEND] = backend
         }
     }
 }

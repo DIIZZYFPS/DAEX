@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.firstOrNull
 
 enum class ModelStatus {
     NOT_DOWNLOADED, DOWNLOADING, LOADING, READY, ERROR
@@ -127,6 +128,29 @@ class DaexInferenceViewModel(
                 }
             }.collectLatest {
                 _messages.value = it
+            }
+        }
+
+        // Autoload last used model if already downloaded
+        viewModelScope.launch {
+            val modelId = preferences?.lastUsedModelIdFlow?.firstOrNull()
+            val backendStr = preferences?.lastUsedBackendFlow?.firstOrNull() ?: "CPU"
+            android.util.Log.d("DaexAutoload", "Autoload check: modelId=$modelId, backend=$backendStr")
+            if (modelId != null) {
+                val model = ModelBank.generativeModels.find { it.id == modelId }
+                val isDownloaded = model?.let { modelManager?.isModelDownloaded(it) } ?: false
+                android.util.Log.d("DaexAutoload", "Model found: ${model?.name}, isDownloaded=$isDownloaded")
+                if (model != null && isDownloaded) {
+                    val savedBackend = try {
+                        BackendType.valueOf(backendStr)
+                    } catch (e: Exception) {
+                        BackendType.CPU
+                    }
+                    _selectedBackend.value = savedBackend
+                    _useGPU.value = (savedBackend == BackendType.GPU)
+                    android.util.Log.d("DaexAutoload", "Triggering autoload for ${model.name} on $savedBackend")
+                    loadModel(model)
+                }
             }
         }
 
@@ -272,7 +296,19 @@ class DaexInferenceViewModel(
                 val actualBackend = llamaService.initContext(modelPath, _selectedBackend.value)
                 _selectedBackend.value = actualBackend
                 _hardwareState.value = actualBackend.name
+                
+                // Warm up the engine silently with 1 token to pre-allocate activation memory
+                try {
+                    android.util.Log.d("DaexAutoload", "Warming up model...")
+                    llamaService.generateSilent("warmup", maxTokens = 1)
+                    android.util.Log.d("DaexAutoload", "Warmup complete.")
+                } catch (warmupEx: Exception) {
+                    android.util.Log.w("DaexAutoload", "Warmup failed silently, continuing", warmupEx)
+                }
+
                 _modelStatus.value = ModelStatus.READY
+                android.util.Log.d("DaexAutoload", "Model loaded successfully. Saving configuration to preferences: id=${model.id}, backend=${actualBackend.name}")
+                preferences?.setLastUsedModel(model.id, actualBackend.name)
             } catch (e: Exception) {
                 _modelStatus.value = ModelStatus.ERROR
                 _errorMessage.value = e.message ?: "Failed to load model"

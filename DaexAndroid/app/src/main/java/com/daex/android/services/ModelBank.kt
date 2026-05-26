@@ -37,22 +37,13 @@ object ModelBank {
             extension = "litertlm"
         ),
         Model(
-            id = "gemma-4-E4B-it-Q4_K_M",
-            name = "Gemma 4-E4B-it-Q4_K_M",
-            size = 2_500_000_000L,
-            description = "Gemma 4-E4B-it-Q4_K_M is a 4-billion parameter language model. It is a 4-bit quantized model optimized for mobile performance.",
+            id = "gemma-4-E4B-it-litert-lm",
+            name = "Gemma 4-E4B-it (LiteRT)",
+            size = 3_660_000_000L,
+            description = "Gemma 4-E4B-it compiled and quantized for LiteRT-LM. Runs extremely fast on mobile CPU/GPU.",
             requiredRAM = 6_000_000_000L,
-            downloadUrl = "https://huggingface.co/bartowski/google_gemma-4-E4B-it-GGUF/resolve/main/google_gemma-4-E4B-it-Q4_K_M.gguf",
-            extension = "gguf"
-        ),
-        Model(
-            id = "gemma-4-E2B-it-Q4_K_M",
-            name = "Gemma 4-E2B-it-Q4_K_M",
-            size = 1_500_000_000L,
-            description = "Gemma 4-E2B-it-Q4_K_M is a 2-billion parameter lightweight model, perfect for entry-level devices with limited RAM.",
-            requiredRAM = 3_500_000_000L,
-            downloadUrl = "https://huggingface.co/bartowski/google_gemma-4-E2B-it-GGUF/resolve/main/google_gemma-4-E2B-it-Q4_K_M.gguf",
-            extension = "gguf"
+            downloadUrl = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm",
+            extension = "litertlm"
         ),
         embeddingModel
     )

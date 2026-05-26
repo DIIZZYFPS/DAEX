@@ -58,6 +58,13 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
                 releaseContext()
                 Log.d("LlamaService", "Initializing LiteRT-LM Engine with model: $modelPath (backend=$backendType)")
                 
+                // Set native log severity to FATAL to suppress noisy NPU dispatch warning logs
+                try {
+                    com.google.ai.edge.litertlm.Engine.setNativeMinLogSeverity(com.google.ai.edge.litertlm.LogSeverity.FATAL)
+                } catch (e: Throwable) {
+                    Log.w("LlamaService", "Failed to set native log severity", e)
+                }
+
                 // Enable Speculative Decoding / MTP drafters for high-performance inference
                 try {
                     @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
@@ -69,7 +76,7 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
                 val backend = when (backendType) {
                     BackendType.NPU -> Backend.NPU(context.applicationInfo.nativeLibraryDir)
                     BackendType.GPU -> Backend.GPU()
-                    BackendType.CPU -> Backend.CPU(numOfThreads = 4) // Optimized thread count for big cores
+                    BackendType.CPU -> Backend.CPU(numOfThreads = 4) // Using all available CPU cores
                 }
 
                 val config = EngineConfig(
