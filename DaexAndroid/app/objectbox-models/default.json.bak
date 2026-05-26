@@ -35,11 +35,6 @@
           "id": "5:4614395859049049603",
           "name": "createdAt",
           "type": 6
-        },
-        {
-          "id": "6:3951602212242598787",
-          "name": "attachedDocumentIds",
-          "type": 9
         }
       ],
       "relations": []
@@ -104,7 +99,7 @@
     },
     {
       "id": "3:2228447766859977220",
-      "lastPropertyId": "7:3302623810050884211",
+      "lastPropertyId": "8:1544963357994103087",
       "name": "DocumentChunkEntity",
       "properties": [
         {
@@ -139,42 +134,11 @@
           "indexId": "4:1516829947778039408",
           "type": 28,
           "flags": 8
-        }
-      ],
-      "relations": []
-    },
-    {
-      "id": "4:5749953060607035488",
-      "lastPropertyId": "5:3141235087875330925",
-      "name": "DocumentEntity",
-      "properties": [
-        {
-          "id": "1:450698465996878836",
-          "name": "id",
-          "type": 6,
-          "flags": 1
         },
         {
-          "id": "2:8411283723536116540",
-          "name": "uuid",
-          "indexId": "5:3213887558542318770",
-          "type": 9,
-          "flags": 2080
-        },
-        {
-          "id": "3:2251461022534858221",
+          "id": "8:1544963357994103087",
           "name": "fileName",
           "type": 9
-        },
-        {
-          "id": "4:6992208107704024424",
-          "name": "userTitle",
-          "type": 9
-        },
-        {
-          "id": "5:3141235087875330925",
-          "name": "createdAt",
-          "type": 6
         }
       ],
       "relations": []
@@ -186,10 +150,20 @@
   "lastSequenceId": "0:0",
   "modelVersion": 5,
   "modelVersionParserMinimum": 5,
-  "retiredEntityUids": [],
-  "retiredIndexUids": [],
+  "retiredEntityUids": [
+    5749953060607035488
+  ],
+  "retiredIndexUids": [
+    3213887558542318770
+  ],
   "retiredPropertyUids": [
-    7463012044800673056
+    7463012044800673056,
+    450698465996878836,
+    8411283723536116540,
+    2251461022534858221,
+    6992208107704024424,
+    3141235087875330925,
+    3951602212242598787
   ],
   "retiredRelationUids": [],
   "version": 1

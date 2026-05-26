@@ -61,6 +61,9 @@ class DaexInferenceViewModel(
     private val _useGPU = MutableStateFlow(false)
     val useGPU: StateFlow<Boolean> = _useGPU.asStateFlow()
 
+    private val _selectedBackend = MutableStateFlow(BackendType.CPU)
+    val selectedBackend: StateFlow<BackendType> = _selectedBackend.asStateFlow()
+
     private val _hardwareState = MutableStateFlow("CPU")
     val hardwareState: StateFlow<String> = _hardwareState.asStateFlow()
 
@@ -266,16 +269,10 @@ class DaexInferenceViewModel(
 
             try {
                 val modelPath = modelManager.getModelPath(model)
-                llamaService.initContext(modelPath, _useGPU.value)
+                val actualBackend = llamaService.initContext(modelPath, _selectedBackend.value)
+                _selectedBackend.value = actualBackend
+                _hardwareState.value = actualBackend.name
                 _modelStatus.value = ModelStatus.READY
-                
-                val specs = deviceService?.getDeviceSpecs()
-                if (specs != null) {
-                    _hardwareState.value = if (_useGPU.value && specs.hasVulkan) "Vulkan Ready (${specs.totalRAM / 1024 / 1024 / 1024}GB RAM)"
-                    else "CPU Only (${specs.totalRAM / 1024 / 1024 / 1024}GB RAM)"
-                } else {
-                    _hardwareState.value = if (_useGPU.value) "GPU" else "CPU"
-                }
             } catch (e: Exception) {
                 _modelStatus.value = ModelStatus.ERROR
                 _errorMessage.value = e.message ?: "Failed to load model"
@@ -292,8 +289,14 @@ class DaexInferenceViewModel(
     }
 
     fun toggleGPU(model: Model? = null) {
+        val nextBackend = if (_selectedBackend.value == BackendType.CPU) BackendType.GPU else BackendType.CPU
+        setBackend(nextBackend, model)
+    }
+
+    fun setBackend(backend: BackendType, model: Model? = null) {
+        _selectedBackend.value = backend
+        _useGPU.value = (backend == BackendType.GPU)
         val targetModel = model ?: _currentModel.value ?: return
-        _useGPU.value = !_useGPU.value
 
         if (llamaService.isLoaded()) {
             _modelStatus.value = ModelStatus.LOADING
@@ -301,14 +304,17 @@ class DaexInferenceViewModel(
                 try {
                     llamaService.releaseContext()
                     val modelPath = modelManager?.getModelPath(targetModel) ?: ""
-                    llamaService.initContext(modelPath, _useGPU.value)
+                    val actualBackend = llamaService.initContext(modelPath, backend)
+                    _selectedBackend.value = actualBackend
+                    _hardwareState.value = actualBackend.name
                     _modelStatus.value = ModelStatus.READY
-                    _hardwareState.value = if (_useGPU.value) "GPU" else "CPU"
                 } catch (e: Exception) {
                     _modelStatus.value = ModelStatus.ERROR
                     _errorMessage.value = e.message ?: "Failed to reload model"
                 }
             }
+        } else {
+            _hardwareState.value = backend.name
         }
     }
 

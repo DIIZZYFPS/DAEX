@@ -33,11 +33,11 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_17
-        targetCompatibility = JavaVersion.VERSION_17
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
     kotlinOptions {
-        jvmTarget = "17"
+        jvmTarget = "21"
         freeCompilerArgs += listOf("-Xskip-metadata-version-check")
     }
     buildFeatures {
@@ -78,8 +78,8 @@ dependencies {
     // Markdown
     implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.25.0")
 
-    // Llama Inference (Using locally patched AAR to fix JNI embedding crash)
-    implementation(files("libs/llamacpp-kotlin-0.4.0-patched.aar"))
+    // LiteRT-LM Inference Engine
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.12.0")
 
     // ObjectBox Kotlin Extensions
     implementation("io.objectbox:objectbox-kotlin:4.0.0")

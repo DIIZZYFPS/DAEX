@@ -1,22 +1,25 @@
 package com.daex.android.services
 
-import android.content.ContentResolver
 import android.content.Context
-import android.net.Uri
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.takeWhile
-import kotlinx.coroutines.launch
-import org.nehuatl.llamacpp.LlamaAndroid
-import org.nehuatl.llamacpp.LlamaHelper
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.util.Random
-import kotlin.math.absoluteValue
+import com.google.ai.edge.litertlm.Engine
+import com.google.ai.edge.litertlm.EngineConfig
+import com.google.ai.edge.litertlm.Backend
+import com.google.ai.edge.litertlm.Conversation
+import com.google.ai.edge.litertlm.ConversationConfig
+import com.google.ai.edge.litertlm.Channel
+import com.google.ai.edge.litertlm.Message as LiteRtMessage
+import com.google.ai.edge.litertlm.Contents as LiteRtContents
+import com.google.ai.edge.litertlm.Role as LiteRtRole
+
+enum class BackendType {
+    CPU,
+    GPU,
+    NPU
+}
 
 data class Message(
     val id: String,
@@ -27,7 +30,7 @@ data class Message(
 )
 
 interface LlamaService {
-    suspend fun initContext(modelPath: String, useGPU: Boolean = false)
+    suspend fun initContext(modelPath: String, backendType: BackendType): BackendType
     suspend fun releaseContext()
     suspend fun generateResponse(
         messages: List<Message>,
@@ -45,108 +48,98 @@ data class GenerationResult(
 )
 
 class LlamaServiceImpl(private val context: Context) : LlamaService {
-    private val llamaAndroid = LlamaAndroid(context.contentResolver)
-    private val tokenFlow = MutableSharedFlow<String>(extraBufferCapacity = 128)
-    private var currentContextId: Int? = null
+    private var engine: Engine? = null
+    private var conversation: Conversation? = null
     private var isLoaded = false
-    private var isGenerating = false
-    
-    // Gemma 4 chat template tokens
-    private val BOS = "<bos>"
-    private val TURN_START = "<|turn>"
-    private val TURN_END = "<turn|>"
 
-    private fun formatPrompt(messages: List<Message>, systemContext: String, isReasoningEnabled: Boolean): String {
-        val sb = StringBuilder()
-        val thinkPrefix = if (isReasoningEnabled) "<|think|>" else ""
-        
-        val systemPrompt = buildString {
-            append(thinkPrefix)
-            append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n\n")
-            if (systemContext.isNotBlank()) {
-                append("<global_memory>\n")
-                append(systemContext)
-                append("\n</global_memory>\n\n")
-                append("The above is your persistent memory. Use it to personalize your responses. Do NOT attempt to update it yourself.\n")
-            }
-        }
-        
-        sb.append("$BOS${TURN_START}system\n$systemPrompt$TURN_END\n")
-        
-        for (msg in messages) {
-            sb.append("${TURN_START}${msg.role}\n${msg.content}$TURN_END\n")
-        }
-        
-        // Open the model turn for generation
-        sb.append("${TURN_START}model\n")
-        return sb.toString()
-    }
-
-    override suspend fun initContext(modelPath: String, useGPU: Boolean) {
-        withContext(Dispatchers.IO) {
-            var modelFd = -1
+    override suspend fun initContext(modelPath: String, backendType: BackendType): BackendType {
+        return withContext(Dispatchers.IO) {
             try {
-                currentContextId?.let { 
-                    try { llamaAndroid.releaseContext(it) } catch (e: Exception) {}
-                    currentContextId = null
+                releaseContext()
+                Log.d("LlamaService", "Initializing LiteRT-LM Engine with model: $modelPath (backend=$backendType)")
+                
+                // Enable Speculative Decoding / MTP drafters for high-performance inference
+                try {
+                    @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
+                    com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = true
+                } catch (e: Throwable) {
+                    Log.w("LlamaService", "Failed to set speculative decoding flag", e)
                 }
 
-                val modelUri = Uri.fromFile(File(modelPath))
-                val modelPfd = context.contentResolver.openFileDescriptor(modelUri, "r")
-                    ?: throw IllegalArgumentException("Cannot open model file: $modelPath")
-                
-                modelFd = modelPfd.detachFd()
-                
-                val config = mutableMapOf<String, Any>(
-                    "model" to modelUri.toString(),
-                    "model_fd" to modelFd,
-                    "use_mmap" to true,
-                    "use_mlock" to false,
-                    "n_ctx" to 131072,
-                    "cache_type_k" to "q4_0",
-                    "cache_type_v" to "q4_0",
-                    "embedding" to false,
-                    "n_batch" to 2048,
-                    "n_threads" to 8,
-                    "flash_attn" to true,
-                    "n_gpu_layers" to (if (useGPU) 99 else 0),
-                    "vocab_only" to false,
-                    "lora" to "",
-                    "lora_scaled" to 1.0,
-                    "rope_freq_base" to 0.0,
-                    "rope_freq_scale" to 0.0
+                val backend = when (backendType) {
+                    BackendType.NPU -> Backend.NPU(context.applicationInfo.nativeLibraryDir)
+                    BackendType.GPU -> Backend.GPU()
+                    BackendType.CPU -> Backend.CPU(numOfThreads = 4) // Optimized thread count for big cores
+                }
+
+                val config = EngineConfig(
+                    modelPath = modelPath,
+                    backend = backend,
+                    cacheDir = context.cacheDir.absolutePath
                 )
 
-                val result = llamaAndroid.startEngine(config) { token ->
-                    tokenFlow.tryEmit(token)
+                var newEngine: Engine? = null
+                try {
+                    newEngine = Engine(config)
+                    newEngine.initialize()
+                } catch (specEx: Exception) {
+                    // If speculative decoding initialization failed, retry without it
+                    Log.w("LlamaService", "Failed to initialize with speculative decoding, retrying with it disabled", specEx)
+                    try {
+                        @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
+                        com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = false
+                    } catch (e: Throwable) {}
+                    
+                    newEngine?.close()
+                    newEngine = Engine(config)
+                    newEngine.initialize()
                 }
 
-                if (result == null) {
-                    // If startEngine failed, it might not have closed the FD.
-                    // But usually, JNI side takes ownership if we detach.
-                    // However, if it didn't even reach JNI...
-                    throw Exception("Failed to start llama engine")
-                }
-                
-                val id = result["contextId"] ?: throw Exception("No contextId in result")
-                currentContextId = (id as Number).toInt()
+                engine = newEngine
                 isLoaded = true
-                Log.d("LlamaService", "Model loaded with context ID: $currentContextId")
+                Log.d("LlamaService", "LiteRT-LM Engine initialized successfully with $backendType")
+                backendType
             } catch (e: Exception) {
-                isLoaded = false
-                Log.e("LlamaService", "Failed to init context", e)
-                throw e
+                // Cascading Fallback: NPU -> GPU -> CPU
+                when (backendType) {
+                    BackendType.NPU -> {
+                        Log.w("LlamaService", "NPU initialization failed (missing TF_LITE_AUX), attempting fallback to GPU", e)
+                        initContext(modelPath, BackendType.GPU)
+                    }
+                    BackendType.GPU -> {
+                        Log.w("LlamaService", "GPU initialization failed, attempting fallback to CPU", e)
+                        initContext(modelPath, BackendType.CPU)
+                    }
+                    BackendType.CPU -> {
+                        isLoaded = false
+                        Log.e("LlamaService", "Failed to initialize LiteRT-LM Engine on CPU", e)
+                        throw e
+                    }
+                }
             }
         }
     }
 
     override suspend fun releaseContext() {
         withContext(Dispatchers.IO) {
-            currentContextId?.let {
-                llamaAndroid.releaseContext(it)
-                currentContextId = null
+            try {
+                conversation?.close()
+            } catch (e: Exception) {
+                Log.e("LlamaService", "Error closing conversation", e)
+            } finally {
+                conversation = null
             }
+
+            try {
+                engine?.close()
+            } catch (e: Exception) {
+                Log.e("LlamaService", "Error closing engine", e)
+            } finally {
+                engine = null
+            }
+            
             isLoaded = false
+            Log.d("LlamaService", "Engine and conversation released")
         }
     }
 
@@ -156,53 +149,91 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
         isReasoningEnabled: Boolean,
         onToken: (String) -> Unit
     ): GenerationResult {
-        val contextId = currentContextId ?: throw Exception("Model not loaded.")
+        val activeEngine = engine ?: throw Exception("Model not loaded.")
         
-        val prompt = formatPrompt(messages, systemContext, isReasoningEnabled)
+        val systemInstructionText = buildString {
+            append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n\n")
+            if (systemContext.isNotBlank()) {
+                append("<global_memory>\n")
+                append(systemContext)
+                append("\n</global_memory>\n\n")
+                append("The above is your persistent memory. Use it to personalize your responses. Do NOT attempt to update it yourself.\n")
+            }
+        }
+
+        // Separate user's latest prompt from the conversation history
+        val history = messages.dropLast(1)
+        val activePrompt = messages.lastOrNull()?.content ?: ""
+
+        val initialLiteRtMessages = history.map { msg ->
+            when (msg.role) {
+                "user" -> LiteRtMessage.user(msg.content)
+                "model" -> LiteRtMessage.model(LiteRtContents.of(msg.content))
+                else -> LiteRtMessage.user(msg.content)
+            }
+        }
+
+        val channels = if (isReasoningEnabled) {
+            listOf(Channel(channelName = "thinking", start = "<|think|>", end = "\n"))
+        } else {
+            emptyList()
+        }
+
+        val conversationConfig = ConversationConfig(
+            systemInstruction = LiteRtContents.of(systemInstructionText),
+            initialMessages = initialLiteRtMessages,
+            channels = channels
+        )
+
+        // Close the previous conversation to start fresh with new history
+        try {
+            conversation?.close()
+        } catch (e: Exception) {}
+
+        val activeConversation = activeEngine.createConversation(conversationConfig)
+        conversation = activeConversation
+
         val startTime = System.currentTimeMillis()
         var tokenCount = 0
         val fullText = StringBuilder()
-        
-        isGenerating = true
-        
-        try {
-            val params = mutableMapOf<String, Any>(
-                "prompt" to prompt,
-                "emit_partial_completion" to true,
-                "temperature" to 0.7,
-                "n_predict" to 1024
-            )
 
-            // Collection job with its own local state to avoid race condition
-            val collectionJob = CoroutineScope(Dispatchers.Default).launch {
-                tokenFlow
-                    .collect { token ->
-                        // In some implementations, an empty token or a specific end token is sent
-                        tokenCount++
-                        fullText.append(token)
-                        onToken(token)
+        var hasStartedThinking = false
+        var hasEndedThinking = false
+
+        val extraContext = mapOf("enable_thinking" to isReasoningEnabled)
+
+        withContext(Dispatchers.IO) {
+            activeConversation.sendMessageAsync(activePrompt, extraContext).collect { reply ->
+                val thinkingChunk = reply.channels["thinking"]
+                val chunk = reply.contents.toString()
+
+                if (!thinkingChunk.isNullOrEmpty()) {
+                    if (!hasStartedThinking) {
+                        onToken("<|think|>")
+                        hasStartedThinking = true
                     }
-            }
+                    onToken(thinkingChunk)
+                }
 
-            withContext(Dispatchers.IO) {
-                // Launch completion - this blocks until the generation is finished (on the JNI side)
-                llamaAndroid.launchCompletion(contextId, params)
+                if (chunk.isNotEmpty()) {
+                    if (hasStartedThinking && !hasEndedThinking) {
+                        onToken("</think|>")
+                        hasEndedThinking = true
+                    }
+                    tokenCount++
+                    fullText.append(chunk)
+                    onToken(chunk)
+                }
             }
-            
-            // Give a tiny buffer for any remaining tokens in the shared flow to be collected
-            delay(100) 
-            collectionJob.cancel()
-
-        } catch (e: Exception) {
-            Log.e("LlamaService", "Generation failed", e)
-            throw e
-        } finally {
-            isGenerating = false
         }
-        
+
+        if (hasStartedThinking && !hasEndedThinking) {
+            onToken("</think|>")
+        }
+
         val elapsedSeconds = (System.currentTimeMillis() - startTime) / 1000.0
         val tps = if (elapsedSeconds > 0) tokenCount / elapsedSeconds else 0.0
-        
+
         return GenerationResult(
             text = fullText.toString(),
             tokensPerSecond = Math.round(tps * 10.0) / 10.0
@@ -212,41 +243,40 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
     override fun isLoaded(): Boolean = isLoaded
     
     fun cancelGeneration() {
-        isGenerating = false
+        try {
+            conversation?.cancelProcess()
+        } catch (e: Exception) {
+            Log.e("LlamaService", "Failed to cancel process", e)
+        }
     }
 
     override suspend fun generateSilent(prompt: String, maxTokens: Int): String {
-        val contextId = currentContextId ?: throw Exception("Model not loaded.")
-        val fullText = StringBuilder()
-
-        isGenerating = true
+        val activeEngine = engine ?: throw Exception("Model not loaded.")
+        
+        // Release the active conversation first to avoid "A session already exists" error
         try {
-            val params = mutableMapOf<String, Any>(
-                "prompt" to prompt,
-                "emit_partial_completion" to true,
-                "temperature" to 0.3,
-                "n_predict" to maxTokens
-            )
+            conversation?.close()
+        } catch (e: Exception) {}
+        conversation = null
 
-            val collectionJob = CoroutineScope(Dispatchers.Default).launch {
-                tokenFlow.collect { token ->
-                    fullText.append(token)
+        val convConfig = ConversationConfig(
+            systemInstruction = LiteRtContents.of(""),
+            initialMessages = emptyList()
+        )
+        val tempConv = activeEngine.createConversation(convConfig)
+        val responseText = StringBuilder()
+        
+        try {
+            withContext(Dispatchers.IO) {
+                tempConv.sendMessageAsync(prompt).collect { reply ->
+                    responseText.append(reply.contents.toString())
                 }
             }
-
-            withContext(Dispatchers.IO) {
-                llamaAndroid.launchCompletion(contextId, params)
-            }
-
-            delay(100)
-            collectionJob.cancel()
-        } catch (e: Exception) {
-            Log.e("LlamaService", "Silent generation failed", e)
-            throw e
         } finally {
-            isGenerating = false
+            try {
+                tempConv.close()
+            } catch (e: Exception) {}
         }
-
-        return fullText.toString()
+        return responseText.toString()
     }
 }

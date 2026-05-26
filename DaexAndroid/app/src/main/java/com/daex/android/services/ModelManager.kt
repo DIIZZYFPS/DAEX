@@ -37,7 +37,7 @@ class ModelManager(private val context: Context) {
     private var isDownloading = false
 
     fun getModelPath(model: Model): String {
-        return File(context.filesDir, "${model.id}.gguf").absolutePath
+        return File(context.filesDir, "${model.id}.${model.extension}").absolutePath
     }
 
     fun checkSpecSupport(model: Model): SpecSupport {
