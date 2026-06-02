@@ -2,11 +2,14 @@
   "packages": {
     "DaexAndroid": {
       "path": "DaexAndroid",
-      "release-type": "java",
+      "release-type": "simple",
       "package-name": "DaexAndroid",
       "changelog-path": "DaexAndroid/CHANGELOG.md",
       "bump-minor-pre-major": true,
-      "bump-patch-pre-major": true
+      "bump-patch-pre-major": true,
+      "extra-files": [
+        "app/build.gradle.kts"
+      ]
     }
   },
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
