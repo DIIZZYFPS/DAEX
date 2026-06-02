@@ -1,0 +1,12 @@
+{
+  "packages": {
+    "DaexAndroid": {
+      "release-type": "android",
+      "package-name": "DaexAndroid",
+      "changelog-path": "DaexAndroid/CHANGELOG.md",
+      "bump-minor-pre-major": true,
+      "bump-patch-pre-major": true
+    }
+  },
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json"
+}
