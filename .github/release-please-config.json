@@ -1,6 +1,7 @@
 {
   "packages": {
     "DaexAndroid": {
+      "path": "DaexAndroid",
       "release-type": "java",
       "package-name": "DaexAndroid",
       "changelog-path": "DaexAndroid/CHANGELOG.md",
