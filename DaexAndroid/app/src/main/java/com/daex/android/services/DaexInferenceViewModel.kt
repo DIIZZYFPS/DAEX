@@ -13,11 +13,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.firstOrNull
 
 enum class ModelStatus {
     NOT_DOWNLOADED, DOWNLOADING, LOADING, READY, ERROR
 }
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DaexInferenceViewModel(
     private val llamaService: LlamaService,
     private val modelManager: ModelManager? = null,
@@ -60,6 +62,9 @@ class DaexInferenceViewModel(
 
     private val _useGPU = MutableStateFlow(false)
     val useGPU: StateFlow<Boolean> = _useGPU.asStateFlow()
+
+    private val _selectedBackend = MutableStateFlow(BackendType.CPU)
+    val selectedBackend: StateFlow<BackendType> = _selectedBackend.asStateFlow()
 
     private val _hardwareState = MutableStateFlow("CPU")
     val hardwareState: StateFlow<String> = _hardwareState.asStateFlow()
@@ -124,6 +129,29 @@ class DaexInferenceViewModel(
                 }
             }.collectLatest {
                 _messages.value = it
+            }
+        }
+
+        // Autoload last used model if already downloaded
+        viewModelScope.launch {
+            val modelId = preferences?.lastUsedModelIdFlow?.firstOrNull()
+            val backendStr = preferences?.lastUsedBackendFlow?.firstOrNull() ?: "CPU"
+            android.util.Log.d("DaexAutoload", "Autoload check: modelId=$modelId, backend=$backendStr")
+            if (modelId != null) {
+                val model = ModelBank.generativeModels.find { it.id == modelId }
+                val isDownloaded = model?.let { modelManager?.isModelDownloaded(it) } ?: false
+                android.util.Log.d("DaexAutoload", "Model found: ${model?.name}, isDownloaded=$isDownloaded")
+                if (model != null && isDownloaded) {
+                    val savedBackend = try {
+                        BackendType.valueOf(backendStr)
+                    } catch (e: Exception) {
+                        BackendType.CPU
+                    }
+                    _selectedBackend.value = savedBackend
+                    _useGPU.value = (savedBackend == BackendType.GPU)
+                    android.util.Log.d("DaexAutoload", "Triggering autoload for ${model.name} on $savedBackend")
+                    loadModel(model)
+                }
             }
         }
 
@@ -266,16 +294,28 @@ class DaexInferenceViewModel(
 
             try {
                 val modelPath = modelManager.getModelPath(model)
-                llamaService.initContext(modelPath, _useGPU.value)
-                _modelStatus.value = ModelStatus.READY
-                
-                val specs = deviceService?.getDeviceSpecs()
-                if (specs != null) {
-                    _hardwareState.value = if (_useGPU.value && specs.hasVulkan) "Vulkan Ready (${specs.totalRAM / 1024 / 1024 / 1024}GB RAM)"
-                    else "CPU Only (${specs.totalRAM / 1024 / 1024 / 1024}GB RAM)"
+                val targetBackend = if (model.supportedBackends.contains(_selectedBackend.value)) {
+                    _selectedBackend.value
                 } else {
-                    _hardwareState.value = if (_useGPU.value) "GPU" else "CPU"
+                    model.supportedBackends.firstOrNull() ?: BackendType.CPU
                 }
+                _selectedBackend.value = targetBackend
+                val actualBackend = llamaService.initContext(modelPath, targetBackend)
+                _selectedBackend.value = actualBackend
+                _hardwareState.value = actualBackend.name
+                
+                // Warm up the engine silently with 1 token to pre-allocate activation memory
+                try {
+                    android.util.Log.d("DaexAutoload", "Warming up model...")
+                    llamaService.generateSilent("warmup", maxTokens = 1)
+                    android.util.Log.d("DaexAutoload", "Warmup complete.")
+                } catch (warmupEx: Exception) {
+                    android.util.Log.w("DaexAutoload", "Warmup failed silently, continuing", warmupEx)
+                }
+
+                _modelStatus.value = ModelStatus.READY
+                android.util.Log.d("DaexAutoload", "Model loaded successfully. Saving configuration to preferences: id=${model.id}, backend=${actualBackend.name}")
+                preferences?.setLastUsedModel(model.id, actualBackend.name)
             } catch (e: Exception) {
                 _modelStatus.value = ModelStatus.ERROR
                 _errorMessage.value = e.message ?: "Failed to load model"
@@ -292,8 +332,23 @@ class DaexInferenceViewModel(
     }
 
     fun toggleGPU(model: Model? = null) {
-        val targetModel = model ?: _currentModel.value ?: return
-        _useGPU.value = !_useGPU.value
+        val nextBackend = if (_selectedBackend.value == BackendType.CPU) BackendType.GPU else BackendType.CPU
+        setBackend(nextBackend, model)
+    }
+
+    fun setBackend(backend: BackendType, model: Model? = null) {
+        val targetModel = model ?: _currentModel.value
+        if (targetModel != null && !targetModel.supportedBackends.contains(backend)) {
+            _errorMessage.value = "${targetModel.name} does not support ${backend.name} execution."
+            return
+        }
+
+        _selectedBackend.value = backend
+        _useGPU.value = (backend == BackendType.GPU)
+        if (targetModel == null) {
+            _hardwareState.value = backend.name
+            return
+        }
 
         if (llamaService.isLoaded()) {
             _modelStatus.value = ModelStatus.LOADING
@@ -301,14 +356,17 @@ class DaexInferenceViewModel(
                 try {
                     llamaService.releaseContext()
                     val modelPath = modelManager?.getModelPath(targetModel) ?: ""
-                    llamaService.initContext(modelPath, _useGPU.value)
+                    val actualBackend = llamaService.initContext(modelPath, backend)
+                    _selectedBackend.value = actualBackend
+                    _hardwareState.value = actualBackend.name
                     _modelStatus.value = ModelStatus.READY
-                    _hardwareState.value = if (_useGPU.value) "GPU" else "CPU"
                 } catch (e: Exception) {
                     _modelStatus.value = ModelStatus.ERROR
                     _errorMessage.value = e.message ?: "Failed to reload model"
                 }
             }
+        } else {
+            _hardwareState.value = backend.name
         }
     }
 

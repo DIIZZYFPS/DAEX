@@ -5,6 +5,8 @@ import com.daex.android.database.DocumentChunkEntity
 import com.daex.android.database.DocumentChunkEntity_
 import io.objectbox.BoxStore
 import io.objectbox.kotlin.query
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 interface DaexRag {
@@ -13,7 +15,7 @@ interface DaexRag {
     suspend fun queryDocuments(query: String, maxResults: Int = 5): List<String>
     suspend fun getUploadedFiles(): List<String>
     suspend fun deleteFile(documentId: String)
-    fun hasDocuments(): Boolean
+    suspend fun hasDocuments(): Boolean
 }
 
 class DaexRagImpl(
@@ -28,33 +30,37 @@ class DaexRagImpl(
     }
 
     override suspend fun ingestFile(fileName: String, content: String, onProgress: (Int, Int) -> Unit) {
-        val documentId = UUID.randomUUID().toString()
-        val chunks = chunkText(content)
-        Log.d("DaexRag", "Ingesting file '$fileName': ${chunks.size} chunks")
+        withContext(Dispatchers.Default) {
+            val documentId = UUID.randomUUID().toString()
+            val chunks = chunkText(content)
+            Log.d("DaexRag", "Ingesting file '$fileName': ${chunks.size} chunks")
 
-        chunks.forEachIndexed { index, chunkText ->
-            try {
-                val vector = embedder.generateEmbedding(chunkText, isQuery = false)
-                val entity = DocumentChunkEntity(
-                    documentId = documentId,
-                    fileName = fileName,
-                    chunkIndex = index,
-                    content = chunkText,
-                    embedding = vector
-                )
-                chunkBox.put(entity)
-                onProgress(index + 1, chunks.size)
-                Log.d("DaexRag", "Embedded chunk ${index + 1}/${chunks.size}")
-            } catch (e: Exception) {
-                Log.e("DaexRag", "Failed to embed chunk $index of '$fileName'", e)
+            chunks.forEachIndexed { index, chunkText ->
+                try {
+                    val vector = embedder.generateEmbedding(chunkText, isQuery = false)
+                    val entity = DocumentChunkEntity(
+                        documentId = documentId,
+                        fileName = fileName,
+                        chunkIndex = index,
+                        content = chunkText,
+                        embedding = vector
+                    )
+                    withContext(Dispatchers.IO) {
+                        chunkBox.put(entity)
+                    }
+                    onProgress(index + 1, chunks.size)
+                    Log.d("DaexRag", "Embedded chunk ${index + 1}/${chunks.size}")
+                } catch (e: Exception) {
+                    Log.e("DaexRag", "Failed to embed chunk $index of '$fileName'", e)
+                }
             }
+            Log.d("DaexRag", "File '$fileName' ingested: $documentId")
         }
-        Log.d("DaexRag", "File '$fileName' ingested: $documentId")
     }
 
-    override suspend fun queryDocuments(query: String, maxResults: Int): List<String> {
-        return try {
-            if (chunkBox.count() == 0L) return emptyList()
+    override suspend fun queryDocuments(query: String, maxResults: Int): List<String> = withContext(Dispatchers.IO) {
+        try {
+            if (chunkBox.count() == 0L) return@withContext emptyList()
 
             val queryVector = embedder.generateEmbedding(query, isQuery = true)
 
@@ -63,7 +69,7 @@ class DaexRagImpl(
                 .build()
                 .findWithScores()
 
-            val chunks = results.map { it.get().content }
+            val chunks = results.map { result -> result.get().content }
             Log.d("DaexRag", "Query returned ${chunks.size} chunks for: ${query.take(50)}")
             chunks
         } catch (e: Exception) {
@@ -72,11 +78,14 @@ class DaexRagImpl(
         }
     }
 
-    override suspend fun getUploadedFiles(): List<String> {
-        return try {
-            chunkBox.all
-                .map { it.fileName }
+    @Suppress("DEPRECATION")
+    override suspend fun getUploadedFiles(): List<String> = withContext(Dispatchers.IO) {
+        try {
+            chunkBox.query().build()
+                .property(DocumentChunkEntity_.fileName)
                 .distinct()
+                .findStrings()
+                .toList()
         } catch (e: Exception) {
             Log.e("DaexRag", "Failed to get uploaded files", e)
             emptyList()
@@ -84,19 +93,21 @@ class DaexRagImpl(
     }
 
     override suspend fun deleteFile(documentId: String) {
-        try {
-            val chunks = chunkBox.query {
-                equal(DocumentChunkEntity_.documentId, documentId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
-            }.find()
-            chunkBox.remove(chunks)
-            Log.d("DaexRag", "Deleted ${chunks.size} chunks for document $documentId")
-        } catch (e: Exception) {
-            Log.e("DaexRag", "Failed to delete file", e)
+        withContext(Dispatchers.IO) {
+            try {
+                val chunks = chunkBox.query {
+                    equal(DocumentChunkEntity_.documentId, documentId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+                }.find()
+                chunkBox.remove(chunks)
+                Log.d("DaexRag", "Deleted ${chunks.size} chunks for document $documentId")
+            } catch (e: Exception) {
+                Log.e("DaexRag", "Failed to delete file", e)
+            }
         }
     }
 
-    override fun hasDocuments(): Boolean {
-        return try {
+    override suspend fun hasDocuments(): Boolean = withContext(Dispatchers.IO) {
+        try {
             chunkBox.count() > 0
         } catch (e: Exception) {
             false

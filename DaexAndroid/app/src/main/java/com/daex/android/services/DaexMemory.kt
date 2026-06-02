@@ -9,6 +9,8 @@ import io.objectbox.kotlin.query
 import io.objectbox.kotlin.flow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 data class Conversation(
@@ -18,6 +20,7 @@ data class Conversation(
     val createdAt: Long
 )
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DaexMemory(private val boxStore: BoxStore) {
     private val conversationBox = boxStore.boxFor(ConversationEntity::class.java)
     private val messageBox = boxStore.boxFor(MessageEntity::class.java)
@@ -39,22 +42,22 @@ class DaexMemory(private val boxStore: BoxStore) {
         }
     }
 
-    suspend fun getRecentHistory(conversationId: String, limit: Int = 500): List<Message> {
+    suspend fun getRecentHistory(conversationId: String, limit: Int = 500): List<Message> = withContext(Dispatchers.IO) {
         val entities = messageBox.query {
             equal(MessageEntity_.conversationId, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
             orderDesc(MessageEntity_.timestamp)
         }.find(0, limit.toLong())
-        return entities.reversed().map { it.toDomain() }
+        entities.reversed().map { it.toDomain() }
     }
 
-    suspend fun createConversation(modelId: String, title: String = "New Execution"): String {
+    suspend fun createConversation(modelId: String, title: String = "New Execution"): String = withContext(Dispatchers.IO) {
         val id = UUID.randomUUID().toString()
         val conversation = ConversationEntity(uuid = id, title = title, modelId = modelId)
         conversationBox.put(conversation)
-        return id
+        id
     }
 
-    suspend fun saveMessage(conversationId: String, message: Message, embedding: FloatArray? = null) {
+    suspend fun saveMessage(conversationId: String, message: Message, embedding: FloatArray? = null) = withContext(Dispatchers.IO) {
         var entity = messageBox.query {
             equal(MessageEntity_.uuid, message.id, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
         }.findFirst()
@@ -80,7 +83,7 @@ class DaexMemory(private val boxStore: BoxStore) {
         messageBox.put(entity)
     }
 
-    suspend fun deleteConversation(conversationId: String) {
+    suspend fun deleteConversation(conversationId: String) = withContext(Dispatchers.IO) {
         val conversation = conversationBox.query {
             equal(ConversationEntity_.uuid, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
         }.findFirst()
@@ -94,7 +97,8 @@ class DaexMemory(private val boxStore: BoxStore) {
             messageBox.remove(messages)
         }
     }
-    fun searchSimilarContext(queryVector: FloatArray, maxResults: Int = 5, queryText: String = ""): List<Message> {
+
+    suspend fun searchSimilarContext(queryVector: FloatArray, maxResults: Int = 5, queryText: String = ""): List<Message> = withContext(Dispatchers.IO) {
         val count = messageBox.count()
         android.util.Log.d("DaexMemory", "Searching across $count messages")
 
@@ -131,7 +135,7 @@ class DaexMemory(private val boxStore: BoxStore) {
             }
         }
 
-        return contextMessages.map { it.toDomain() }
+        contextMessages.map { it.toDomain() }
     }
 
     private fun ConversationEntity.toDomain() = Conversation(

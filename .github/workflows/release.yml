@@ -1,0 +1,50 @@
+name: release-please
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: google-github-actions/release-please-action@v4
+        id: release
+        with:
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          config-file: .github/release-please-config.json
+          manifest-file: .github/release-please-manifest.json
+
+      # Checkout and build only if a release was actually created for DaexAndroid
+      - name: Checkout Code
+        if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Build Android App (APK)
+        if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
+        run: |
+          cd DaexAndroid
+          chmod +x gradlew
+          ./gradlew assembleRelease assembleDebug
+
+      - name: Upload APKs to GitHub Release
+        if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ steps.release.outputs['DaexAndroid--tag_name'] }} DaexAndroid/app/build/outputs/apk/release/app-release-unsigned.apk
+          gh release upload ${{ steps.release.outputs['DaexAndroid--tag_name'] }} DaexAndroid/app/build/outputs/apk/debug/app-debug.apk

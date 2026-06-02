@@ -37,7 +37,7 @@ class ModelManager(private val context: Context) {
     private var isDownloading = false
 
     fun getModelPath(model: Model): String {
-        return File(context.filesDir, "${model.id}.gguf").absolutePath
+        return File(context.filesDir, "${model.id}.${model.extension}").absolutePath
     }
 
     fun checkSpecSupport(model: Model): SpecSupport {
@@ -85,30 +85,30 @@ class ModelManager(private val context: Context) {
         isDownloading = true
         try {
             val request = Request.Builder().url(model.downloadUrl).build()
-            val response = client.newCall(request).execute()
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) throw Exception("Failed to download model: ${response.code}")
 
-            if (!response.isSuccessful) throw Exception("Failed to download model: ${response.code}")
-
-            val body = response.body ?: throw Exception("Empty response body")
-            val totalBytes = body.contentLength().takeIf { it > 0 } ?: model.size
-            
-            body.byteStream().use { input ->
-                FileOutputStream(file).use { output ->
-                    val buffer = ByteArray(8192)
-                    var bytesRead: Int
-                    var totalDownloaded = 0L
-                    
-                    while (input.read(buffer).also { bytesRead = it } != -1 && isDownloading) {
-                        output.write(buffer, 0, bytesRead)
-                        totalDownloaded += bytesRead
+                val body = response.body ?: throw Exception("Empty response body")
+                val totalBytes = body.contentLength().takeIf { it > 0 } ?: model.size
+                
+                body.byteStream().use { input ->
+                    FileOutputStream(file).use { output ->
+                        val buffer = ByteArray(8192)
+                        var bytesRead: Int
+                        var totalDownloaded = 0L
                         
-                        val percent = if (totalBytes > 0) ((totalDownloaded.toDouble() / totalBytes) * 100).toInt() else 0
-                        onProgress?.invoke(DownloadProgress(totalDownloaded, totalBytes, percent))
-                    }
-                    
-                    if (!isDownloading) {
-                        file.delete()
-                        throw Exception("Download cancelled")
+                        while (input.read(buffer).also { bytesRead = it } != -1 && isDownloading) {
+                            output.write(buffer, 0, bytesRead)
+                            totalDownloaded += bytesRead
+                            
+                            val percent = if (totalBytes > 0) ((totalDownloaded.toDouble() / totalBytes) * 100).toInt() else 0
+                            onProgress?.invoke(DownloadProgress(totalDownloaded, totalBytes, percent))
+                        }
+                        
+                        if (!isDownloading) {
+                            file.delete()
+                            throw Exception("Download cancelled")
+                        }
                     }
                 }
             }
@@ -126,7 +126,7 @@ class ModelManager(private val context: Context) {
         isDownloading = false
     }
 
-    fun deleteModel(model: Model) {
+    suspend fun deleteModel(model: Model) = withContext(Dispatchers.IO) {
         val file = File(getModelPath(model))
         if (file.exists()) {
             file.delete()

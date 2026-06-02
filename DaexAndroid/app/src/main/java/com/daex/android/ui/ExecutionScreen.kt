@@ -29,6 +29,10 @@ import com.daex.android.services.ModelBank
 import com.daex.android.services.ModelManager
 import com.daex.android.services.ModelStatus
 import com.daex.android.ui.components.*
+import com.daex.android.services.BackendType
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Text
 import com.daex.android.ui.theme.DaexTheme
 
 @Composable
@@ -55,6 +59,7 @@ fun ExecutionScreen(
     var inputText by remember { mutableStateOf("") }
     var sidebarVisible by remember { mutableStateOf(false) }
     var selectorVisible by remember { mutableStateOf(false) }
+    var backendMenuExpanded by remember { mutableStateOf(false) }
 
     // File picker launcher
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -233,25 +238,65 @@ fun ExecutionScreen(
 
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     // Status Badge
-                    Row(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(DaexTheme.colors.primary.copy(alpha = 0.08f))
-                            .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
-                            .padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Box(
+                    Box {
+                        Row(
                             modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(statusColor)
-                        )
-                        BasicText(
-                            text = statusBadgeText,
-                            style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.onSurface, fontSize = 10.sp)
-                        )
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(DaexTheme.colors.primary.copy(alpha = 0.08f))
+                                .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                                .clickable { 
+                                    if (modelStatus == ModelStatus.READY) {
+                                        backendMenuExpanded = true 
+                                    }
+                                }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(statusColor)
+                            )
+                            BasicText(
+                                text = statusBadgeText + if (modelStatus == ModelStatus.READY) " ▾" else "",
+                                style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.onSurface, fontSize = 10.sp)
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = backendMenuExpanded,
+                            onDismissRequest = { backendMenuExpanded = false }
+                        ) {
+                            if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.CPU)) {
+                                DropdownMenuItem(
+                                    text = { Text("CPU Backend", color = DaexTheme.colors.onBackground) },
+                                    onClick = {
+                                        backendMenuExpanded = false
+                                        viewModel.setBackend(BackendType.CPU)
+                                    }
+                                )
+                            }
+                            if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.GPU)) {
+                                DropdownMenuItem(
+                                    text = { Text("GPU Offload", color = DaexTheme.colors.onBackground) },
+                                    onClick = {
+                                        backendMenuExpanded = false
+                                        viewModel.setBackend(BackendType.GPU)
+                                    }
+                                )
+                            }
+                            if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.NPU)) {
+                                DropdownMenuItem(
+                                    text = { Text("NPU Acceleration", color = DaexTheme.colors.onBackground) },
+                                    onClick = {
+                                        backendMenuExpanded = false
+                                        viewModel.setBackend(BackendType.NPU)
+                                    }
+                                )
+                            }
+                        }
                     }
 
                     BasicText(
