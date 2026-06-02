@@ -648,6 +648,9 @@ fun ExecutionScreen(
                 settingsVisible = false
                 memoryEditorVisible = true
                 viewModel.loadCoreMemory()
+            },
+            onShareLogs = {
+                LogShareHelper.shareAppLogs(context)
             }
         )
 

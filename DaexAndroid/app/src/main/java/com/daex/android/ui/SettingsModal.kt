@@ -50,7 +50,8 @@ fun SettingsModal(
     onChangeModel: () -> Unit,
     onDeleteModel: () -> Unit,
     onClearConversations: () -> Unit,
-    onEditMemory: () -> Unit
+    onEditMemory: () -> Unit,
+    onShareLogs: () -> Unit
 ) {
     if (!visible) return
 
@@ -476,6 +477,12 @@ fun SettingsModal(
                                 text = "Clear all conversations",
                                 color = DaexTheme.colors.error,
                                 onClick = onClearConversations
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            ActionButton(
+                                text = "Share system logs",
+                                color = DaexTheme.colors.primary,
+                                onClick = onShareLogs
                             )
                             
                             Spacer(modifier = Modifier.height(40.dp))

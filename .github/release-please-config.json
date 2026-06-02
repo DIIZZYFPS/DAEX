@@ -4,7 +4,7 @@
       "path": "DaexAndroid",
       "release-type": "simple",
       "package-name": "DaexAndroid",
-      "changelog-path": "DaexAndroid/CHANGELOG.md",
+      "changelog-path": "CHANGELOG.md",
       "bump-minor-pre-major": true,
       "bump-patch-pre-major": true,
       "extra-files": [
