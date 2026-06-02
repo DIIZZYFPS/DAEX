@@ -14,7 +14,7 @@ jobs:
   release-please:
     runs-on: ubuntu-latest
     steps:
-      - uses: google-github-actions/release-please-action@v5
+      - uses: googleapis/release-please-action@v5
         id: release
         with:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
@@ -44,7 +44,7 @@ jobs:
       - name: Upload APKs to GitHub Release
         if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
         run: |
           gh release upload ${{ steps.release.outputs['DaexAndroid--tag_name'] }} DaexAndroid/app/build/outputs/apk/release/app-release-unsigned.apk
           gh release upload ${{ steps.release.outputs['DaexAndroid--tag_name'] }} DaexAndroid/app/build/outputs/apk/debug/app-debug.apk
