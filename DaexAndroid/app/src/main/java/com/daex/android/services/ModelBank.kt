@@ -50,6 +50,16 @@ object ModelBank {
             supportedBackends = listOf(BackendType.NPU)
         ),
         Model(
+            id = "gemma-4-E2B-it-google-tensor-g5",
+            name = "Gemma 4-E2B-it (Google Tensor G5)",
+            size = 2_590_000_000L,
+            description = "Gemma 4-E2B-it AOT compiled for Google Tensor G5. Testing NPU compatibility.",
+            requiredRAM = 1_500_000_000L,
+            downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it_Google_Tensor_G5.litertlm",
+            extension = "litertlm",
+            supportedBackends = listOf(BackendType.NPU)
+        ),
+        Model(
             id = "gemma-4-E4B-it-litert-lm",
             name = "Gemma 4-E4B-it (LiteRT)",
             size = 3_660_000_000L,
