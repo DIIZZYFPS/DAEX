@@ -8,7 +8,8 @@ data class Model(
     val requiredRAM: Long,
     val downloadUrl: String,
     val extension: String,
-    val isEmbedding: Boolean = false
+    val isEmbedding: Boolean = false,
+    val supportedBackends: List<BackendType> = listOf(BackendType.CPU, BackendType.GPU)
 )
 
 object ModelBank {
@@ -20,7 +21,8 @@ object ModelBank {
         requiredRAM = 500_000_000L,
         downloadUrl = "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf",
         extension = "tflite",
-        isEmbedding = true
+        isEmbedding = true,
+        supportedBackends = listOf(BackendType.CPU)
     )
 
     val generativeModels: List<Model>
@@ -34,7 +36,18 @@ object ModelBank {
             description = "Gemma 4-E2B-it compiled and quantized for LiteRT-LM. Runs extremely fast on mobile CPU/GPU.",
             requiredRAM = 1_500_000_000L,
             downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm",
-            extension = "litertlm"
+            extension = "litertlm",
+            supportedBackends = listOf(BackendType.CPU, BackendType.GPU)
+        ),
+        Model(
+            id = "gemma-4-E2B-it-qualcomm-sm8750",
+            name = "Gemma 4-E2B-it (Qualcomm SM8750)",
+            size = 2_590_000_000L,
+            description = "Gemma 4-E2B-it AOT compiled for Snapdragon 8 Elite (SM8750). Testing NPU compatibility.",
+            requiredRAM = 1_500_000_000L,
+            downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it_qualcomm_sm8750.litertlm",
+            extension = "litertlm",
+            supportedBackends = listOf(BackendType.NPU)
         ),
         Model(
             id = "gemma-4-E4B-it-litert-lm",
@@ -43,7 +56,8 @@ object ModelBank {
             description = "Gemma 4-E4B-it compiled and quantized for LiteRT-LM. Runs extremely fast on mobile CPU/GPU.",
             requiredRAM = 6_000_000_000L,
             downloadUrl = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm",
-            extension = "litertlm"
+            extension = "litertlm",
+            supportedBackends = listOf(BackendType.CPU, BackendType.GPU)
         ),
         embeddingModel
     )

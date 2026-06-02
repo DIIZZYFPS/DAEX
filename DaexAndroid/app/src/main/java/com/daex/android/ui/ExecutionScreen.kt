@@ -269,27 +269,33 @@ fun ExecutionScreen(
                             expanded = backendMenuExpanded,
                             onDismissRequest = { backendMenuExpanded = false }
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("CPU Backend", color = DaexTheme.colors.onBackground) },
-                                onClick = {
-                                    backendMenuExpanded = false
-                                    viewModel.setBackend(BackendType.CPU)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("GPU Offload", color = DaexTheme.colors.onBackground) },
-                                onClick = {
-                                    backendMenuExpanded = false
-                                    viewModel.setBackend(BackendType.GPU)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("NPU Acceleration", color = DaexTheme.colors.onBackground) },
-                                onClick = {
-                                    backendMenuExpanded = false
-                                    viewModel.setBackend(BackendType.NPU)
-                                }
-                            )
+                            if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.CPU)) {
+                                DropdownMenuItem(
+                                    text = { Text("CPU Backend", color = DaexTheme.colors.onBackground) },
+                                    onClick = {
+                                        backendMenuExpanded = false
+                                        viewModel.setBackend(BackendType.CPU)
+                                    }
+                                )
+                            }
+                            if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.GPU)) {
+                                DropdownMenuItem(
+                                    text = { Text("GPU Offload", color = DaexTheme.colors.onBackground) },
+                                    onClick = {
+                                        backendMenuExpanded = false
+                                        viewModel.setBackend(BackendType.GPU)
+                                    }
+                                )
+                            }
+                            if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.NPU)) {
+                                DropdownMenuItem(
+                                    text = { Text("NPU Acceleration", color = DaexTheme.colors.onBackground) },
+                                    onClick = {
+                                        backendMenuExpanded = false
+                                        viewModel.setBackend(BackendType.NPU)
+                                    }
+                                )
+                            }
                         }
                     }
 

@@ -51,6 +51,33 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
     private var engine: Engine? = null
     private var conversation: Conversation? = null
     private var isLoaded = false
+    private var nativeRuntimeConfigured = false
+
+    companion object {
+        private const val TAG = "LlamaService"
+        
+        init {
+            try {
+                System.loadLibrary("LiteRt")
+                Log.i(TAG, "Loaded libLiteRt.so successfully")
+            } catch (e: Throwable) {
+                Log.w(TAG, "Native library libLiteRt.so load warning: ${e.message}")
+            }
+        }
+    }
+
+    @Synchronized
+    private fun configureNativeRuntime(nativeLibraryDir: String) {
+        if (nativeRuntimeConfigured) return
+        try {
+            android.system.Os.setenv("LD_LIBRARY_PATH", nativeLibraryDir, true)
+            android.system.Os.setenv("ADSP_LIBRARY_PATH", nativeLibraryDir, true)
+            Log.i(TAG, "Successfully set native library paths to $nativeLibraryDir")
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to set native library paths", e)
+        }
+        nativeRuntimeConfigured = true
+    }
 
     override suspend fun initContext(modelPath: String, backendType: BackendType): BackendType {
         return withContext(Dispatchers.IO) {
@@ -74,9 +101,13 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
                 }
 
                 val backend = when (backendType) {
-                    BackendType.NPU -> Backend.NPU(context.applicationInfo.nativeLibraryDir)
+                    BackendType.NPU -> {
+                        val libDir = context.applicationInfo.nativeLibraryDir
+                        configureNativeRuntime(libDir)
+                        Backend.NPU(libDir)
+                    }
                     BackendType.GPU -> Backend.GPU()
-                    BackendType.CPU -> Backend.CPU(numOfThreads = 4) // Using all available CPU cores
+                    BackendType.CPU -> Backend.CPU() // Let LiteRT manage thread count optimally
                 }
 
                 val config = EngineConfig(
@@ -200,7 +231,7 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
         val activeConversation = activeEngine.createConversation(conversationConfig)
         conversation = activeConversation
 
-        val startTime = System.currentTimeMillis()
+        var decodeStartTime = 0L
         var tokenCount = 0
         val fullText = StringBuilder()
 
@@ -214,15 +245,25 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
                 val thinkingChunk = reply.channels["thinking"]
                 val chunk = reply.contents.toString()
 
-                if (!thinkingChunk.isNullOrEmpty()) {
+                val hasThinking = !thinkingChunk.isNullOrEmpty()
+                val hasNormal = chunk.isNotEmpty()
+
+                if (hasThinking || hasNormal) {
+                    if (decodeStartTime == 0L) {
+                        decodeStartTime = System.currentTimeMillis()
+                    }
+                }
+
+                if (hasThinking) {
                     if (!hasStartedThinking) {
                         onToken("<|think|>")
                         hasStartedThinking = true
                     }
-                    onToken(thinkingChunk)
+                    tokenCount++
+                    onToken(thinkingChunk!!)
                 }
 
-                if (chunk.isNotEmpty()) {
+                if (hasNormal) {
                     if (hasStartedThinking && !hasEndedThinking) {
                         onToken("</think|>")
                         hasEndedThinking = true
@@ -238,8 +279,12 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
             onToken("</think|>")
         }
 
-        val elapsedSeconds = (System.currentTimeMillis() - startTime) / 1000.0
-        val tps = if (elapsedSeconds > 0) tokenCount / elapsedSeconds else 0.0
+        val elapsedSeconds = if (decodeStartTime > 0L) {
+            (System.currentTimeMillis() - decodeStartTime) / 1000.0
+        } else {
+            0.0
+        }
+        val tps = if (elapsedSeconds > 0.0) tokenCount / elapsedSeconds else 0.0
 
         return GenerationResult(
             text = fullText.toString(),

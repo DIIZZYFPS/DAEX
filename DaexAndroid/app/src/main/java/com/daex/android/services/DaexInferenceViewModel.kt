@@ -19,6 +19,7 @@ enum class ModelStatus {
     NOT_DOWNLOADED, DOWNLOADING, LOADING, READY, ERROR
 }
 
+@OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DaexInferenceViewModel(
     private val llamaService: LlamaService,
     private val modelManager: ModelManager? = null,
@@ -293,7 +294,13 @@ class DaexInferenceViewModel(
 
             try {
                 val modelPath = modelManager.getModelPath(model)
-                val actualBackend = llamaService.initContext(modelPath, _selectedBackend.value)
+                val targetBackend = if (model.supportedBackends.contains(_selectedBackend.value)) {
+                    _selectedBackend.value
+                } else {
+                    model.supportedBackends.firstOrNull() ?: BackendType.CPU
+                }
+                _selectedBackend.value = targetBackend
+                val actualBackend = llamaService.initContext(modelPath, targetBackend)
                 _selectedBackend.value = actualBackend
                 _hardwareState.value = actualBackend.name
                 
@@ -330,9 +337,18 @@ class DaexInferenceViewModel(
     }
 
     fun setBackend(backend: BackendType, model: Model? = null) {
+        val targetModel = model ?: _currentModel.value
+        if (targetModel != null && !targetModel.supportedBackends.contains(backend)) {
+            _errorMessage.value = "${targetModel.name} does not support ${backend.name} execution."
+            return
+        }
+
         _selectedBackend.value = backend
         _useGPU.value = (backend == BackendType.GPU)
-        val targetModel = model ?: _currentModel.value ?: return
+        if (targetModel == null) {
+            _hardwareState.value = backend.name
+            return
+        }
 
         if (llamaService.isLoaded()) {
             _modelStatus.value = ModelStatus.LOADING
