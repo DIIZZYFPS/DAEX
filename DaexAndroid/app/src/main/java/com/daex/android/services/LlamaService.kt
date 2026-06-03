@@ -104,7 +104,25 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
                     BackendType.NPU -> {
                         val libDir = context.applicationInfo.nativeLibraryDir
                         configureNativeRuntime(libDir)
-                        Backend.NPU(libDir)
+                        
+                        // Check if a dispatch library is present in either nativeLibraryDir or filesDir
+                        val hasDispatchLibInNative = java.io.File(libDir).listFiles()?.any {
+                            it.name.startsWith("libLiteRtDispatch") && it.name.endsWith(".so")
+                        } == true
+                        val hasDispatchLibInFiles = context.filesDir.listFiles()?.any {
+                            it.name.startsWith("libLiteRtDispatch") && it.name.endsWith(".so")
+                        } == true
+                        
+                        if (!hasDispatchLibInNative && !hasDispatchLibInFiles) {
+                            throw Exception("NPU Backend requested, but no LiteRT Dispatch library (libLiteRtDispatch_*.so) was found in $libDir or ${context.filesDir.absolutePath}.")
+                        }
+                        
+                        val targetLibDir = if (hasDispatchLibInFiles) {
+                            context.filesDir.absolutePath
+                        } else {
+                            libDir
+                        }
+                        Backend.NPU(targetLibDir)
                     }
                     BackendType.GPU -> Backend.GPU()
                     BackendType.CPU -> Backend.CPU() // Let LiteRT manage thread count optimally
@@ -128,7 +146,9 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
                         com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = false
                     } catch (e: Throwable) {}
                     
-                    newEngine?.close()
+                    try {
+                        newEngine?.close()
+                    } catch (e: Throwable) {}
                     newEngine = Engine(config)
                     newEngine.initialize()
                 }
