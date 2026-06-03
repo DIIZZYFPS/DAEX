@@ -3,6 +3,7 @@ package com.daex.android.services
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.BatteryManager
 import android.os.Build
 import android.os.StatFs
@@ -72,5 +73,40 @@ class DeviceTools(private val context: Context) : ToolSet {
         val result = "Device: $manufacturer $model, Android SDK: $sdk, OS Version: $release"
         Log.d(TAG, "getDeviceInfo returning: $result")
         return result
+    }
+
+    @Tool(description = "Launch an installed application on the device by its name")
+    fun launchApp(
+        @ToolParam(description = "The display name of the application to launch (e.g. 'Spotify', 'YouTube')") appName: String
+    ): String {
+        Log.d(TAG, "launchApp execution triggered for appName: $appName")
+        try {
+            val pm = context.packageManager
+            val packages = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            for (appInfo in packages) {
+                val name = pm.getApplicationLabel(appInfo).toString()
+                if (name.equals(appName, ignoreCase = true)) {
+                    val launchIntent = pm.getLaunchIntentForPackage(appInfo.packageName)
+                    return if (launchIntent != null) {
+                        launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        context.startActivity(launchIntent)
+                        val msg = "Launched $appName successfully"
+                        Log.d(TAG, msg)
+                        msg
+                    } else {
+                        val msg = "App $appName found but has no launchable main Activity"
+                        Log.d(TAG, msg)
+                        msg
+                    }
+                }
+            }
+            val msg = "App '$appName' not found on this device"
+            Log.d(TAG, msg)
+            return msg
+        } catch (e: Exception) {
+            val msg = "Failed to launch $appName: ${e.message}"
+            Log.e(TAG, msg, e)
+            return msg
+        }
     }
 }
