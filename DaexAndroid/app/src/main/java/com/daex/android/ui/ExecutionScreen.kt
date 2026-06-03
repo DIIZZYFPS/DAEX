@@ -629,6 +629,8 @@ fun ExecutionScreen(
             useGPU = viewModel.useGPU.collectAsState().value,
             isDark = viewModel.isDarkMode.collectAsState().value,
             primaryColor = viewModel.primaryColor.collectAsState().value,
+            hfToken = viewModel.hfToken.collectAsState().value,
+            onHfTokenChange = { viewModel.setHfToken(it) },
             onToggleGPU = { viewModel.toggleGPU() },
             onToggleDark = { viewModel.setDarkMode(it) },
             onSelectColor = { viewModel.setThemeColor(it) },

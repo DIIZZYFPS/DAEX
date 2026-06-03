@@ -11,6 +11,7 @@
         android:label="Daex"
         android:roundIcon="@drawable/daex_logo_static"
         android:supportsRtl="true"
+        android:extractNativeLibs="true"
         android:theme="@android:style/Theme.NoTitleBar">
         <activity
             android:name=".MainActivity"

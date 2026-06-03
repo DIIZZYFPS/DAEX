@@ -30,6 +30,36 @@ object ModelBank {
 
     val models: List<Model> = listOf(
         Model(
+            id = "gemma-3-1b-it-google-tensor-g5",
+            name = "Gemma 3-1B-it (Google Tensor G5)",
+            size = 1_704_000_000L,
+            description = "Gemma 3-1B-it AOT compiled for Google Tensor G5 NPU (Pixel 10 Pro Fold). Officially supported.",
+            requiredRAM = 1_000_000_000L,
+            downloadUrl = "https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/Gemma3-1B-IT_q8_ekv1280_Google_Tensor_G5.litertlm",
+            extension = "litertlm",
+            supportedBackends = listOf(BackendType.NPU)
+        ),
+        Model(
+            id = "gemma-3-1b-it-qualcomm-sm8750",
+            name = "Gemma 3-1B-it (Qualcomm SM8750)",
+            size = 658_000_000L,
+            description = "Gemma 3-1B-it AOT compiled for Snapdragon 8 Elite NPU (SM8750 / Samsung Galaxy S26 Ultra). Officially supported.",
+            requiredRAM = 1_000_000_000L,
+            downloadUrl = "https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/Gemma3-1B-IT_q4_ekv1280_sm8750.litertlm",
+            extension = "litertlm",
+            supportedBackends = listOf(BackendType.NPU)
+        ),
+        Model(
+            id = "gemma-3-1b-it-qualcomm-sm8650",
+            name = "Gemma 3-1B-it (Qualcomm SM8650)",
+            size = 658_000_000L,
+            description = "Gemma 3-1B-it AOT compiled for Snapdragon 8 Gen 3 NPU (SM8650 / Samsung Galaxy S24 Ultra). Officially supported.",
+            requiredRAM = 1_000_000_000L,
+            downloadUrl = "https://huggingface.co/litert-community/Gemma3-1B-IT/resolve/main/Gemma3-1B-IT_q4_ekv1280_sm8650.litertlm",
+            extension = "litertlm",
+            supportedBackends = listOf(BackendType.NPU)
+        ),
+        Model(
             id = "gemma-4-E2B-it-litert-lm",
             name = "Gemma 4-E2B-it (LiteRT)",
             size = 2_590_000_000L,

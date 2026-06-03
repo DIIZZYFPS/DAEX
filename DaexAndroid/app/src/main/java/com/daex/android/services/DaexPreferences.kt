@@ -20,6 +20,7 @@ class DaexPreferences(private val context: Context) {
         val IS_REASONING_ENABLED = booleanPreferencesKey("is_reasoning_enabled")
         val LAST_USED_MODEL_ID = stringPreferencesKey("last_used_model_id")
         val LAST_USED_BACKEND = stringPreferencesKey("last_used_backend")
+        val HF_TOKEN = stringPreferencesKey("hf_token")
     }
 
     val lastUsedModelIdFlow: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -44,6 +45,10 @@ class DaexPreferences(private val context: Context) {
 
     val hasCompletedLandingFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[HAS_COMPLETED_LANDING] ?: false
+    }
+
+    val hfTokenFlow: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[HF_TOKEN] ?: ""
     }
 
     suspend fun setDarkMode(isDark: Boolean) {
@@ -74,6 +79,12 @@ class DaexPreferences(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences[LAST_USED_MODEL_ID] = modelId
             preferences[LAST_USED_BACKEND] = backend
+        }
+    }
+
+    suspend fun setHfToken(token: String) {
+        context.dataStore.edit { preferences ->
+            preferences[HF_TOKEN] = token
         }
     }
 }

@@ -30,6 +30,7 @@ import androidx.compose.ui.window.DialogProperties
 import com.daex.android.services.Model
 import com.daex.android.services.ModelStatus
 import com.daex.android.ui.components.DaexSwitch
+import com.daex.android.ui.components.DaexTextField
 import com.daex.android.ui.theme.DaexTheme
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -43,6 +44,8 @@ fun SettingsModal(
     useGPU: Boolean,
     isDark: Boolean,
     primaryColor: Color,
+    hfToken: String,
+    onHfTokenChange: (String) -> Unit,
     onToggleGPU: (Boolean) -> Unit,
     onToggleDark: (Boolean) -> Unit,
     onSelectColor: (Color) -> Unit,
@@ -459,6 +462,27 @@ fun SettingsModal(
                                     }
                                 }
                             }
+
+                            Spacer(modifier = Modifier.height(32.dp))
+
+                            // Hugging Face Section
+                            SectionHeader("HUGGING FACE INTEGRATION")
+                            BasicText(
+                                text = "Required to download gated models (e.g. Gemma 3). Create a token at huggingface.co/settings/tokens.",
+                                style = DaexTheme.typography.mono.copy(
+                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                    fontSize = 10.sp
+                                ),
+                                modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                            )
+                            DaexTextField(
+                                value = hfToken,
+                                onValueChange = onHfTokenChange,
+                                placeholder = "hf_...",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp)
+                            )
 
                             Spacer(modifier = Modifier.height(32.dp))
 

@@ -64,6 +64,7 @@ class ModelManager(private val context: Context) {
 
     suspend fun downloadModel(
         model: Model,
+        hfToken: String = "",
         onProgress: ((DownloadProgress) -> Unit)? = null
     ): String = withContext(Dispatchers.IO) {
         val destPath = getModelPath(model)
@@ -84,9 +85,20 @@ class ModelManager(private val context: Context) {
 
         isDownloading = true
         try {
-            val request = Request.Builder().url(model.downloadUrl).build()
+            val requestBuilder = Request.Builder().url(model.downloadUrl)
+            if (hfToken.isNotBlank() && (model.downloadUrl.contains("huggingface.co") || model.downloadUrl.contains("huggingface"))) {
+                requestBuilder.header("Authorization", "Bearer $hfToken")
+            }
+            val request = requestBuilder.build()
             client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw Exception("Failed to download model: ${response.code}")
+                if (!response.isSuccessful) {
+                    val msg = if (response.code == 401 || response.code == 403) {
+                        "Failed to download model: ${response.code} (Hugging Face gated model access requires a valid token in settings)"
+                    } else {
+                        "Failed to download model: ${response.code}"
+                    }
+                    throw Exception(msg)
+                }
 
                 val body = response.body ?: throw Exception("Empty response body")
                 val totalBytes = body.contentLength().takeIf { it > 0 } ?: model.size

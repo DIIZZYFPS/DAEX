@@ -91,6 +91,9 @@ class DaexInferenceViewModel(
     private val _isReasoningEnabled = MutableStateFlow(true)
     val isReasoningEnabled: StateFlow<Boolean> = _isReasoningEnabled.asStateFlow()
 
+    private val _hfToken = MutableStateFlow("")
+    val hfToken: StateFlow<String> = _hfToken.asStateFlow()
+
     private var generationJob: Job? = null
     private var exchangesSinceCompaction = 0
     private val COMPACTION_INTERVAL = 5
@@ -111,6 +114,12 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             preferences?.isReasoningEnabledFlow?.collectLatest { enabled ->
                 _isReasoningEnabled.value = enabled
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.hfTokenFlow?.collectLatest { token ->
+                _hfToken.value = token
             }
         }
 
@@ -204,6 +213,13 @@ class DaexInferenceViewModel(
         }
     }
 
+    fun setHfToken(token: String) {
+        _hfToken.value = token
+        viewModelScope.launch {
+            preferences?.setHfToken(token)
+        }
+    }
+
     fun selectConversation(id: String) {
         _currentConversationId.value = id
         // Optionally load the model associated with the conversation
@@ -249,7 +265,7 @@ class DaexInferenceViewModel(
 
         viewModelScope.launch {
             try {
-                modelManager.downloadModel(model) { progress ->
+                modelManager.downloadModel(model, _hfToken.value) { progress ->
                     _downloadProgress.value = progress.percent
                 }
                 _modelStatus.value = ModelStatus.NOT_DOWNLOADED
@@ -279,7 +295,7 @@ class DaexInferenceViewModel(
                 _errorMessage.value = null
 
                 try {
-                    modelManager.downloadModel(model) { progress ->
+                    modelManager.downloadModel(model, _hfToken.value) { progress ->
                         _downloadProgress.value = progress.percent
                     }
                 } catch (e: Exception) {
