@@ -91,6 +91,27 @@ class DaexInferenceViewModel(
     private val _isReasoningEnabled = MutableStateFlow(true)
     val isReasoningEnabled: StateFlow<Boolean> = _isReasoningEnabled.asStateFlow()
 
+    // Developer Settings StateFlows
+    private val _isSpeculativeDecodingEnabled = MutableStateFlow(true)
+    val isSpeculativeDecodingEnabled: StateFlow<Boolean> = _isSpeculativeDecodingEnabled.asStateFlow()
+
+    private val _inferenceTemperature = MutableStateFlow(0.7f)
+    val inferenceTemperature: StateFlow<Float> = _inferenceTemperature.asStateFlow()
+
+    private val _inferenceTopK = MutableStateFlow(40)
+    val inferenceTopK: StateFlow<Int> = _inferenceTopK.asStateFlow()
+
+    private val _inferenceTopP = MutableStateFlow(0.9f)
+    val inferenceTopP: StateFlow<Float> = _inferenceTopP.asStateFlow()
+
+    private val _customSystemPrompt = MutableStateFlow("")
+    val customSystemPrompt: StateFlow<String> = _customSystemPrompt.asStateFlow()
+
+    private val _isToolCallingEnabled = MutableStateFlow(false)
+    val isToolCallingEnabled: StateFlow<Boolean> = _isToolCallingEnabled.asStateFlow()
+
+    val deviceSpecs: DeviceSpecs? = deviceService?.getDeviceSpecs()
+
     private var generationJob: Job? = null
     private var exchangesSinceCompaction = 0
     private val COMPACTION_INTERVAL = 5
@@ -111,6 +132,42 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             preferences?.isReasoningEnabledFlow?.collectLatest { enabled ->
                 _isReasoningEnabled.value = enabled
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.isSpeculativeDecodingFlow?.collectLatest { enabled ->
+                _isSpeculativeDecodingEnabled.value = enabled
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.inferenceTemperatureFlow?.collectLatest { temp ->
+                _inferenceTemperature.value = temp
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.inferenceTopKFlow?.collectLatest { topK ->
+                _inferenceTopK.value = topK
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.inferenceTopPFlow?.collectLatest { topP ->
+                _inferenceTopP.value = topP
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.customSystemPromptFlow?.collectLatest { prompt ->
+                _customSystemPrompt.value = prompt
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.isToolCallingEnabledFlow?.collectLatest { enabled ->
+                _isToolCallingEnabled.value = enabled
             }
         }
 
@@ -201,6 +258,48 @@ class DaexInferenceViewModel(
         _isReasoningEnabled.value = newValue
         viewModelScope.launch {
             preferences?.setReasoningEnabled(newValue)
+        }
+    }
+
+    fun setSpeculativeDecodingEnabled(enabled: Boolean) {
+        _isSpeculativeDecodingEnabled.value = enabled
+        viewModelScope.launch {
+            preferences?.setSpeculativeDecodingEnabled(enabled)
+        }
+    }
+
+    fun setInferenceTemperature(temp: Float) {
+        _inferenceTemperature.value = temp
+        viewModelScope.launch {
+            preferences?.setInferenceTemperature(temp)
+        }
+    }
+
+    fun setInferenceTopK(topK: Int) {
+        _inferenceTopK.value = topK
+        viewModelScope.launch {
+            preferences?.setInferenceTopK(topK)
+        }
+    }
+
+    fun setInferenceTopP(topP: Float) {
+        _inferenceTopP.value = topP
+        viewModelScope.launch {
+            preferences?.setInferenceTopP(topP)
+        }
+    }
+
+    fun setCustomSystemPrompt(prompt: String) {
+        _customSystemPrompt.value = prompt
+        viewModelScope.launch {
+            preferences?.setCustomSystemPrompt(prompt)
+        }
+    }
+
+    fun setToolCallingEnabled(enabled: Boolean) {
+        _isToolCallingEnabled.value = enabled
+        viewModelScope.launch {
+            preferences?.setToolCallingEnabled(enabled)
         }
     }
 
@@ -300,7 +399,7 @@ class DaexInferenceViewModel(
                     model.supportedBackends.firstOrNull() ?: BackendType.CPU
                 }
                 _selectedBackend.value = targetBackend
-                val actualBackend = llamaService.initContext(modelPath, targetBackend)
+                val actualBackend = llamaService.initContext(modelPath, targetBackend, _isSpeculativeDecodingEnabled.value)
                 _selectedBackend.value = actualBackend
                 _hardwareState.value = actualBackend.name
                 
@@ -356,7 +455,7 @@ class DaexInferenceViewModel(
                 try {
                     llamaService.releaseContext()
                     val modelPath = modelManager?.getModelPath(targetModel) ?: ""
-                    val actualBackend = llamaService.initContext(modelPath, backend)
+                    val actualBackend = llamaService.initContext(modelPath, backend, _isSpeculativeDecodingEnabled.value)
                     _selectedBackend.value = actualBackend
                     _hardwareState.value = actualBackend.name
                     _modelStatus.value = ModelStatus.READY
@@ -441,7 +540,16 @@ class DaexInferenceViewModel(
                             android.util.Log.e("DaexInference", "RAG query failed, continuing without context", e)
                         }
                     }
-                    val result = llamaService.generateResponse(inferenceHistory, systemContext, _isReasoningEnabled.value) { token ->
+                    val result = llamaService.generateResponse(
+                        messages = inferenceHistory,
+                        systemContext = systemContext,
+                        isReasoningEnabled = _isReasoningEnabled.value,
+                        temperature = _inferenceTemperature.value,
+                        topK = _inferenceTopK.value,
+                        topP = _inferenceTopP.value,
+                        customSystemPrompt = _customSystemPrompt.value,
+                        isToolCallingEnabled = _isToolCallingEnabled.value
+                    ) { token ->
                         if (!isActive) return@generateResponse
                         rawText += token
                         

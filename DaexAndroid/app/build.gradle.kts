@@ -80,6 +80,9 @@ dependencies {
 
     // LiteRT-LM Inference Engine
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.12.0")
+    
+    // Kotlin reflection (needed for LiteRT tool reflection)
+    implementation("org.jetbrains.kotlin:kotlin-reflect:2.0.21")
 
     // ObjectBox Kotlin Extensions
     implementation("io.objectbox:objectbox-kotlin:4.0.0")

@@ -11,6 +11,8 @@ import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Channel
+import com.google.ai.edge.litertlm.SamplerConfig
+import com.google.ai.edge.litertlm.tool
 import com.google.ai.edge.litertlm.Message as LiteRtMessage
 import com.google.ai.edge.litertlm.Contents as LiteRtContents
 import com.google.ai.edge.litertlm.Role as LiteRtRole
@@ -30,12 +32,17 @@ data class Message(
 )
 
 interface LlamaService {
-    suspend fun initContext(modelPath: String, backendType: BackendType): BackendType
+    suspend fun initContext(modelPath: String, backendType: BackendType, isSpeculativeDecodingEnabled: Boolean = true): BackendType
     suspend fun releaseContext()
     suspend fun generateResponse(
         messages: List<Message>,
         systemContext: String = "",
         isReasoningEnabled: Boolean = true,
+        temperature: Float = 0.7f,
+        topK: Int = 40,
+        topP: Float = 0.9f,
+        customSystemPrompt: String = "",
+        isToolCallingEnabled: Boolean = false,
         onToken: (String) -> Unit
     ): GenerationResult
     suspend fun generateSilent(prompt: String, maxTokens: Int = 512): String
@@ -79,11 +86,11 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
         nativeRuntimeConfigured = true
     }
 
-    override suspend fun initContext(modelPath: String, backendType: BackendType): BackendType {
+    override suspend fun initContext(modelPath: String, backendType: BackendType, isSpeculativeDecodingEnabled: Boolean): BackendType {
         return withContext(Dispatchers.IO) {
             try {
                 releaseContext()
-                Log.d("LlamaService", "Initializing LiteRT-LM Engine with model: $modelPath (backend=$backendType)")
+                Log.d("LlamaService", "Initializing LiteRT-LM Engine with model: $modelPath (backend=$backendType, speculative=$isSpeculativeDecodingEnabled)")
                 
                 // Set native log severity to FATAL to suppress noisy NPU dispatch warning logs
                 try {
@@ -95,7 +102,7 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
                 // Enable Speculative Decoding / MTP drafters for high-performance inference
                 try {
                     @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
-                    com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = true
+                    com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = isSpeculativeDecodingEnabled
                 } catch (e: Throwable) {
                     Log.w("LlamaService", "Failed to set speculative decoding flag", e)
                 }
@@ -205,12 +212,23 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
         messages: List<Message>,
         systemContext: String,
         isReasoningEnabled: Boolean,
+        temperature: Float,
+        topK: Int,
+        topP: Float,
+        customSystemPrompt: String,
+        isToolCallingEnabled: Boolean,
         onToken: (String) -> Unit
     ): GenerationResult {
+        Log.i(TAG, "generateResponse: isToolCallingEnabled=$isToolCallingEnabled, temperature=$temperature, topK=$topK, topP=$topP, customPromptLength=${customSystemPrompt.length}")
         val activeEngine = engine ?: throw Exception("Model not loaded.")
         
         val systemInstructionText = buildString {
-            append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n\n")
+            if (customSystemPrompt.isNotBlank()) {
+                append(customSystemPrompt)
+                append("\n\n")
+            } else {
+                append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n\n")
+            }
             if (systemContext.isNotBlank()) {
                 append("<global_memory>\n")
                 append(systemContext)
@@ -237,10 +255,26 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
             emptyList()
         }
 
+        val samplerConfig = SamplerConfig(
+            topK = topK,
+            topP = topP.toDouble(),
+            temperature = temperature.toDouble(),
+            seed = 0
+        )
+
+        val tools = if (isToolCallingEnabled) {
+            listOf(tool(DeviceTools(context)))
+        } else {
+            emptyList()
+        }
+
         val conversationConfig = ConversationConfig(
             systemInstruction = LiteRtContents.of(systemInstructionText),
             initialMessages = initialLiteRtMessages,
-            channels = channels
+            channels = channels,
+            samplerConfig = samplerConfig,
+            automaticToolCalling = isToolCallingEnabled,
+            tools = tools
         )
 
         // Close the previous conversation to start fresh with new history

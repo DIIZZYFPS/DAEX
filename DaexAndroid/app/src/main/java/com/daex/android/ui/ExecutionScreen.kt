@@ -651,7 +651,20 @@ fun ExecutionScreen(
             },
             onShareLogs = {
                 LogShareHelper.shareAppLogs(context)
-            }
+            },
+            deviceSpecs = viewModel.deviceSpecs,
+            isSpeculativeDecodingEnabled = viewModel.isSpeculativeDecodingEnabled.collectAsState().value,
+            onToggleSpeculativeDecoding = { viewModel.setSpeculativeDecodingEnabled(it) },
+            inferenceTemperature = viewModel.inferenceTemperature.collectAsState().value,
+            onTemperatureChange = { viewModel.setInferenceTemperature(it) },
+            inferenceTopK = viewModel.inferenceTopK.collectAsState().value,
+            onTopKChange = { viewModel.setInferenceTopK(it) },
+            inferenceTopP = viewModel.inferenceTopP.collectAsState().value,
+            onTopPChange = { viewModel.setInferenceTopP(it) },
+            customSystemPrompt = viewModel.customSystemPrompt.collectAsState().value,
+            onCustomSystemPromptChange = { viewModel.setCustomSystemPrompt(it) },
+            isToolCallingEnabled = viewModel.isToolCallingEnabled.collectAsState().value,
+            onToggleToolCalling = { viewModel.setToolCallingEnabled(it) }
         )
 
         MemoryEditorModal(

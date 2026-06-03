@@ -3,6 +3,7 @@ package com.daex.android.services
 import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Environment
 import android.os.StatFs
 import java.io.File
@@ -10,7 +11,12 @@ import java.io.File
 data class DeviceSpecs(
     val totalRAM: Long,
     val freeStorage: Long,
-    val hasVulkan: Boolean
+    val hasVulkan: Boolean,
+    val manufacturer: String,
+    val model: String,
+    val board: String,
+    val hardware: String,
+    val npuSupported: Boolean
 )
 
 class DeviceService(private val context: Context) {
@@ -19,7 +25,12 @@ class DeviceService(private val context: Context) {
         return DeviceSpecs(
             totalRAM = getTotalRAM(),
             freeStorage = getFreeStorage(),
-            hasVulkan = hasVulkanSupport()
+            hasVulkan = hasVulkanSupport(),
+            manufacturer = Build.MANUFACTURER,
+            model = Build.MODEL,
+            board = Build.BOARD,
+            hardware = Build.HARDWARE,
+            npuSupported = hasNpuDriver()
         )
     }
 
@@ -39,5 +50,20 @@ class DeviceService(private val context: Context) {
     private fun hasVulkanSupport(): Boolean {
         return context.packageManager.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_LEVEL, 0) ||
                context.packageManager.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_VERSION, 0)
+    }
+
+    fun hasNpuDriver(): Boolean {
+        try {
+            val libDir = context.applicationInfo.nativeLibraryDir
+            val hasDispatchLibInNative = File(libDir).listFiles()?.any {
+                it.name.startsWith("libLiteRtDispatch") && it.name.endsWith(".so")
+            } == true
+            val hasDispatchLibInFiles = context.filesDir.listFiles()?.any {
+                it.name.startsWith("libLiteRtDispatch") && it.name.endsWith(".so")
+            } == true
+            return hasDispatchLibInNative || hasDispatchLibInFiles
+        } catch (e: Exception) {
+            return false
+        }
     }
 }

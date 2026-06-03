@@ -20,6 +20,14 @@ class DaexPreferences(private val context: Context) {
         val IS_REASONING_ENABLED = booleanPreferencesKey("is_reasoning_enabled")
         val LAST_USED_MODEL_ID = stringPreferencesKey("last_used_model_id")
         val LAST_USED_BACKEND = stringPreferencesKey("last_used_backend")
+
+        // Developer Settings Keys
+        val IS_SPECULATIVE_DECODING_ENABLED = booleanPreferencesKey("is_speculative_decoding_enabled")
+        val INFERENCE_TEMPERATURE = floatPreferencesKey("inference_temperature")
+        val INFERENCE_TOP_K = intPreferencesKey("inference_top_k")
+        val INFERENCE_TOP_P = floatPreferencesKey("inference_top_p")
+        val CUSTOM_SYSTEM_PROMPT = stringPreferencesKey("custom_system_prompt")
+        val IS_TOOL_CALLING_ENABLED = booleanPreferencesKey("is_tool_calling_enabled")
     }
 
     val lastUsedModelIdFlow: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -44,6 +52,31 @@ class DaexPreferences(private val context: Context) {
 
     val hasCompletedLandingFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[HAS_COMPLETED_LANDING] ?: false
+    }
+
+    // Developer Settings Flows
+    val isSpeculativeDecodingFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[IS_SPECULATIVE_DECODING_ENABLED] ?: true
+    }
+
+    val inferenceTemperatureFlow: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[INFERENCE_TEMPERATURE] ?: 0.7f
+    }
+
+    val inferenceTopKFlow: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[INFERENCE_TOP_K] ?: 40
+    }
+
+    val inferenceTopPFlow: Flow<Float> = context.dataStore.data.map { preferences ->
+        preferences[INFERENCE_TOP_P] ?: 0.9f
+    }
+
+    val customSystemPromptFlow: Flow<String> = context.dataStore.data.map { preferences ->
+        preferences[CUSTOM_SYSTEM_PROMPT] ?: ""
+    }
+
+    val isToolCallingEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[IS_TOOL_CALLING_ENABLED] ?: false
     }
 
     suspend fun setDarkMode(isDark: Boolean) {
@@ -74,6 +107,43 @@ class DaexPreferences(private val context: Context) {
         context.dataStore.edit { preferences ->
             preferences[LAST_USED_MODEL_ID] = modelId
             preferences[LAST_USED_BACKEND] = backend
+        }
+    }
+
+    // Developer Settings Setters
+    suspend fun setSpeculativeDecodingEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[IS_SPECULATIVE_DECODING_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setInferenceTemperature(temp: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[INFERENCE_TEMPERATURE] = temp
+        }
+    }
+
+    suspend fun setInferenceTopK(topK: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[INFERENCE_TOP_K] = topK
+        }
+    }
+
+    suspend fun setInferenceTopP(topP: Float) {
+        context.dataStore.edit { preferences ->
+            preferences[INFERENCE_TOP_P] = topP
+        }
+    }
+
+    suspend fun setCustomSystemPrompt(prompt: String) {
+        context.dataStore.edit { preferences ->
+            preferences[CUSTOM_SYSTEM_PROMPT] = prompt
+        }
+    }
+
+    suspend fun setToolCallingEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[IS_TOOL_CALLING_ENABLED] = enabled
         }
     }
 }
