@@ -44,8 +44,8 @@ class DeviceService(private val context: Context) {
             board = Build.BOARD,
             hardware = Build.HARDWARE,
             npuSupported = hasNpuDriver(),
-            socModel = socModel ?: "",
-            socManufacturer = socManufacturer ?: ""
+            socModel = socModel,
+            socManufacturer = socManufacturer
         )
     }
 
