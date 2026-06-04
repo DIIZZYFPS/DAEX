@@ -68,7 +68,8 @@ fun SettingsModal(
     isToolCallingEnabled: Boolean,
     onToggleToolCalling: (Boolean) -> Unit,
     uploadedFiles: List<String> = emptyList(),
-    onDeleteFile: (String) -> Unit = {}
+    onDeleteFile: (String) -> Unit = {},
+    onViewChangelog: () -> Unit = {}
 ) {
     if (!visible) return
 
@@ -587,16 +588,15 @@ fun SettingsModal(
                                                     fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
                                                 )
                                             )
-                                            BasicText(
-                                                text = "Expose battery, storage, time, specs (and optionally launch apps) directly to model",
-                                                style = DaexTheme.typography.mono.copy(
-                                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
-                                                    fontSize = 11.sp
-                                                ),
-                                                modifier = Modifier.padding(top = 4.dp)
-                                            )
-                                            )
-                                        }
+                                    BasicText(
+                                        text = "Expose battery, storage, time, specs (and optionally launch apps) directly to model",
+                                        style = DaexTheme.typography.mono.copy(
+                                            color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                            fontSize = 11.sp
+                                        ),
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
                                         DaexSwitch(
                                             checked = isToolCallingEnabled,
                                             onCheckedChange = onToggleToolCalling
@@ -742,6 +742,12 @@ fun SettingsModal(
                                 text = "Share system logs",
                                 color = DaexTheme.colors.primary,
                                 onClick = onShareLogs
+                            )
+                            Spacer(modifier = Modifier.height(8.dp))
+                            ActionButton(
+                                text = "View Changelog",
+                                color = DaexTheme.colors.primary,
+                                onClick = onViewChangelog
                             )
                             
                             Spacer(modifier = Modifier.height(40.dp))

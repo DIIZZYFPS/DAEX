@@ -593,6 +593,7 @@ fun ExecutionScreen(
         
         var settingsVisible by remember { mutableStateOf(false) }
         var memoryEditorVisible by remember { mutableStateOf(false) }
+        var changelogVisible by remember { mutableStateOf(false) }
 
         ModelSelectorModal(
             visible = selectorVisible,
@@ -669,7 +670,8 @@ fun ExecutionScreen(
             isToolCallingEnabled = viewModel.isToolCallingEnabled.collectAsState().value,
             onToggleToolCalling = { viewModel.setToolCallingEnabled(it) },
             uploadedFiles = uploadedFiles,
-            onDeleteFile = { viewModel.deleteUploadedFile(it) }
+            onDeleteFile = { viewModel.deleteUploadedFile(it) },
+            onViewChangelog = { changelogVisible = true }
         )
 
         MemoryEditorModal(
@@ -680,6 +682,11 @@ fun ExecutionScreen(
                 viewModel.saveCoreMemory(it)
                 memoryEditorVisible = false
             }
+        )
+
+        ChangelogModal(
+            visible = changelogVisible,
+            onClose = { changelogVisible = false }
         )
     }
 }
