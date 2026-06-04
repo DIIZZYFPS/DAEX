@@ -425,165 +425,162 @@ fun ExecutionScreen(
                 }
 
                 // --- LAYERED INPUT BAR (Overlay Style) ---
+                
+                // 1. Liquid Glass Background Layer
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
+                        .height(110.dp) 
+                        .graphicsLayer {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                renderEffect = android.graphics.RenderEffect
+                                    .createBlurEffect(20f, 20f, android.graphics.Shader.TileMode.DECAL)
+                                    .asComposeRenderEffect()
+                            }
+                        }
+                        .background(DaexTheme.colors.background.copy(alpha = 0.5f))
+                        .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f))
+                )
+
+                // 2. Foreground Content Layer (SHARP)
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp, top = 8.dp, start = 16.dp, end = 16.dp)
                 ) {
-                    // 1. Blurred Background Layer (Matches size of foreground container)
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .graphicsLayer {
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                    renderEffect = android.graphics.RenderEffect
-                                        .createBlurEffect(20f, 20f, android.graphics.Shader.TileMode.DECAL)
-                                        .asComposeRenderEffect()
-                                }
-                            }
-                            .background(DaexTheme.colors.background.copy(alpha = 0.85f))
-                            .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f))
-                    )
-
-                    // 2. Foreground Content Layer (SHARP)
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp, top = 8.dp, start = 16.dp, end = 16.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        horizontalArrangement = Arrangement.End
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(if (isReasoningEnabled) DaexTheme.colors.primary.copy(alpha=0.15f) else DaexTheme.colors.onSurface.copy(alpha=0.1f))
-                                    .border(0.5.dp, if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.2f), RoundedCornerShape(16.dp))
-                                    .clickable { viewModel.toggleReasoning() }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.4f))
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    BasicText(
-                                        text = if (isReasoningEnabled) "REASONING" else "FAST",
-                                        style = DaexTheme.typography.mono.copy(
-                                            color = if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.6f),
-                                            fontSize = 10.sp,
-                                            letterSpacing = 1.sp
-                                        )
-                                    )
-                                }
-                            }
-                        }
-
-                        // Uploaded file chips
-                        if (uploadedFiles.isNotEmpty()) {
-                            LazyRow(
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                items(uploadedFiles.size) { index ->
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(DaexTheme.colors.primary.copy(alpha = 0.12f))
-                                            .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        BasicText(
-                                            text = uploadedFiles[index],
-                                            style = DaexTheme.typography.caption.copy(
-                                                color = DaexTheme.colors.primary
-                                            )
-                                        )
-                                    }
-                                }
-                            }
-                        }
-     
-                        if (isVectorizing) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    color = DaexTheme.colors.warning,
-                                    strokeWidth = 2.dp
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                BasicText(
-                                    text = "Vectorizing file...",
-                                    style = DaexTheme.typography.caption.copy(
-                                        color = DaexTheme.colors.warning
-                                    )
-                                )
-                            }
-                        }
-     
-                        Row(
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(DaexTheme.colors.onSurface.copy(alpha = 0.05f))
-                                .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
-                                .padding(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(if (isReasoningEnabled) DaexTheme.colors.primary.copy(alpha=0.15f) else DaexTheme.colors.onSurface.copy(alpha=0.1f))
+                                .border(0.5.dp, if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.2f), RoundedCornerShape(16.dp))
+                                .clickable { viewModel.toggleReasoning() }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            // Attachment button
-                            DaexButton(
-                                onClick = { filePickerLauncher.launch("*/*") },
-                                enabled = !isGenerating && !isVectorizing && isModelReady,
-                                modifier = Modifier.size(36.dp),
-                                backgroundColor = Color.Transparent,
-                                useDefaultPadding = false
-                            ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.4f))
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
                                 BasicText(
-                                    text = "+",
-                                    style = DaexTheme.typography.body1.copy(
-                                        color = DaexTheme.colors.primary,
-                                        fontSize = 18.sp
+                                    text = if (isReasoningEnabled) "REASONING" else "FAST",
+                                    style = DaexTheme.typography.mono.copy(
+                                        color = if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.6f),
+                                        fontSize = 10.sp,
+                                        letterSpacing = 1.sp
                                     )
                                 )
                             }
-                            DaexTextField(
-                                value = inputText,
-                                onValueChange = { inputText = it },
-                                modifier = Modifier.weight(1f),
-                                placeholder = if (isModelReady) "Initialize execution with Icarus..." else "Engine not loaded...",
-                                enabled = !isGenerating && isModelReady
+                        }
+                    }
+
+                    // Uploaded file chips
+                    if (uploadedFiles.isNotEmpty()) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(uploadedFiles.size) { index ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(DaexTheme.colors.primary.copy(alpha = 0.12f))
+                                        .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
+                                    BasicText(
+                                        text = "📄 ${uploadedFiles[index]}",
+                                        style = DaexTheme.typography.caption.copy(
+                                            color = DaexTheme.colors.primary
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (isVectorizing) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = DaexTheme.colors.warning,
+                                strokeWidth = 2.dp
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            DaexButton(
-                                onClick = {
-                                    if (inputText.isNotBlank()) {
-                                        viewModel.submitPrompt(inputText)
-                                        inputText = ""
-                                    }
-                                },
-                                enabled = !isGenerating && isModelReady && inputText.isNotBlank(),
-                                modifier = Modifier.size(44.dp),
-                                backgroundColor = if (isGenerating || !isModelReady) DaexTheme.colors.primary.copy(alpha = 0.1f) else DaexTheme.colors.primary,
-                                useDefaultPadding = false
-                            ) {
-                                if (isGenerating) {
-                                    DaexLoader(size = 28.dp)
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(14.dp)
-                                            .clip(CircleShape)
-                                            .background(if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary)
-                                    )
+                            BasicText(
+                                text = "Vectorizing file...",
+                                style = DaexTheme.typography.caption.copy(
+                                    color = DaexTheme.colors.warning
+                                )
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(DaexTheme.colors.onSurface.copy(alpha = 0.05f))
+                            .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
+                            .padding(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        // Attachment button
+                        DaexButton(
+                            onClick = { filePickerLauncher.launch("*/*") },
+                            enabled = !isGenerating && !isVectorizing && isModelReady,
+                            modifier = Modifier.size(36.dp),
+                            backgroundColor = Color.Transparent,
+                            useDefaultPadding = false
+                        ) {
+                            BasicText(
+                                text = "📎",
+                                style = DaexTheme.typography.body1.copy(
+                                    fontSize = 18.sp
+                                )
+                            )
+                        }
+                        DaexTextField(
+                            value = inputText,
+                            onValueChange = { inputText = it },
+                            modifier = Modifier.weight(1f),
+                            placeholder = if (isModelReady) "Initialize execution with Icarus..." else "Engine not loaded...",
+                            enabled = !isGenerating && isModelReady
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        DaexButton(
+                            onClick = {
+                                if (inputText.isNotBlank()) {
+                                    viewModel.submitPrompt(inputText)
+                                    inputText = ""
                                 }
+                            },
+                            enabled = !isGenerating && isModelReady && inputText.isNotBlank(),
+                            modifier = Modifier.size(44.dp),
+                            backgroundColor = if (isGenerating || !isModelReady) DaexTheme.colors.primary.copy(alpha = 0.1f) else DaexTheme.colors.primary,
+                            useDefaultPadding = false
+                        ) {
+                            if (isGenerating) {
+                                DaexLoader(size = 28.dp)
+                            } else {
+                                Box(
+                                    modifier = Modifier
+                                        .size(14.dp)
+                                        .clip(CircleShape)
+                                        .background(if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary)
+                                )
                             }
                         }
                     }
@@ -654,22 +651,7 @@ fun ExecutionScreen(
             },
             onShareLogs = {
                 LogShareHelper.shareAppLogs(context)
-            },
-            deviceSpecs = viewModel.deviceSpecs,
-            isSpeculativeDecodingEnabled = viewModel.isSpeculativeDecodingEnabled.collectAsState().value,
-            onToggleSpeculativeDecoding = { viewModel.setSpeculativeDecodingEnabled(it) },
-            inferenceTemperature = viewModel.inferenceTemperature.collectAsState().value,
-            onTemperatureChange = { viewModel.setInferenceTemperature(it) },
-            inferenceTopK = viewModel.inferenceTopK.collectAsState().value,
-            onTopKChange = { viewModel.setInferenceTopK(it) },
-            inferenceTopP = viewModel.inferenceTopP.collectAsState().value,
-            onTopPChange = { viewModel.setInferenceTopP(it) },
-            customSystemPrompt = viewModel.customSystemPrompt.collectAsState().value,
-            onCustomSystemPromptChange = { viewModel.setCustomSystemPrompt(it) },
-            isToolCallingEnabled = viewModel.isToolCallingEnabled.collectAsState().value,
-            onToggleToolCalling = { viewModel.setToolCallingEnabled(it) },
-            uploadedFiles = uploadedFiles,
-            onDeleteFile = { viewModel.deleteUploadedFile(it) }
+            }
         )
 
         MemoryEditorModal(

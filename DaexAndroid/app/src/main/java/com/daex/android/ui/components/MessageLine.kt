@@ -170,7 +170,7 @@ fun MessageLine(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     BasicText(
-                        text = "$tokenSpeed tok/s",
+                        text = "⚡ $tokenSpeed tok/s",
                         style = DaexTheme.typography.mono.copy(
                             color = if (isGenerating) Color(0xFFA855F7) else DaexTheme.colors.onSurface.copy(alpha = 0.35f),
                             fontSize = 10.sp

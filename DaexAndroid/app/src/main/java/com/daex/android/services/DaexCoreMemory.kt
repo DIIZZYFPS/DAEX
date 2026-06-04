@@ -9,7 +9,7 @@ import java.io.File
 interface DaexCoreMemory {
     suspend fun getMemoryContent(): String
     suspend fun overwriteMemory(content: String)
-    suspend fun compactMemory(recentMessages: List<Message>, daexService: DaexService)
+    suspend fun compactMemory(recentMessages: List<Message>, llamaService: LlamaService)
 }
 
 class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
@@ -44,7 +44,7 @@ class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
         Unit
     }
 
-    override suspend fun compactMemory(recentMessages: List<Message>, daexService: DaexService) {
+    override suspend fun compactMemory(recentMessages: List<Message>, llamaService: LlamaService) {
         try {
             val currentMemory = getMemoryContent()
 
@@ -79,7 +79,7 @@ class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
                 append("<|turn>model\n")
             }
 
-            val result = daexService.generateSilent(compactorPrompt, maxTokens = 512)
+            val result = llamaService.generateSilent(compactorPrompt, maxTokens = 512)
             val cleaned = result.trim()
 
             // Only overwrite if the compactor actually produced markdown content

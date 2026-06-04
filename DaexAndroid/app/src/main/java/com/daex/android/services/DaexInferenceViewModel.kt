@@ -21,7 +21,7 @@ enum class ModelStatus {
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DaexInferenceViewModel(
-    private val daexService: DaexService,
+    private val llamaService: LlamaService,
     private val modelManager: ModelManager? = null,
     private val deviceService: DeviceService? = null,
     private val daexMemory: DaexMemory? = null,
@@ -91,27 +91,6 @@ class DaexInferenceViewModel(
     private val _isReasoningEnabled = MutableStateFlow(true)
     val isReasoningEnabled: StateFlow<Boolean> = _isReasoningEnabled.asStateFlow()
 
-    // Developer Settings StateFlows
-    private val _isSpeculativeDecodingEnabled = MutableStateFlow(true)
-    val isSpeculativeDecodingEnabled: StateFlow<Boolean> = _isSpeculativeDecodingEnabled.asStateFlow()
-
-    private val _inferenceTemperature = MutableStateFlow(0.7f)
-    val inferenceTemperature: StateFlow<Float> = _inferenceTemperature.asStateFlow()
-
-    private val _inferenceTopK = MutableStateFlow(40)
-    val inferenceTopK: StateFlow<Int> = _inferenceTopK.asStateFlow()
-
-    private val _inferenceTopP = MutableStateFlow(0.9f)
-    val inferenceTopP: StateFlow<Float> = _inferenceTopP.asStateFlow()
-
-    private val _customSystemPrompt = MutableStateFlow("")
-    val customSystemPrompt: StateFlow<String> = _customSystemPrompt.asStateFlow()
-
-    private val _isToolCallingEnabled = MutableStateFlow(false)
-    val isToolCallingEnabled: StateFlow<Boolean> = _isToolCallingEnabled.asStateFlow()
-
-    val deviceSpecs: DeviceSpecs? = deviceService?.getDeviceSpecs()
-
     private var generationJob: Job? = null
     private var exchangesSinceCompaction = 0
     private val COMPACTION_INTERVAL = 5
@@ -132,42 +111,6 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             preferences?.isReasoningEnabledFlow?.collectLatest { enabled ->
                 _isReasoningEnabled.value = enabled
-            }
-        }
-
-        viewModelScope.launch {
-            preferences?.isSpeculativeDecodingFlow?.collectLatest { enabled ->
-                _isSpeculativeDecodingEnabled.value = enabled
-            }
-        }
-
-        viewModelScope.launch {
-            preferences?.inferenceTemperatureFlow?.collectLatest { temp ->
-                _inferenceTemperature.value = temp
-            }
-        }
-
-        viewModelScope.launch {
-            preferences?.inferenceTopKFlow?.collectLatest { topK ->
-                _inferenceTopK.value = topK
-            }
-        }
-
-        viewModelScope.launch {
-            preferences?.inferenceTopPFlow?.collectLatest { topP ->
-                _inferenceTopP.value = topP
-            }
-        }
-
-        viewModelScope.launch {
-            preferences?.customSystemPromptFlow?.collectLatest { prompt ->
-                _customSystemPrompt.value = prompt
-            }
-        }
-
-        viewModelScope.launch {
-            preferences?.isToolCallingEnabledFlow?.collectLatest { enabled ->
-                _isToolCallingEnabled.value = enabled
             }
         }
 
@@ -261,48 +204,6 @@ class DaexInferenceViewModel(
         }
     }
 
-    fun setSpeculativeDecodingEnabled(enabled: Boolean) {
-        _isSpeculativeDecodingEnabled.value = enabled
-        viewModelScope.launch {
-            preferences?.setSpeculativeDecodingEnabled(enabled)
-        }
-    }
-
-    fun setInferenceTemperature(temp: Float) {
-        _inferenceTemperature.value = temp
-        viewModelScope.launch {
-            preferences?.setInferenceTemperature(temp)
-        }
-    }
-
-    fun setInferenceTopK(topK: Int) {
-        _inferenceTopK.value = topK
-        viewModelScope.launch {
-            preferences?.setInferenceTopK(topK)
-        }
-    }
-
-    fun setInferenceTopP(topP: Float) {
-        _inferenceTopP.value = topP
-        viewModelScope.launch {
-            preferences?.setInferenceTopP(topP)
-        }
-    }
-
-    fun setCustomSystemPrompt(prompt: String) {
-        _customSystemPrompt.value = prompt
-        viewModelScope.launch {
-            preferences?.setCustomSystemPrompt(prompt)
-        }
-    }
-
-    fun setToolCallingEnabled(enabled: Boolean) {
-        _isToolCallingEnabled.value = enabled
-        viewModelScope.launch {
-            preferences?.setToolCallingEnabled(enabled)
-        }
-    }
-
     fun selectConversation(id: String) {
         _currentConversationId.value = id
         // Optionally load the model associated with the conversation
@@ -325,7 +226,7 @@ class DaexInferenceViewModel(
             try {
                 val isDownloaded = modelManager.isModelDownloaded(model)
                 if (isDownloaded) {
-                    if (daexService.isLoaded()) {
+                    if (llamaService.isLoaded()) {
                         _modelStatus.value = ModelStatus.READY
                     } else {
                         _modelStatus.value = ModelStatus.NOT_DOWNLOADED
@@ -399,14 +300,14 @@ class DaexInferenceViewModel(
                     model.supportedBackends.firstOrNull() ?: BackendType.CPU
                 }
                 _selectedBackend.value = targetBackend
-                val actualBackend = daexService.initContext(modelPath, targetBackend, _isSpeculativeDecodingEnabled.value)
+                val actualBackend = llamaService.initContext(modelPath, targetBackend)
                 _selectedBackend.value = actualBackend
                 _hardwareState.value = actualBackend.name
                 
                 // Warm up the engine silently with 1 token to pre-allocate activation memory
                 try {
                     android.util.Log.d("DaexAutoload", "Warming up model...")
-                    daexService.generateSilent("warmup", maxTokens = 1)
+                    llamaService.generateSilent("warmup", maxTokens = 1)
                     android.util.Log.d("DaexAutoload", "Warmup complete.")
                 } catch (warmupEx: Exception) {
                     android.util.Log.w("DaexAutoload", "Warmup failed silently, continuing", warmupEx)
@@ -424,7 +325,7 @@ class DaexInferenceViewModel(
 
     fun unloadModel() {
         viewModelScope.launch {
-            daexService.releaseContext()
+            llamaService.releaseContext()
             _modelStatus.value = ModelStatus.NOT_DOWNLOADED
             _tokenSpeed.value = 0.0
         }
@@ -449,13 +350,13 @@ class DaexInferenceViewModel(
             return
         }
 
-        if (daexService.isLoaded()) {
+        if (llamaService.isLoaded()) {
             _modelStatus.value = ModelStatus.LOADING
             viewModelScope.launch {
                 try {
-                    daexService.releaseContext()
+                    llamaService.releaseContext()
                     val modelPath = modelManager?.getModelPath(targetModel) ?: ""
-                    val actualBackend = daexService.initContext(modelPath, backend, _isSpeculativeDecodingEnabled.value)
+                    val actualBackend = llamaService.initContext(modelPath, backend)
                     _selectedBackend.value = actualBackend
                     _hardwareState.value = actualBackend.name
                     _modelStatus.value = ModelStatus.READY
@@ -471,7 +372,7 @@ class DaexInferenceViewModel(
 
     fun submitPrompt(prompt: String) {
         if (prompt.isBlank() || _isGenerating.value) return
-        if (_modelStatus.value != ModelStatus.READY || !daexService.isLoaded()) {
+        if (_modelStatus.value != ModelStatus.READY || !llamaService.isLoaded()) {
             _errorMessage.value = "Model is not loaded yet."
             return
         }
@@ -540,16 +441,7 @@ class DaexInferenceViewModel(
                             android.util.Log.e("DaexInference", "RAG query failed, continuing without context", e)
                         }
                     }
-                    val result = daexService.generateResponse(
-                        messages = inferenceHistory,
-                        systemContext = systemContext,
-                        isReasoningEnabled = _isReasoningEnabled.value,
-                        temperature = _inferenceTemperature.value,
-                        topK = _inferenceTopK.value,
-                        topP = _inferenceTopP.value,
-                        customSystemPrompt = _customSystemPrompt.value,
-                        isToolCallingEnabled = _isToolCallingEnabled.value
-                    ) { token ->
+                    val result = llamaService.generateResponse(inferenceHistory, systemContext, _isReasoningEnabled.value) { token ->
                         if (!isActive) return@generateResponse
                         rawText += token
                         
@@ -601,7 +493,7 @@ class DaexInferenceViewModel(
                         _isReflecting.value = true
                         try {
                             val recentMsgs = daexMemory?.getRecentHistory(convId, limit = 20) ?: emptyList()
-                            daexCoreMemory.compactMemory(recentMsgs, daexService)
+                            daexCoreMemory.compactMemory(recentMsgs, llamaService)
                             exchangesSinceCompaction = 0
                         } catch (e: Exception) {
                             android.util.Log.e("DaexInference", "Memory compaction failed", e)
@@ -628,7 +520,7 @@ class DaexInferenceViewModel(
 
     fun cancelGeneration() {
         generationJob?.cancel()
-        (daexService as? DaexServiceImpl)?.cancelGeneration()
+        (llamaService as? LlamaServiceImpl)?.cancelGeneration()
         _isGenerating.value = false
     }
 
@@ -678,17 +570,6 @@ class DaexInferenceViewModel(
                 _errorMessage.value = "Failed to process file: ${e.message}"
             } finally {
                 _isVectorizing.value = false
-            }
-        }
-    }
-
-    fun deleteUploadedFile(fileName: String) {
-        viewModelScope.launch {
-            try {
-                daexRag?.deleteFileByName(fileName)
-                refreshUploadedFiles()
-            } catch (e: Exception) {
-                android.util.Log.e("DaexInference", "File deletion failed", e)
             }
         }
     }

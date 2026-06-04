@@ -42,7 +42,7 @@ class MainActivity : ComponentActivity() {
         val boxStore = MyObjectBox.builder().androidContext(this.applicationContext).build()
         val daexMemory = DaexMemory(boxStore)
         val deviceService = DeviceService(this)
-        val daexService = com.daex.android.services.DaexServiceImpl(this)
+        val llamaService = com.daex.android.services.LlamaServiceImpl(this)
         val modelManager = ModelManager(this)
         val daexEmbedder = DaexEmbedder(this, modelManager)
         val daexCoreMemory = com.daex.android.services.DaexCoreMemoryImpl(this)
@@ -52,7 +52,7 @@ class MainActivity : ComponentActivity() {
             val daexPreferences = remember { DaexPreferences(this@MainActivity) }
             val viewModel = remember { 
                 DaexInferenceViewModel(
-                    daexService = daexService,
+                    llamaService = llamaService,
                     modelManager = modelManager,
                     deviceService = deviceService,
                     daexMemory = daexMemory,
@@ -88,8 +88,7 @@ class MainActivity : ComponentActivity() {
                                 currentScreen = Screen.EXECUTION 
                             },
                             daexPreferences = daexPreferences,
-                            viewModel = viewModel,
-                            modelManager = modelManager
+                            viewModel = viewModel
                         )
                     }
                     Screen.EXECUTION -> {
