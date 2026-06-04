@@ -58,32 +58,10 @@ class DaexServiceImpl(private val context: Context) : DaexService {
     private var engine: Engine? = null
     private var conversation: Conversation? = null
     private var isLoaded = false
-    private var nativeRuntimeConfigured = false
 
     companion object {
         private const val TAG = "DaexService"
         
-        init {
-            try {
-                System.loadLibrary("LiteRt")
-                Log.i(TAG, "Loaded libLiteRt.so successfully")
-            } catch (e: Throwable) {
-                Log.w(TAG, "Native library libLiteRt.so load warning: ${e.message}")
-            }
-        }
-    }
-
-    @Synchronized
-    private fun configureNativeRuntime(nativeLibraryDir: String) {
-        if (nativeRuntimeConfigured) return
-        try {
-            android.system.Os.setenv("LD_LIBRARY_PATH", nativeLibraryDir, true)
-            android.system.Os.setenv("ADSP_LIBRARY_PATH", nativeLibraryDir, true)
-            Log.i(TAG, "Successfully set native library paths to $nativeLibraryDir")
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to set native library paths", e)
-        }
-        nativeRuntimeConfigured = true
     }
 
     override suspend fun initContext(modelPath: String, backendType: BackendType, isSpeculativeDecodingEnabled: Boolean): BackendType {
@@ -110,7 +88,6 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 val backend = when (backendType) {
                     BackendType.NPU -> {
                         val libDir = context.applicationInfo.nativeLibraryDir
-                        configureNativeRuntime(libDir)
                         
                         // Check if a dispatch library is present in either nativeLibraryDir or filesDir
                         val hasDispatchLibInNative = java.io.File(libDir).listFiles()?.any {
