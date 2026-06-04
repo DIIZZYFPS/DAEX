@@ -64,8 +64,8 @@ class MainActivity : ComponentActivity() {
             var currentScreen by remember { mutableStateOf<Screen?>(null) }
             
             LaunchedEffect(Unit) {
-                // Hardcoded to Screen.LANDING for onboarding preview and demo verification
-                currentScreen = Screen.LANDING
+                val completed = daexPreferences.hasCompletedLandingFlow.first()
+                currentScreen = if (completed) Screen.EXECUTION else Screen.LANDING
             }
             
             val primaryColor by viewModel.primaryColor.collectAsState()
