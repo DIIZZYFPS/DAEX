@@ -16,12 +16,25 @@ data class DeviceSpecs(
     val model: String,
     val board: String,
     val hardware: String,
-    val npuSupported: Boolean
+    val npuSupported: Boolean,
+    val socModel: String,
+    val socManufacturer: String
 )
 
 class DeviceService(private val context: Context) {
 
     fun getDeviceSpecs(): DeviceSpecs {
+        val socModel = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Build.SOC_MODEL
+        } else {
+            ""
+        }
+        val socManufacturer = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Build.SOC_MANUFACTURER
+        } else {
+            ""
+        }
+
         return DeviceSpecs(
             totalRAM = getTotalRAM(),
             freeStorage = getFreeStorage(),
@@ -30,7 +43,9 @@ class DeviceService(private val context: Context) {
             model = Build.MODEL,
             board = Build.BOARD,
             hardware = Build.HARDWARE,
-            npuSupported = hasNpuDriver()
+            npuSupported = hasNpuDriver(),
+            socModel = socModel ?: "",
+            socManufacturer = socManufacturer ?: ""
         )
     }
 
