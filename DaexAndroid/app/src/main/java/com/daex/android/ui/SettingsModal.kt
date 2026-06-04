@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,7 +53,22 @@ fun SettingsModal(
     onDeleteModel: () -> Unit,
     onClearConversations: () -> Unit,
     onEditMemory: () -> Unit,
-    onShareLogs: () -> Unit
+    onShareLogs: () -> Unit,
+    deviceSpecs: com.daex.android.services.DeviceSpecs?,
+    isSpeculativeDecodingEnabled: Boolean,
+    onToggleSpeculativeDecoding: (Boolean) -> Unit,
+    inferenceTemperature: Float,
+    onTemperatureChange: (Float) -> Unit,
+    inferenceTopK: Int,
+    onTopKChange: (Int) -> Unit,
+    inferenceTopP: Float,
+    onTopPChange: (Float) -> Unit,
+    customSystemPrompt: String,
+    onCustomSystemPromptChange: (String) -> Unit,
+    isToolCallingEnabled: Boolean,
+    onToggleToolCalling: (Boolean) -> Unit,
+    uploadedFiles: List<String> = emptyList(),
+    onDeleteFile: (String) -> Unit = {}
 ) {
     if (!visible) return
 
@@ -68,6 +85,7 @@ fun SettingsModal(
         val coroutineScope = rememberCoroutineScope()
         val offsetY = remember { Animatable(screenHeightPx) }
         val scrimOpacity = remember { Animatable(0f) }
+        var devOptionsExpanded by remember { mutableStateOf(false) }
 
         val springSpec = spring<Float>(dampingRatio = 0.75f, stiffness = 300f)
         val timingSpec = tween<Float>(durationMillis = 260, easing = CubicBezierEasing(0.4f, 0.0f, 1.0f, 1.0f))
@@ -462,6 +480,247 @@ fun SettingsModal(
 
                             Spacer(modifier = Modifier.height(32.dp))
 
+                            // Developer Options Section
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { devOptionsExpanded = !devOptionsExpanded }
+                                    .padding(vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                SectionHeader("DEVELOPER OPTIONS", modifier = Modifier.padding(bottom = 0.dp))
+                                BasicText(
+                                    text = if (devOptionsExpanded) "▼" else "▶",
+                                    style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.primary)
+                                )
+                            }
+
+                            AnimatedVisibility(visible = devOptionsExpanded) {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    // Device Info Diagnostics Block
+                                    deviceSpecs?.let { specs ->
+                                        BasicText(
+                                            text = "DEVICE DIAGNOSTICS",
+                                            style = DaexTheme.typography.mono.copy(
+                                                color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                                fontSize = 10.sp,
+                                                letterSpacing = 1.sp
+                                            ),
+                                            modifier = Modifier.padding(bottom = 8.dp)
+                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(DaexTheme.colors.onSurface.copy(alpha = 0.04f))
+                                                .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                                .padding(12.dp)
+                                        ) {
+                                            Column {
+                                                val ramGb = String.format(java.util.Locale.US, "%.1f", specs.totalRAM / (1024.0 * 1024.0 * 1024.0))
+                                                val freeStorageGb = String.format(java.util.Locale.US, "%.1f", specs.freeStorage / (1024.0 * 1024.0 * 1024.0))
+                                                
+                                                DiagnosticRow("Phone Model", "${specs.manufacturer} ${specs.model}")
+                                                DiagnosticRow("SoC Board", specs.board)
+                                                DiagnosticRow("SoC Hardware", specs.hardware)
+                                                DiagnosticRow("Total Memory", "${ramGb} GB RAM")
+                                                DiagnosticRow("Free Storage", "${freeStorageGb} GB")
+                                                DiagnosticRow("Vulkan API", if (specs.hasVulkan) "SUPPORTED" else "UNSUPPORTED")
+                                                DiagnosticRow("LiteRT NPU Support", if (specs.npuSupported) "READY (Dispatch Lib Present)" else "UNAVAILABLE (No Dispatch Lib)")
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                    }
+
+                                    // Speculative Decoding Switch
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(DaexTheme.colors.onSurface.copy(alpha = 0.03f))
+                                            .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            BasicText(
+                                                text = "Speculative Decoding (MTP)",
+                                                style = DaexTheme.typography.body1.copy(
+                                                    color = DaexTheme.colors.onBackground,
+                                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                                )
+                                            )
+                                            BasicText(
+                                                text = "Draft models accelerate generation speed",
+                                                style = DaexTheme.typography.mono.copy(
+                                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                                    fontSize = 11.sp
+                                                ),
+                                                modifier = Modifier.padding(top = 4.dp)
+                                            )
+                                        }
+                                        DaexSwitch(
+                                            checked = isSpeculativeDecodingEnabled,
+                                            onCheckedChange = onToggleSpeculativeDecoding
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    // Native Tool Calling Switch
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(DaexTheme.colors.onSurface.copy(alpha = 0.03f))
+                                            .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                            .padding(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            BasicText(
+                                                text = "Native Tool Calling",
+                                                style = DaexTheme.typography.body1.copy(
+                                                    color = DaexTheme.colors.onBackground,
+                                                    fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold
+                                                )
+                                            )
+                                            BasicText(
+                                                text = "Expose battery, storage, time, specs (and optionally launch apps) directly to model",
+                                                style = DaexTheme.typography.mono.copy(
+                                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                                    fontSize = 11.sp
+                                                ),
+                                                modifier = Modifier.padding(top = 4.dp)
+                                            )
+                                            )
+                                        }
+                                        DaexSwitch(
+                                            checked = isToolCallingEnabled,
+                                            onCheckedChange = onToggleToolCalling
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    // Custom System Prompt
+                                    BasicText(
+                                        text = "CUSTOM SYSTEM PROMPT",
+                                        style = DaexTheme.typography.mono.copy(
+                                            color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                            fontSize = 10.sp,
+                                            letterSpacing = 1.sp
+                                        ),
+                                        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                                    )
+                                    com.daex.android.ui.components.DaexTextField(
+                                        value = customSystemPrompt,
+                                        onValueChange = onCustomSystemPromptChange,
+                                        placeholder = "Override instructions (e.g. You are a cowboy...)",
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.15f), RoundedCornerShape(8.dp))
+                                    )
+                                    Spacer(modifier = Modifier.height(16.dp))
+
+                                    // Temperature Slider
+                                    SliderParameter(
+                                        label = "Temperature",
+                                        value = inferenceTemperature,
+                                        valueRange = 0f..2f,
+                                        valueFormatter = { String.format(java.util.Locale.US, "%.2f", it) },
+                                        onValueChange = onTemperatureChange,
+                                        primaryColor = primaryColor
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    // Top-K Slider
+                                    SliderParameter(
+                                        label = "Top-K",
+                                        value = inferenceTopK.toFloat(),
+                                        valueRange = 1f..100f,
+                                        valueFormatter = { it.toInt().toString() },
+                                        onValueChange = { onTopKChange(it.toInt()) },
+                                        primaryColor = primaryColor
+                                    )
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    // Top-P Slider
+                                    SliderParameter(
+                                        label = "Top-P",
+                                        value = inferenceTopP,
+                                        valueRange = 0f..1f,
+                                        valueFormatter = { String.format(java.util.Locale.US, "%.2f", it) },
+                                        onValueChange = onTopPChange,
+                                        primaryColor = primaryColor
+                                    )
+                                    Spacer(modifier = Modifier.height(24.dp))
+                                }
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Knowledge Base Section (RAG Files)
+                            SectionHeader("KNOWLEDGE BASE")
+                            if (uploadedFiles.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(DaexTheme.colors.onSurface.copy(alpha = 0.02f))
+                                        .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    BasicText(
+                                        text = "No offline documents ingested",
+                                        style = DaexTheme.typography.mono.copy(
+                                            color = DaexTheme.colors.onSurface.copy(alpha = 0.3f),
+                                            fontSize = 11.sp
+                                        )
+                                    )
+                                }
+                            } else {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    uploadedFiles.forEach { fileName ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(DaexTheme.colors.onSurface.copy(alpha = 0.03f))
+                                                .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            BasicText(
+                                                text = fileName,
+                                                style = DaexTheme.typography.body2.copy(
+                                                    color = DaexTheme.colors.onSurface
+                                                ),
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            BasicText(
+                                                text = "[REMOVE]",
+                                                style = DaexTheme.typography.mono.copy(
+                                                    color = DaexTheme.colors.error,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                                ),
+                                                modifier = Modifier
+                                                    .clickable { onDeleteFile(fileName) }
+                                                    .padding(4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(24.dp))
+
                             // Data Management Section
                             SectionHeader("DATA MANAGEMENT")
                             if (modelStatus == ModelStatus.READY || modelStatus == ModelStatus.NOT_DOWNLOADED) {
@@ -515,7 +774,7 @@ fun SettingsModal(
 }
 
 @Composable
-private fun SectionHeader(text: String) {
+private fun SectionHeader(text: String, modifier: Modifier = Modifier) {
     BasicText(
         text = text,
         style = DaexTheme.typography.mono.copy(
@@ -523,8 +782,70 @@ private fun SectionHeader(text: String) {
             fontSize = 11.sp,
             letterSpacing = 1.sp
         ),
-        modifier = Modifier.padding(bottom = 12.dp)
+        modifier = modifier.padding(bottom = 12.dp)
     )
+}
+
+@Composable
+private fun DiagnosticRow(label: String, value: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        BasicText(
+            text = label,
+            style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.onSurface.copy(alpha = 0.5f), fontSize = 11.sp)
+        )
+        BasicText(
+            text = value,
+            style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.onSurface, fontSize = 11.sp)
+        )
+    }
+}
+
+@Composable
+private fun SliderParameter(
+    label: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    valueFormatter: (Float) -> String,
+    onValueChange: (Float) -> Unit,
+    primaryColor: Color
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BasicText(
+                text = label.uppercase(),
+                style = DaexTheme.typography.mono.copy(
+                    color = DaexTheme.colors.onSurface.copy(alpha = 0.5f),
+                    fontSize = 11.sp
+                )
+            )
+            BasicText(
+                text = valueFormatter(value),
+                style = DaexTheme.typography.mono.copy(
+                    color = primaryColor,
+                    fontSize = 11.sp,
+                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                )
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = valueRange,
+            colors = SliderDefaults.colors(
+                thumbColor = primaryColor,
+                activeTrackColor = primaryColor,
+                inactiveTrackColor = primaryColor.copy(alpha = 0.2f)
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
 }
 
 @Composable

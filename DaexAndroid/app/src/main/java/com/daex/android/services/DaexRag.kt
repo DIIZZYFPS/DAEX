@@ -14,6 +14,7 @@ interface DaexRag {
     suspend fun ingestFile(fileName: String, content: String, onProgress: (Int, Int) -> Unit = { _, _ -> })
     suspend fun queryDocuments(query: String, maxResults: Int = 5): List<String>
     suspend fun getUploadedFiles(): List<String>
+    suspend fun deleteFileByName(fileName: String)
     suspend fun deleteFile(documentId: String)
     suspend fun hasDocuments(): Boolean
 }
@@ -102,6 +103,20 @@ class DaexRagImpl(
                 Log.d("DaexRag", "Deleted ${chunks.size} chunks for document $documentId")
             } catch (e: Exception) {
                 Log.e("DaexRag", "Failed to delete file", e)
+            }
+        }
+    }
+
+    override suspend fun deleteFileByName(fileName: String) {
+        withContext(Dispatchers.IO) {
+            try {
+                val chunks = chunkBox.query {
+                    equal(DocumentChunkEntity_.fileName, fileName, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+                }.find()
+                chunkBox.remove(chunks)
+                Log.d("DaexRag", "Deleted ${chunks.size} chunks for file $fileName")
+            } catch (e: Exception) {
+                Log.e("DaexRag", "Failed to delete file by name $fileName", e)
             }
         }
     }
