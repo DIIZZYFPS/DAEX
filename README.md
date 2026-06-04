@@ -1,52 +1,59 @@
 # DAEX (Daedalus Execution Engine)
 
-**DAEX** is a high-performance, edge-optimized execution client designed to run Large Language Models directly on Android hardware. DAEX hosts an advanced local AI agent known as **Icarus**, leveraging on-device inference to prioritize zero-latency speed, user privacy, and complete offline autonomy.
+**DAEX** is a high-performance, edge-optimized neural processing engine designed to run Large Language Models (LLMs) directly on your Android device. DAEX hosts an advanced autonomous AI assistant known as **Icarus**, leveraging cutting-edge on-device inference to prioritize speed, privacy, and full offline capability.
 
-The project is structured as a native Kotlin Android application with a premium dark cybernetic terminal user interface.
-
----
-
-## Key Capabilities
-
-* **On-Device LLM Inference**: Powered by a highly optimized [`LiteRT`](https://github.com/google-ai-edge/LiteRT) runtime integration, keeping user data entirely local and allowing for complete offline usage.
-* **Hardware Acceleration**: Built-in support for Vulkan GPU delegation and LiteRT NPU acceleration mapping to maximize token generation speeds on modern mobile SoCs.
-* **Offline Document Vector Space (RAG)**: Integrates ObjectBox vector database and native embedding models to ingest, chunk, and semantic-search local PDFs or plain text documents offline. Fully manageable via the settings console.
-* **Core Memory Curation**: Implements a localized fact logging engine that dynamically curates a local memory profile based on conversations.
-* **Sandbox Tool Calling**: Provides a secure native capability framework allowing the model to check battery, storage status, system time, and launch apps under sandbox controls.
-* **Advanced Inference UI**: Features a reasoning process visualizer (thinking block collapsible logs), real-time token speed indicators (tok/s), dynamic hardware status monitors, and custom liquid glass overlay input bars.
+Formerly known as *Aegis*, the project has been fully reimagined from the ground up as a native Kotlin Android application with a sleek, reactive, and highly dynamic UI.
 
 ---
 
-## Repository Structure
+## 🚀 Key Features
 
-* **`DaexAndroid/`**: The primary Android application source (Kotlin, Jetpack Compose, ObjectBox, Room).
-* **`docs/`**: Architecture blueprints, system metrics, and developer references.
+* **True On-Device Inference**: Powered by a highly optimized `llama.cpp` integration, keeping your data entirely local and allowing for complete offline usage.
+* **Hardware Acceleration**: Built-in support for Vulkan GPU delegation to maximize token generation speeds on modern mobile SoCs.
+* **Modern Android Stack**: 
+  * **UI**: 100% Jetpack Compose with custom glassmorphic styling, smooth vector animations, and dynamic theming (Dark/Light mode, custom accent colors).
+  * **Persistence**: Robust session management and chat history using Android Room.
+  * **Settings**: Persistent configuration via Jetpack Preferences DataStore.
+* **Advanced Inference UI**: Features a live "Thinking Process" block for models that use reasoning tags (like `<|think|>`), real-time token generation metrics (`tok/s`), and interactive markdown rendering.
 
 ---
 
-## Setup and Build Instructions
+## 📂 Repository Structure
+
+* **`DaexAndroid/`**: The primary Android application (Kotlin/Compose). This is the core of the project.
+* **`DaexForge/`**: Python-based tooling for NPU stamping, model quantization, and prompt engineering utilities.
+* **`docs/`**: Architectural research, blueprints, and implementation notes.
+
+---
+
+## 🛠️ Setup & Build Instructions
 
 ### Prerequisites
-1. Android Studio (Ladybug or later recommended).
-2. Android SDK (Target API 36+ support).
-3. JDK 17+.
+1. **Android Studio** (Jellyfish or later recommended).
+2. **Android SDK** (API 36+ target support).
+3. **Java 17**.
 
 ### Getting Started
-1. Clone the repository:
+1. Clone the repository to your local machine:
    ```bash
    git clone <repository-url>
    cd DAEX
    ```
-2. Open the `DaexAndroid` directory directly in Android Studio.
-3. Allow Gradle to sync and resolve all dependencies (Compose, ObjectBox, Kotlin coroutines).
-4. Connect a physical Android device configured with USB debugging enabled.
-5. Compile and deploy:
-   ```bash
-   ./gradlew.bat installDebug
-   ```
+2. Open the **`DaexAndroid`** folder directly in Android Studio.
+   *(Do not open the root `DAEX` folder as the project root in Android Studio, as it may cause Gradle sync issues).*
+3. Allow Gradle to sync and download all dependencies (Compose, Room, DataStore, LlamaCPP, etc.).
+4. Select your target device (Physical device recommended for inference performance, or a high-end emulator).
+5. Click **Run** (`Shift + F10`).
 
-### Initializing Engines
-1. Complete the initial landing and configuration wizard sequence.
-2. Select your preferred engine model (e.g. Gemma 2B, Qwen 1.5B).
-3. The app will download and stamp the model to local storage.
-4. Toggle GPU Offload or NPU acceleration if supported by your hardware, and begin execution.
+### Downloading Models
+DAEX uses `.gguf` quantized models. 
+1. Launch the app and complete the initial landing sequence.
+2. Open the Settings (or Model Selector).
+3. Download one of the supported edge models (e.g., Gemma 2b, Qwen 1.5b) directly within the app.
+4. Once downloaded, toggle **GPU Acceleration** if supported by your device, and start chatting!
+
+---
+
+## 🗺️ Roadmap
+
+For a detailed look at where DAEX is heading—including upcoming RAG (Retrieval-Augmented Generation) implementations, Intent Routing, and Agentic OS integrations—please view the [ROADMAP.md](./DaexAndroid/ROADMAP.md).

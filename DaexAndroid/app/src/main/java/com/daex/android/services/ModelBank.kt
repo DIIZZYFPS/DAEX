@@ -9,13 +9,7 @@ data class Model(
     val downloadUrl: String,
     val extension: String,
     val isEmbedding: Boolean = false,
-    val supportedBackends: List<BackendType> = listOf(BackendType.CPU, BackendType.GPU),
-    val provider: String,
-    val familyId: String,
-    val familyName: String,
-    val sizeName: String,
-    val variantName: String,
-    val targetHardware: String? = null
+    val supportedBackends: List<BackendType> = listOf(BackendType.CPU, BackendType.GPU)
 )
 
 object ModelBank {
@@ -28,13 +22,7 @@ object ModelBank {
         downloadUrl = "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf",
         extension = "tflite",
         isEmbedding = true,
-        supportedBackends = listOf(BackendType.CPU),
-        provider = "Nomic",
-        familyId = "nomic-embed",
-        familyName = "Nomic Embed",
-        sizeName = "v1.5",
-        variantName = "CPU",
-        targetHardware = null
+        supportedBackends = listOf(BackendType.CPU)
     )
 
     val generativeModels: List<Model>
@@ -49,13 +37,7 @@ object ModelBank {
             requiredRAM = 1_500_000_000L,
             downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm",
             extension = "litertlm",
-            supportedBackends = listOf(BackendType.CPU, BackendType.GPU),
-            provider = "Google",
-            familyId = "gemma-4",
-            familyName = "Gemma 4",
-            sizeName = "E2B",
-            variantName = "LiteRT CPU/GPU",
-            targetHardware = null
+            supportedBackends = listOf(BackendType.CPU, BackendType.GPU)
         ),
         Model(
             id = "gemma-4-E2B-it-qualcomm-sm8750",
@@ -65,13 +47,7 @@ object ModelBank {
             requiredRAM = 1_500_000_000L,
             downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it_qualcomm_sm8750.litertlm",
             extension = "litertlm",
-            supportedBackends = listOf(BackendType.NPU),
-            provider = "Google",
-            familyId = "gemma-4",
-            familyName = "Gemma 4",
-            sizeName = "E2B",
-            variantName = "Qualcomm NPU (S25)",
-            targetHardware = "SM8750"
+            supportedBackends = listOf(BackendType.NPU)
         ),
         Model(
             id = "gemma-4-E2B-it-google-tensor-g5",
@@ -81,13 +57,7 @@ object ModelBank {
             requiredRAM = 1_500_000_000L,
             downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it_Google_Tensor_G5.litertlm",
             extension = "litertlm",
-            supportedBackends = listOf(BackendType.NPU),
-            provider = "Google",
-            familyId = "gemma-4",
-            familyName = "Gemma 4",
-            sizeName = "E2B",
-            variantName = "Tensor G5 NPU",
-            targetHardware = "Tensor G5"
+            supportedBackends = listOf(BackendType.NPU)
         ),
         Model(
             id = "gemma-4-E4B-it-litert-lm",
@@ -97,15 +67,8 @@ object ModelBank {
             requiredRAM = 6_000_000_000L,
             downloadUrl = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm",
             extension = "litertlm",
-            supportedBackends = listOf(BackendType.CPU, BackendType.GPU),
-            provider = "Google",
-            familyId = "gemma-4",
-            familyName = "Gemma 4",
-            sizeName = "E4B",
-            variantName = "LiteRT CPU/GPU",
-            targetHardware = null
+            supportedBackends = listOf(BackendType.CPU, BackendType.GPU)
         ),
         embeddingModel
     )
 }
-

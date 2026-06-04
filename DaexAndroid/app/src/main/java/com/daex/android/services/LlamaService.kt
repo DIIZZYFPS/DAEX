@@ -11,8 +11,6 @@ import com.google.ai.edge.litertlm.Backend
 import com.google.ai.edge.litertlm.Conversation
 import com.google.ai.edge.litertlm.ConversationConfig
 import com.google.ai.edge.litertlm.Channel
-import com.google.ai.edge.litertlm.SamplerConfig
-import com.google.ai.edge.litertlm.tool
 import com.google.ai.edge.litertlm.Message as LiteRtMessage
 import com.google.ai.edge.litertlm.Contents as LiteRtContents
 import com.google.ai.edge.litertlm.Role as LiteRtRole
@@ -31,18 +29,13 @@ data class Message(
     val thoughtContent: String? = null
 )
 
-interface DaexService {
-    suspend fun initContext(modelPath: String, backendType: BackendType, isSpeculativeDecodingEnabled: Boolean = true): BackendType
+interface LlamaService {
+    suspend fun initContext(modelPath: String, backendType: BackendType): BackendType
     suspend fun releaseContext()
     suspend fun generateResponse(
         messages: List<Message>,
         systemContext: String = "",
         isReasoningEnabled: Boolean = true,
-        temperature: Float = 0.7f,
-        topK: Int = 40,
-        topP: Float = 0.9f,
-        customSystemPrompt: String = "",
-        isToolCallingEnabled: Boolean = false,
         onToken: (String) -> Unit
     ): GenerationResult
     suspend fun generateSilent(prompt: String, maxTokens: Int = 512): String
@@ -54,35 +47,34 @@ data class GenerationResult(
     val tokensPerSecond: Double
 )
 
-class DaexServiceImpl(private val context: Context) : DaexService {
+class LlamaServiceImpl(private val context: Context) : LlamaService {
     private var engine: Engine? = null
     private var conversation: Conversation? = null
     private var isLoaded = false
 
     companion object {
-        private const val TAG = "DaexService"
-        
+        private const val TAG = "LlamaService"
     }
 
-    override suspend fun initContext(modelPath: String, backendType: BackendType, isSpeculativeDecodingEnabled: Boolean): BackendType {
+    override suspend fun initContext(modelPath: String, backendType: BackendType): BackendType {
         return withContext(Dispatchers.IO) {
             try {
                 releaseContext()
-                Log.d("DaexService", "Initializing LiteRT-LM Engine with model: $modelPath (backend=$backendType, speculative=$isSpeculativeDecodingEnabled)")
+                Log.d("LlamaService", "Initializing LiteRT-LM Engine with model: $modelPath (backend=$backendType)")
                 
                 // Set native log severity to FATAL to suppress noisy NPU dispatch warning logs
                 try {
                     com.google.ai.edge.litertlm.Engine.setNativeMinLogSeverity(com.google.ai.edge.litertlm.LogSeverity.FATAL)
                 } catch (e: Throwable) {
-                    Log.w("DaexService", "Failed to set native log severity", e)
+                    Log.w("LlamaService", "Failed to set native log severity", e)
                 }
 
                 // Enable Speculative Decoding / MTP drafters for high-performance inference
                 try {
                     @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
-                    com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = isSpeculativeDecodingEnabled
+                    com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = true
                 } catch (e: Throwable) {
-                    Log.w("DaexService", "Failed to set speculative decoding flag", e)
+                    Log.w("LlamaService", "Failed to set speculative decoding flag", e)
                 }
 
                 val backend = when (backendType) {
@@ -124,7 +116,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                     newEngine.initialize()
                 } catch (specEx: Exception) {
                     // If speculative decoding initialization failed, retry without it
-                    Log.w("DaexService", "Failed to initialize with speculative decoding, retrying with it disabled", specEx)
+                    Log.w("LlamaService", "Failed to initialize with speculative decoding, retrying with it disabled", specEx)
                     try {
                         @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
                         com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = false
@@ -139,22 +131,22 @@ class DaexServiceImpl(private val context: Context) : DaexService {
 
                 engine = newEngine
                 isLoaded = true
-                Log.d("DaexService", "LiteRT-LM Engine initialized successfully with $backendType")
+                Log.d("LlamaService", "LiteRT-LM Engine initialized successfully with $backendType")
                 backendType
             } catch (e: Exception) {
                 // Cascading Fallback: NPU -> GPU -> CPU
                 when (backendType) {
                     BackendType.NPU -> {
-                        Log.w("DaexService", "NPU initialization failed (missing TF_LITE_AUX), attempting fallback to GPU", e)
+                        Log.w("LlamaService", "NPU initialization failed (missing TF_LITE_AUX), attempting fallback to GPU", e)
                         initContext(modelPath, BackendType.GPU)
                     }
                     BackendType.GPU -> {
-                        Log.w("DaexService", "GPU initialization failed, attempting fallback to CPU", e)
+                        Log.w("LlamaService", "GPU initialization failed, attempting fallback to CPU", e)
                         initContext(modelPath, BackendType.CPU)
                     }
                     BackendType.CPU -> {
                         isLoaded = false
-                        Log.e("DaexService", "Failed to initialize LiteRT-LM Engine on CPU", e)
+                        Log.e("LlamaService", "Failed to initialize LiteRT-LM Engine on CPU", e)
                         throw e
                     }
                 }
@@ -167,7 +159,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
             try {
                 conversation?.close()
             } catch (e: Exception) {
-                Log.e("DaexService", "Error closing conversation", e)
+                Log.e("LlamaService", "Error closing conversation", e)
             } finally {
                 conversation = null
             }
@@ -175,13 +167,13 @@ class DaexServiceImpl(private val context: Context) : DaexService {
             try {
                 engine?.close()
             } catch (e: Exception) {
-                Log.e("DaexService", "Error closing engine", e)
+                Log.e("LlamaService", "Error closing engine", e)
             } finally {
                 engine = null
             }
             
             isLoaded = false
-            Log.d("DaexService", "Engine and conversation released")
+            Log.d("LlamaService", "Engine and conversation released")
         }
     }
 
@@ -189,23 +181,12 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         messages: List<Message>,
         systemContext: String,
         isReasoningEnabled: Boolean,
-        temperature: Float,
-        topK: Int,
-        topP: Float,
-        customSystemPrompt: String,
-        isToolCallingEnabled: Boolean,
         onToken: (String) -> Unit
     ): GenerationResult {
-        Log.i(TAG, "generateResponse: isToolCallingEnabled=$isToolCallingEnabled, temperature=$temperature, topK=$topK, topP=$topP, customPromptLength=${customSystemPrompt.length}")
         val activeEngine = engine ?: throw Exception("Model not loaded.")
         
         val systemInstructionText = buildString {
-            if (customSystemPrompt.isNotBlank()) {
-                append(customSystemPrompt)
-                append("\n\n")
-            } else {
-                append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n\n")
-            }
+            append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n\n")
             if (systemContext.isNotBlank()) {
                 append("<global_memory>\n")
                 append(systemContext)
@@ -232,26 +213,10 @@ class DaexServiceImpl(private val context: Context) : DaexService {
             emptyList()
         }
 
-        val samplerConfig = SamplerConfig(
-            topK = topK,
-            topP = topP.toDouble(),
-            temperature = temperature.toDouble(),
-            seed = 0
-        )
-
-        val tools = if (isToolCallingEnabled) {
-            listOf(tool(DeviceTools(context)))
-        } else {
-            emptyList()
-        }
-
         val conversationConfig = ConversationConfig(
             systemInstruction = LiteRtContents.of(systemInstructionText),
             initialMessages = initialLiteRtMessages,
-            channels = channels,
-            samplerConfig = samplerConfig,
-            automaticToolCalling = isToolCallingEnabled,
-            tools = tools
+            channels = channels
         )
 
         // Close the previous conversation to start fresh with new history
@@ -329,7 +294,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         try {
             conversation?.cancelProcess()
         } catch (e: Exception) {
-            Log.e("DaexService", "Failed to cancel process", e)
+            Log.e("LlamaService", "Failed to cancel process", e)
         }
     }
 
