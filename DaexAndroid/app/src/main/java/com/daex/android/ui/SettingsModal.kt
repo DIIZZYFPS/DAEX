@@ -66,7 +66,9 @@ fun SettingsModal(
     customSystemPrompt: String,
     onCustomSystemPromptChange: (String) -> Unit,
     isToolCallingEnabled: Boolean,
-    onToggleToolCalling: (Boolean) -> Unit
+    onToggleToolCalling: (Boolean) -> Unit,
+    uploadedFiles: List<String> = emptyList(),
+    onDeleteFile: (String) -> Unit = {}
 ) {
     if (!visible) return
 
@@ -656,6 +658,67 @@ fun SettingsModal(
                                 }
                             }
                             Spacer(modifier = Modifier.height(16.dp))
+
+                            // Knowledge Base Section (RAG Files)
+                            SectionHeader("KNOWLEDGE BASE")
+                            if (uploadedFiles.isEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(8.dp))
+                                        .background(DaexTheme.colors.onSurface.copy(alpha = 0.02f))
+                                        .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.05f), RoundedCornerShape(8.dp))
+                                        .padding(16.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    BasicText(
+                                        text = "No offline documents ingested",
+                                        style = DaexTheme.typography.mono.copy(
+                                            color = DaexTheme.colors.onSurface.copy(alpha = 0.3f),
+                                            fontSize = 11.sp
+                                        )
+                                    )
+                                }
+                            } else {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    uploadedFiles.forEach { fileName ->
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(DaexTheme.colors.onSurface.copy(alpha = 0.03f))
+                                                .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            BasicText(
+                                                text = fileName,
+                                                style = DaexTheme.typography.body2.copy(
+                                                    color = DaexTheme.colors.onSurface
+                                                ),
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            BasicText(
+                                                text = "[REMOVE]",
+                                                style = DaexTheme.typography.mono.copy(
+                                                    color = DaexTheme.colors.error,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
+                                                ),
+                                                modifier = Modifier
+                                                    .clickable { onDeleteFile(fileName) }
+                                                    .padding(4.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(24.dp))
 
                             // Data Management Section
                             SectionHeader("DATA MANAGEMENT")

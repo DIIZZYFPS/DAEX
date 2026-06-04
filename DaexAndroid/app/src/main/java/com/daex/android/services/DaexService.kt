@@ -31,7 +31,7 @@ data class Message(
     val thoughtContent: String? = null
 )
 
-interface LlamaService {
+interface DaexService {
     suspend fun initContext(modelPath: String, backendType: BackendType, isSpeculativeDecodingEnabled: Boolean = true): BackendType
     suspend fun releaseContext()
     suspend fun generateResponse(
@@ -54,14 +54,14 @@ data class GenerationResult(
     val tokensPerSecond: Double
 )
 
-class LlamaServiceImpl(private val context: Context) : LlamaService {
+class DaexServiceImpl(private val context: Context) : DaexService {
     private var engine: Engine? = null
     private var conversation: Conversation? = null
     private var isLoaded = false
     private var nativeRuntimeConfigured = false
 
     companion object {
-        private const val TAG = "LlamaService"
+        private const val TAG = "DaexService"
         
         init {
             try {
@@ -90,13 +90,13 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
         return withContext(Dispatchers.IO) {
             try {
                 releaseContext()
-                Log.d("LlamaService", "Initializing LiteRT-LM Engine with model: $modelPath (backend=$backendType, speculative=$isSpeculativeDecodingEnabled)")
+                Log.d("DaexService", "Initializing LiteRT-LM Engine with model: $modelPath (backend=$backendType, speculative=$isSpeculativeDecodingEnabled)")
                 
                 // Set native log severity to FATAL to suppress noisy NPU dispatch warning logs
                 try {
                     com.google.ai.edge.litertlm.Engine.setNativeMinLogSeverity(com.google.ai.edge.litertlm.LogSeverity.FATAL)
                 } catch (e: Throwable) {
-                    Log.w("LlamaService", "Failed to set native log severity", e)
+                    Log.w("DaexService", "Failed to set native log severity", e)
                 }
 
                 // Enable Speculative Decoding / MTP drafters for high-performance inference
@@ -104,7 +104,7 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
                     @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
                     com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = isSpeculativeDecodingEnabled
                 } catch (e: Throwable) {
-                    Log.w("LlamaService", "Failed to set speculative decoding flag", e)
+                    Log.w("DaexService", "Failed to set speculative decoding flag", e)
                 }
 
                 val backend = when (backendType) {
@@ -147,7 +147,7 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
                     newEngine.initialize()
                 } catch (specEx: Exception) {
                     // If speculative decoding initialization failed, retry without it
-                    Log.w("LlamaService", "Failed to initialize with speculative decoding, retrying with it disabled", specEx)
+                    Log.w("DaexService", "Failed to initialize with speculative decoding, retrying with it disabled", specEx)
                     try {
                         @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
                         com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = false
@@ -162,22 +162,22 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
 
                 engine = newEngine
                 isLoaded = true
-                Log.d("LlamaService", "LiteRT-LM Engine initialized successfully with $backendType")
+                Log.d("DaexService", "LiteRT-LM Engine initialized successfully with $backendType")
                 backendType
             } catch (e: Exception) {
                 // Cascading Fallback: NPU -> GPU -> CPU
                 when (backendType) {
                     BackendType.NPU -> {
-                        Log.w("LlamaService", "NPU initialization failed (missing TF_LITE_AUX), attempting fallback to GPU", e)
+                        Log.w("DaexService", "NPU initialization failed (missing TF_LITE_AUX), attempting fallback to GPU", e)
                         initContext(modelPath, BackendType.GPU)
                     }
                     BackendType.GPU -> {
-                        Log.w("LlamaService", "GPU initialization failed, attempting fallback to CPU", e)
+                        Log.w("DaexService", "GPU initialization failed, attempting fallback to CPU", e)
                         initContext(modelPath, BackendType.CPU)
                     }
                     BackendType.CPU -> {
                         isLoaded = false
-                        Log.e("LlamaService", "Failed to initialize LiteRT-LM Engine on CPU", e)
+                        Log.e("DaexService", "Failed to initialize LiteRT-LM Engine on CPU", e)
                         throw e
                     }
                 }
@@ -190,7 +190,7 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
             try {
                 conversation?.close()
             } catch (e: Exception) {
-                Log.e("LlamaService", "Error closing conversation", e)
+                Log.e("DaexService", "Error closing conversation", e)
             } finally {
                 conversation = null
             }
@@ -198,13 +198,13 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
             try {
                 engine?.close()
             } catch (e: Exception) {
-                Log.e("LlamaService", "Error closing engine", e)
+                Log.e("DaexService", "Error closing engine", e)
             } finally {
                 engine = null
             }
             
             isLoaded = false
-            Log.d("LlamaService", "Engine and conversation released")
+            Log.d("DaexService", "Engine and conversation released")
         }
     }
 
@@ -352,7 +352,7 @@ class LlamaServiceImpl(private val context: Context) : LlamaService {
         try {
             conversation?.cancelProcess()
         } catch (e: Exception) {
-            Log.e("LlamaService", "Failed to cancel process", e)
+            Log.e("DaexService", "Failed to cancel process", e)
         }
     }
 

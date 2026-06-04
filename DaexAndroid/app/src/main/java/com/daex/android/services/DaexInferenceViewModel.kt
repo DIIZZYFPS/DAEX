@@ -21,7 +21,7 @@ enum class ModelStatus {
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class DaexInferenceViewModel(
-    private val llamaService: LlamaService,
+    private val daexService: DaexService,
     private val modelManager: ModelManager? = null,
     private val deviceService: DeviceService? = null,
     private val daexMemory: DaexMemory? = null,
@@ -325,7 +325,7 @@ class DaexInferenceViewModel(
             try {
                 val isDownloaded = modelManager.isModelDownloaded(model)
                 if (isDownloaded) {
-                    if (llamaService.isLoaded()) {
+                    if (daexService.isLoaded()) {
                         _modelStatus.value = ModelStatus.READY
                     } else {
                         _modelStatus.value = ModelStatus.NOT_DOWNLOADED
@@ -399,14 +399,14 @@ class DaexInferenceViewModel(
                     model.supportedBackends.firstOrNull() ?: BackendType.CPU
                 }
                 _selectedBackend.value = targetBackend
-                val actualBackend = llamaService.initContext(modelPath, targetBackend, _isSpeculativeDecodingEnabled.value)
+                val actualBackend = daexService.initContext(modelPath, targetBackend, _isSpeculativeDecodingEnabled.value)
                 _selectedBackend.value = actualBackend
                 _hardwareState.value = actualBackend.name
                 
                 // Warm up the engine silently with 1 token to pre-allocate activation memory
                 try {
                     android.util.Log.d("DaexAutoload", "Warming up model...")
-                    llamaService.generateSilent("warmup", maxTokens = 1)
+                    daexService.generateSilent("warmup", maxTokens = 1)
                     android.util.Log.d("DaexAutoload", "Warmup complete.")
                 } catch (warmupEx: Exception) {
                     android.util.Log.w("DaexAutoload", "Warmup failed silently, continuing", warmupEx)
@@ -424,7 +424,7 @@ class DaexInferenceViewModel(
 
     fun unloadModel() {
         viewModelScope.launch {
-            llamaService.releaseContext()
+            daexService.releaseContext()
             _modelStatus.value = ModelStatus.NOT_DOWNLOADED
             _tokenSpeed.value = 0.0
         }
@@ -449,13 +449,13 @@ class DaexInferenceViewModel(
             return
         }
 
-        if (llamaService.isLoaded()) {
+        if (daexService.isLoaded()) {
             _modelStatus.value = ModelStatus.LOADING
             viewModelScope.launch {
                 try {
-                    llamaService.releaseContext()
+                    daexService.releaseContext()
                     val modelPath = modelManager?.getModelPath(targetModel) ?: ""
-                    val actualBackend = llamaService.initContext(modelPath, backend, _isSpeculativeDecodingEnabled.value)
+                    val actualBackend = daexService.initContext(modelPath, backend, _isSpeculativeDecodingEnabled.value)
                     _selectedBackend.value = actualBackend
                     _hardwareState.value = actualBackend.name
                     _modelStatus.value = ModelStatus.READY
@@ -471,7 +471,7 @@ class DaexInferenceViewModel(
 
     fun submitPrompt(prompt: String) {
         if (prompt.isBlank() || _isGenerating.value) return
-        if (_modelStatus.value != ModelStatus.READY || !llamaService.isLoaded()) {
+        if (_modelStatus.value != ModelStatus.READY || !daexService.isLoaded()) {
             _errorMessage.value = "Model is not loaded yet."
             return
         }
@@ -540,7 +540,7 @@ class DaexInferenceViewModel(
                             android.util.Log.e("DaexInference", "RAG query failed, continuing without context", e)
                         }
                     }
-                    val result = llamaService.generateResponse(
+                    val result = daexService.generateResponse(
                         messages = inferenceHistory,
                         systemContext = systemContext,
                         isReasoningEnabled = _isReasoningEnabled.value,
@@ -601,7 +601,7 @@ class DaexInferenceViewModel(
                         _isReflecting.value = true
                         try {
                             val recentMsgs = daexMemory?.getRecentHistory(convId, limit = 20) ?: emptyList()
-                            daexCoreMemory.compactMemory(recentMsgs, llamaService)
+                            daexCoreMemory.compactMemory(recentMsgs, daexService)
                             exchangesSinceCompaction = 0
                         } catch (e: Exception) {
                             android.util.Log.e("DaexInference", "Memory compaction failed", e)
@@ -628,7 +628,7 @@ class DaexInferenceViewModel(
 
     fun cancelGeneration() {
         generationJob?.cancel()
-        (llamaService as? LlamaServiceImpl)?.cancelGeneration()
+        (daexService as? DaexServiceImpl)?.cancelGeneration()
         _isGenerating.value = false
     }
 
@@ -678,6 +678,17 @@ class DaexInferenceViewModel(
                 _errorMessage.value = "Failed to process file: ${e.message}"
             } finally {
                 _isVectorizing.value = false
+            }
+        }
+    }
+
+    fun deleteUploadedFile(fileName: String) {
+        viewModelScope.launch {
+            try {
+                daexRag?.deleteFileByName(fileName)
+                refreshUploadedFiles()
+            } catch (e: Exception) {
+                android.util.Log.e("DaexInference", "File deletion failed", e)
             }
         }
     }
