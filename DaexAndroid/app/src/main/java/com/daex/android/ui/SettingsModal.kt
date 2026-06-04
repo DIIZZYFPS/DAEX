@@ -588,12 +588,13 @@ fun SettingsModal(
                                                 )
                                             )
                                             BasicText(
-                                                text = "Expose battery, storage, time & specs directly to model",
+                                                text = "Expose battery, storage, time, specs (and optionally launch apps) directly to model",
                                                 style = DaexTheme.typography.mono.copy(
                                                     color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
                                                     fontSize = 11.sp
                                                 ),
                                                 modifier = Modifier.padding(top = 4.dp)
+                                            )
                                             )
                                         }
                                         DaexSwitch(
