@@ -68,6 +68,7 @@ class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
                 append("  * '## Durable Learnings' for code workarounds, rules, instructions, or methods that succeeded/failed.\n")
                 append("- Remove placeholder bullets like '(No... recorded yet)' once real facts exist in a section.\n")
                 append("- Merge duplicate facts and keep information highly concise.\n")
+                append("- Keep the entire markdown file strictly under a 2,000-character budget. If the list is getting long, aggressively merge related bullets and prune older/completed or less relevant details.\n")
                 append("- Maintain the exact headers '# Core Memory', '## User Profile', '## Project & Environment', and '## Durable Learnings'.\n")
                 append("<turn|>\n")
                 append("<|turn>user\n")
