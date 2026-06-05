@@ -21,12 +21,15 @@ class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
         if (!memoryFile.exists()) {
             val defaultTemplate = """
                 # Core Memory
-                
-                This file contains persistent facts about the user and the environment.
-                
-                ## User Facts
-                - (No facts recorded yet)
-                
+
+                ## User Profile
+                - (No profile details recorded yet)
+
+                ## Project & Environment
+                - (No project details recorded yet)
+
+                ## Durable Learnings
+                - (No learnings recorded yet)
             """.trimIndent()
             memoryFile.writeText(defaultTemplate)
             return@withContext defaultTemplate
@@ -54,17 +57,18 @@ class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
 
             val compactorPrompt = buildString {
                 append("<bos><|turn>system\n")
-                append("You are a memory curator. Your ONLY job is to maintain a clean markdown file of important facts about the user.\n")
-                append("You will receive the current memory file and a recent conversation.\n")
+                append("You are a memory curator. Your ONLY job is to maintain a clean markdown file of important facts.\n")
+                append("You will receive the current memory file and a recent conversation segment.\n")
                 append("Output ONLY the updated markdown file — nothing else. No preamble, no explanation, no commentary.\n")
                 append("Rules:\n")
                 append("- Keep all existing facts that are still relevant.\n")
-                append("- Add any new important facts from the conversation (preferences, personal info, project details, etc).\n")
-                append("- Remove the placeholder '(No facts recorded yet)' once real facts exist.\n")
-                append("- Merge duplicate facts.\n")
-                append("- Remove trivial or irrelevant information.\n")
-                append("- Keep the markdown format with '# Core Memory' header and '## User Facts' section.\n")
-                append("- Be concise. Each fact should be a single bullet point.\n")
+                append("- Classify new facts into the correct sections:\n")
+                append("  * '## User Profile' for name, personal traits, communication habits, and persistent preferences.\n")
+                append("  * '## Project & Environment' for active directories, build tools, setup details, and system specifications.\n")
+                append("  * '## Durable Learnings' for code workarounds, rules, instructions, or methods that succeeded/failed.\n")
+                append("- Remove placeholder bullets like '(No... recorded yet)' once real facts exist in a section.\n")
+                append("- Merge duplicate facts and keep information highly concise.\n")
+                append("- Maintain the exact headers '# Core Memory', '## User Profile', '## Project & Environment', and '## Durable Learnings'.\n")
                 append("<turn|>\n")
                 append("<|turn>user\n")
                 append("CURRENT MEMORY FILE:\n")
@@ -82,12 +86,12 @@ class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
             val result = daexService.generateSilent(compactorPrompt, maxTokens = 512)
             val cleaned = result.trim()
 
-            // Only overwrite if the compactor actually produced markdown content
-            if (cleaned.contains("# Core Memory") || cleaned.contains("## User Facts") || cleaned.startsWith("- ")) {
+            // Only overwrite if the compactor actually produced markdown content with correct headers
+            if (cleaned.contains("# Core Memory") && (cleaned.contains("## User Profile") || cleaned.contains("## Project & Environment") || cleaned.contains("## Durable Learnings"))) {
                 overwriteMemory(cleaned)
                 Log.d("DaexCoreMemory", "Memory compacted successfully (${cleaned.length} chars)")
             } else {
-                Log.w("DaexCoreMemory", "Compactor output didn't look like valid markdown, skipping overwrite. Output: ${cleaned.take(200)}")
+                Log.w("DaexCoreMemory", "Compactor output didn't look like valid markdown structure, skipping overwrite. Output: ${cleaned.take(200)}")
             }
         } catch (e: Exception) {
             Log.e("DaexCoreMemory", "Memory compaction failed", e)

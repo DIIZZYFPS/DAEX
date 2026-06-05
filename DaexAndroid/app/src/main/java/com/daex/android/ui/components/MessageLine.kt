@@ -32,6 +32,40 @@ fun MessageLine(
     tokenSpeed: Double = 0.0,
     activePermission: PermissionRequest? = null
 ) {
+    if (message.role == "system" || message.content.startsWith("[SYSTEM_LOG]:")) {
+        val logText = message.content.removePrefix("[SYSTEM_LOG]:").trim()
+        val isInProgress = logText.endsWith("...")
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp, horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isInProgress) {
+                DaexLoader(size = 10.dp)
+                Spacer(modifier = Modifier.width(8.dp))
+            } else {
+                BasicText(
+                    text = "▲",
+                    style = DaexTheme.typography.mono.copy(
+                        color = DaexTheme.colors.primary,
+                        fontSize = 10.sp
+                    )
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            BasicText(
+                text = logText,
+                style = DaexTheme.typography.mono.copy(
+                    color = DaexTheme.colors.onSurface.copy(alpha = 0.5f),
+                    fontSize = 10.sp,
+                    letterSpacing = 0.5.sp
+                )
+            )
+        }
+        return
+    }
+
     val isUser = message.role == "user"
 
     if (isUser) {
