@@ -75,6 +75,9 @@ class DaexInferenceViewModel(
     private val _currentConversationId = MutableStateFlow<String?>(null)
     val currentConversationId: StateFlow<String?> = _currentConversationId.asStateFlow()
 
+    private val _activePermission = MutableStateFlow<PermissionRequest?>(null)
+    val activePermission: StateFlow<PermissionRequest?> = _activePermission.asStateFlow()
+
     private val _coreMemoryText = MutableStateFlow("")
     val coreMemoryText: StateFlow<String> = _coreMemoryText.asStateFlow()
 
@@ -316,6 +319,16 @@ class DaexInferenceViewModel(
             }
         }
     }
+
+    suspend fun requestPermission(toolName: String, description: String): Boolean {
+        val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        _activePermission.value = PermissionRequest(toolName, description, deferred)
+        return try {
+            deferred.await()
+        } finally {
+            _activePermission.value = null
+        }
+    }
     
     // ... rest of class unchanged
 
@@ -548,7 +561,18 @@ class DaexInferenceViewModel(
                         topK = _inferenceTopK.value,
                         topP = _inferenceTopP.value,
                         customSystemPrompt = _customSystemPrompt.value,
-                        isToolCallingEnabled = _isToolCallingEnabled.value
+                        isToolCallingEnabled = _isToolCallingEnabled.value,
+                        onRequestPermission = { toolName, description ->
+                            requestPermission(toolName, description)
+                        },
+                        onStatusUpdate = { status ->
+                            val updated = _messages.value.toMutableList()
+                            val idx = updated.indexOfFirst { it.id == modelMsgId }
+                            if (idx != -1) {
+                                updated[idx] = updated[idx].copy(toolStatus = status)
+                                _messages.value = updated
+                            }
+                        }
                     ) { token ->
                         if (!isActive) return@generateResponse
                         rawText += token

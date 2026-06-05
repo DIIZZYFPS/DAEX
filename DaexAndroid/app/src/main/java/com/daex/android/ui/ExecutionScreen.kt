@@ -28,11 +28,13 @@ import com.daex.android.services.DaexInferenceViewModel
 import com.daex.android.services.ModelBank
 import com.daex.android.services.ModelManager
 import com.daex.android.services.ModelStatus
+import com.daex.android.services.PermissionRequest
 import com.daex.android.ui.components.*
 import com.daex.android.services.BackendType
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
+import androidx.compose.ui.text.font.FontWeight
 import com.daex.android.ui.theme.DaexTheme
 
 @Composable
@@ -43,6 +45,7 @@ fun ExecutionScreen(
     onOpenGallery: () -> Unit
 ) {
     val messages by viewModel.messages.collectAsState()
+    val activePermission by viewModel.activePermission.collectAsState()
     val isGenerating by viewModel.isGenerating.collectAsState()
     val isReflecting by viewModel.isReflecting.collectAsState()
     val modelStatus by viewModel.modelStatus.collectAsState()
@@ -413,7 +416,8 @@ fun ExecutionScreen(
                                 message = msg,
                                 isLastModel = isLastModel,
                                 isGenerating = isGenerating,
-                                tokenSpeed = tokenSpeed
+                                tokenSpeed = tokenSpeed,
+                                activePermission = if (isLastModel) activePermission else null
                             )
                         }
                         

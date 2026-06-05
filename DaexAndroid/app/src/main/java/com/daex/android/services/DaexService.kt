@@ -28,7 +28,8 @@ data class Message(
     val role: String, // "user" or "model"
     val content: String,
     val tokensPerSecond: Double = 0.0,
-    val thoughtContent: String? = null
+    val thoughtContent: String? = null,
+    val toolStatus: String? = null
 )
 
 interface DaexService {
@@ -43,6 +44,8 @@ interface DaexService {
         topP: Float = 0.9f,
         customSystemPrompt: String = "",
         isToolCallingEnabled: Boolean = false,
+        onRequestPermission: (suspend (String, String) -> Boolean)? = null,
+        onStatusUpdate: ((String?) -> Unit)? = null,
         onToken: (String) -> Unit
     ): GenerationResult
     suspend fun generateSilent(prompt: String, maxTokens: Int = 512): String
@@ -194,6 +197,8 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         topP: Float,
         customSystemPrompt: String,
         isToolCallingEnabled: Boolean,
+        onRequestPermission: (suspend (String, String) -> Boolean)?,
+        onStatusUpdate: ((String?) -> Unit)?,
         onToken: (String) -> Unit
     ): GenerationResult {
         Log.i(TAG, "generateResponse: isToolCallingEnabled=$isToolCallingEnabled, temperature=$temperature, topK=$topK, topP=$topP, customPromptLength=${customSystemPrompt.length}")
@@ -240,7 +245,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         )
 
         val tools = if (isToolCallingEnabled) {
-            listOf(tool(DeviceTools(context)))
+            listOf(tool(DeviceTools(context, onRequestPermission, onStatusUpdate)))
         } else {
             emptyList()
         }
