@@ -28,7 +28,8 @@ class DaexInferenceViewModel(
     private val daexMemory: DaexMemory? = null,
     private val daexCoreMemory: DaexCoreMemory? = null,
     private val preferences: DaexPreferences? = null,
-    private val daexRag: DaexRag? = null
+    private val daexRag: DaexRag? = null,
+    private val daexSkillManager: DaexSkillManager? = null
 ) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -576,6 +577,13 @@ class DaexInferenceViewModel(
                             android.util.Log.e("DaexInference", "RAG query failed, continuing without context", e)
                         }
                     }
+
+                    // --- MODULAR SKILLS CATALOG INJECTION ---
+                    val skillCatalog = daexSkillManager?.getSkillCatalog() ?: ""
+                    if (skillCatalog.isNotEmpty() && skillCatalog.contains("<available_skills>")) {
+                        systemContext += "\n\n$skillCatalog\n"
+                        systemContext += "Before replying, scan the available skills above. If one matches the user's task, call the loadSkill(skillName) tool to retrieve its detailed instructions and parameters.\n"
+                    }
                     val result = daexService.generateResponse(
                         messages = inferenceHistory,
                         systemContext = systemContext,
@@ -594,6 +602,21 @@ class DaexInferenceViewModel(
                             if (idx != -1) {
                                 updated[idx] = updated[idx].copy(toolStatus = status)
                                 _messages.value = updated
+                            }
+                            if (status != null) {
+                                val convId = _currentConversationId.value
+                                if (convId != null) {
+                                    val logMsgId = "log_" + System.currentTimeMillis()
+                                    val logMsg = Message(
+                                        id = logMsgId,
+                                        role = "system",
+                                        content = "[SYSTEM_LOG]: ${status.uppercase()}"
+                                    )
+                                    _messages.value = _messages.value + logMsg
+                                    viewModelScope.launch {
+                                        daexMemory?.saveMessage(convId, logMsg)
+                                    }
+                                }
                             }
                         }
                     ) { token ->

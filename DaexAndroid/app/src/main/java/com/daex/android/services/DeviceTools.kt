@@ -16,12 +16,15 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.runBlocking
+import org.json.JSONObject
 
 class DeviceTools(
     private val context: Context,
     private val onRequestPermission: (suspend (String, String) -> Boolean)? = null,
     private val onStatusUpdate: ((String?) -> Unit)? = null
 ) : ToolSet {
+
+    private val skillManager: DaexSkillManager = DaexSkillManagerImpl(context)
 
     companion object {
         private const val TAG = "DeviceTools"
@@ -137,6 +140,53 @@ class DeviceTools(
             Log.e(TAG, msg, e)
             onStatusUpdate?.invoke(null)
             return msg
+        }
+    }
+
+    @Tool(description = "Retrieve the full instructions and parameters for a specific skill. Call this when you need details on how to use a skill that is not currently loaded in your context.")
+    fun loadSkill(
+        @ToolParam(description = "The kebab-case name of the skill to load (e.g. 'send-email')") skillName: String
+    ): String {
+        Log.d(TAG, "loadSkill execution triggered for skillName: $skillName")
+        onStatusUpdate?.invoke("Skill Loaded: $skillName")
+        val instructions = skillManager.loadSkillInstructions(skillName)
+        onStatusUpdate?.invoke(null)
+        return instructions ?: "Skill '$skillName' not found or could not be loaded."
+    }
+
+    @Tool(description = "Run a native system intent to trigger device actions (like sending emails)")
+    fun runIntent(
+        @ToolParam(description = "The intent action name (e.g., 'send_email')") intent: String,
+        @ToolParam(description = "JSON parameters matching the target intent specification") parameters: String
+    ): String {
+        Log.d(TAG, "runIntent triggered: intent=$intent, parameters=$parameters")
+        onStatusUpdate?.invoke(null)
+        
+        return try {
+            if (intent == "send_email") {
+                val json = JSONObject(parameters)
+                val email = json.optString("extra_email", "")
+                val subject = json.optString("extra_subject", "")
+                val text = json.optString("extra_text", "")
+                
+                val emailIntent = Intent(Intent.ACTION_SEND).apply {
+                    data = android.net.Uri.parse("mailto:")
+                    type = "text/plain"
+                    if (email.isNotEmpty()) putExtra(Intent.EXTRA_EMAIL, arrayOf(email))
+                    putExtra(Intent.EXTRA_SUBJECT, subject)
+                    putExtra(Intent.EXTRA_TEXT, text)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                
+                context.startActivity(emailIntent)
+                "Launched email client successfully."
+            } else {
+                "Unknown intent action: $intent"
+            }
+        } catch (e: Exception) {
+            "Failed to run intent: ${e.message}"
+        } finally {
+            onStatusUpdate?.invoke(null)
         }
     }
 }

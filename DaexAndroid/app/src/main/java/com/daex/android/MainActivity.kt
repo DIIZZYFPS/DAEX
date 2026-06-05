@@ -47,6 +47,7 @@ class MainActivity : ComponentActivity() {
         val daexEmbedder = DaexEmbedder(this, modelManager)
         val daexCoreMemory = com.daex.android.services.DaexCoreMemoryImpl(this)
         val daexRag = DaexRagImpl(boxStore, daexEmbedder)
+        val daexSkillManager = com.daex.android.services.DaexSkillManagerImpl(this)
 
         setContent {
             val daexPreferences = remember { DaexPreferences(this@MainActivity) }
@@ -58,7 +59,8 @@ class MainActivity : ComponentActivity() {
                     daexMemory = daexMemory,
                     daexCoreMemory = daexCoreMemory,
                     preferences = daexPreferences,
-                    daexRag = daexRag
+                    daexRag = daexRag,
+                    daexSkillManager = daexSkillManager
                 ) 
             }
             var currentScreen by remember { mutableStateOf<Screen?>(null) }
