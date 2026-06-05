@@ -520,21 +520,43 @@ class DaexInferenceViewModel(
                     val fullHistory = (daexMemory?.getRecentHistory(convId) ?: emptyList())
                         .filter { it.id != modelMsgId }
                     
-                    // SLIDING WINDOW LOGIC
-                    val MAX_CHARS = 8192
-                    var currentCharCount = 0
-                    val windowedHistory = mutableListOf<Message>()
+                    // TOKEN-BASED COMPACTION & PRESSURE TRACKING
+                    var activeHistory = fullHistory.filter { !it.isCompacted }
+                    val maxContextLimit = _currentModel.value?.maxContextTokens ?: 8192
                     
-                    for (msg in fullHistory.reversed()) {
-                        val msgLength = msg.content.length + (msg.thoughtContent?.length ?: 0)
-                        if (currentCharCount + msgLength > MAX_CHARS && windowedHistory.isNotEmpty()) {
-                            break 
+                    var currentTokens = activeHistory.sumOf { estimateMessageTokens(it) }
+                    
+                    if (currentTokens > maxContextLimit / 2) {
+                        android.util.Log.i("DaexInference", "Context pressure warning: $currentTokens tokens. Triggering compaction check...")
+                        // 1. Cheap local pruning pass
+                        val pruned = pruneToolOutputs(activeHistory)
+                        val prunedTokens = pruned.sumOf { estimateMessageTokens(it) }
+                        
+                        if (prunedTokens <= maxContextLimit / 2) {
+                            android.util.Log.i("DaexInference", "Local pruning reduced tokens to $prunedTokens. Saving pruned logs...")
+                            for (i in activeHistory.indices) {
+                                if (activeHistory[i].content != pruned[i].content) {
+                                    daexMemory?.saveMessage(convId, pruned[i])
+                                }
+                            }
+                            activeHistory = pruned
+                        } else {
+                            // 2. Perform deep on-device compaction
+                            _isReflecting.value = true
+                            try {
+                                performCompaction(convId, fullHistory, maxContextLimit)
+                                // Reload active history (ignoring compacted turns, including new summary)
+                                activeHistory = (daexMemory?.getRecentHistory(convId) ?: emptyList())
+                                    .filter { it.id != modelMsgId && !it.isCompacted }
+                            } catch (e: Exception) {
+                                android.util.Log.e("DaexInference", "Context compaction failed", e)
+                            } finally {
+                                _isReflecting.value = false
+                            }
                         }
-                        currentCharCount += msgLength
-                        windowedHistory.add(0, msg)
                     }
 
-                    val inferenceHistory = windowedHistory.toMutableList()
+                    val inferenceHistory = activeHistory.toMutableList()
                     
                     var rawText = ""
                     val coreMemoryContent = daexCoreMemory?.getMemoryContent() ?: ""
@@ -721,5 +743,91 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             _uploadedFiles.value = daexRag?.getUploadedFiles() ?: emptyList()
         }
+    }
+
+    fun estimateTokens(content: String): Int {
+        return content.length / 4
+    }
+
+    fun estimateMessageTokens(msg: Message): Int {
+        return (msg.content.length + (msg.thoughtContent?.length ?: 0)) / 4
+    }
+
+    fun pruneToolOutputs(messages: List<Message>): List<Message> {
+        return messages.map { msg ->
+            if (msg.role == "model" && msg.content.length > 800) {
+                val lines = msg.content.lines()
+                if (lines.size > 20) {
+                    val summaryText = "[Verbose tool output pruned: ${lines.size} lines, first line: ${lines.firstOrNull()}]"
+                    msg.copy(content = summaryText)
+                } else {
+                    msg
+                }
+            } else {
+                msg
+            }
+        }
+    }
+
+    suspend fun performCompaction(convId: String, messages: List<Message>, maxContextLimit: Int) {
+        val uncompactedMessages = messages.filter { !it.isCompacted }
+        if (uncompactedMessages.size < 15) return
+
+        val headMessages = uncompactedMessages.take(2)
+        val tailMessages = uncompactedMessages.takeLast(10)
+        val middleMessages = uncompactedMessages.subList(2, uncompactedMessages.size - 10)
+        if (middleMessages.isEmpty()) return
+
+        android.util.Log.d("DaexCompaction", "Compacting ${middleMessages.size} middle messages...")
+
+        val middleTokens = middleMessages.sumOf { estimateMessageTokens(it) }
+        val targetTokens = (middleTokens * 0.20).toInt().coerceIn(100, 512)
+        android.util.Log.d("DaexCompaction", "Middle region contains $middleTokens tokens. Summary budget: $targetTokens tokens.")
+
+        val middleText = middleMessages.joinToString("\n") { "${it.role}: ${it.content}" }
+        val compactorPrompt = """
+            You are an assistant summarizing a conversational history.
+            Provide a concise summary of the following conversation history. Describe the user's requirements, the actions taken, and the results obtained so far.
+            You must format the summary strictly using the following key-value template, starting exactly with '[CONTEXT COMPACTION]:':
+
+            [CONTEXT COMPACTION]:
+            - ACTIVE GOAL: <short objective>
+            - STATE: <key progress / current status>
+            - NEXT: <next steps>
+
+            CONVERSATION HISTORY:
+            $middleText
+
+            SUMMARY:
+        """.trimIndent()
+
+        var summary = ""
+        try {
+            summary = daexService.generateSilent(compactorPrompt, maxTokens = targetTokens).trim()
+        } catch (e: Exception) {
+            android.util.Log.e("DaexCompaction", "On-device compaction failed, using fallback", e)
+        }
+
+        if (summary.isBlank() || !summary.startsWith("[CONTEXT COMPACTION]:")) {
+            val topics = middleMessages.filter { it.role == "user" }.take(3).joinToString(", ") { it.content.take(30) + "..." }
+            summary = "[CONTEXT COMPACTION]:\n- ACTIVE GOAL: General conversation\n- STATE: A conversation segment of ${middleMessages.size} turns took place. Topics covered: $topics\n- NEXT: Continue conversation"
+        }
+
+        val summaryMsgId = "summary_" + System.currentTimeMillis()
+        val summaryMsg = Message(
+            id = summaryMsgId,
+            role = "model",
+            content = summary,
+            isPinned = false,
+            isCompacted = false
+        )
+        android.util.Log.d("DaexCompaction", "Generated summary: $summary")
+        daexMemory?.saveMessage(convId, summaryMsg)
+
+        for (msg in middleMessages) {
+            val updatedMsg = msg.copy(isCompacted = true)
+            daexMemory?.saveMessage(convId, updatedMsg)
+        }
+        android.util.Log.d("DaexCompaction", "Compaction complete. Persisted summary.")
     }
 }

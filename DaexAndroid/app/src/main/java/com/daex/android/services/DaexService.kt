@@ -29,7 +29,9 @@ data class Message(
     val content: String,
     val tokensPerSecond: Double = 0.0,
     val thoughtContent: String? = null,
-    val toolStatus: String? = null
+    val toolStatus: String? = null,
+    val isPinned: Boolean = false,
+    val isCompacted: Boolean = false
 )
 
 interface DaexService {

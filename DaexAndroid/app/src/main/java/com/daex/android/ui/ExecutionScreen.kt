@@ -166,7 +166,7 @@ fun ExecutionScreen(
 
     val statusBadgeText = when {
         isVectorizing -> "Vectorizing..."
-        isReflecting -> "Updating memory..."
+        isReflecting -> "Compacting..."
         isGenerating && tokenSpeed > 0 -> "$tokenSpeed tok/s"
         isGenerating -> "Generating..."
         modelStatus == ModelStatus.LOADING -> "Loading..."
@@ -405,13 +405,14 @@ fun ExecutionScreen(
                         }
                     })
                 } else {
+                    val visibleMessages = messages.filter { !it.content.startsWith("[CONTEXT COMPACTION]:") }
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(bottom = 120.dp, top = 16.dp) 
                     ) {
-                        itemsIndexed(messages) { index, msg ->
-                            val isLastModel = msg.role == "model" && messages.subList(index + 1, messages.size).none { it.role == "model" }
+                        itemsIndexed(visibleMessages) { index, msg ->
+                            val isLastModel = msg.role == "model" && visibleMessages.subList(index + 1, visibleMessages.size).none { it.role == "model" }
                             MessageLine(
                                 message = msg,
                                 isLastModel = isLastModel,

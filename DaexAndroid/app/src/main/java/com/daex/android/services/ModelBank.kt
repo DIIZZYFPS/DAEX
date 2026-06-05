@@ -15,7 +15,8 @@ data class Model(
     val familyName: String,
     val sizeName: String,
     val variantName: String,
-    val targetHardware: String? = null
+    val targetHardware: String? = null,
+    val maxContextTokens: Int = 8192
 )
 
 object ModelBank {
@@ -34,7 +35,8 @@ object ModelBank {
         familyName = "Nomic Embed",
         sizeName = "v1.5",
         variantName = "CPU",
-        targetHardware = null
+        targetHardware = null,
+        maxContextTokens = 4096
     )
 
     val generativeModels: List<Model>
@@ -55,7 +57,8 @@ object ModelBank {
             familyName = "Gemma 4",
             sizeName = "E2B",
             variantName = "LiteRT CPU/GPU",
-            targetHardware = null
+            targetHardware = null,
+            maxContextTokens = 32000
         ),
         Model(
             id = "gemma-4-E2B-it-qualcomm-sm8750",
@@ -71,7 +74,8 @@ object ModelBank {
             familyName = "Gemma 4",
             sizeName = "E2B",
             variantName = "Qualcomm NPU (S25)",
-            targetHardware = "SM8750"
+            targetHardware = "SM8750",
+            maxContextTokens = 32000
         ),
         Model(
             id = "gemma-4-E2B-it-google-tensor-g5",
@@ -87,7 +91,8 @@ object ModelBank {
             familyName = "Gemma 4",
             sizeName = "E2B",
             variantName = "Tensor G5 NPU",
-            targetHardware = "Tensor G5"
+            targetHardware = "Tensor G5",
+            maxContextTokens = 32000
         ),
         Model(
             id = "gemma-4-E4B-it-litert-lm",
@@ -103,7 +108,8 @@ object ModelBank {
             familyName = "Gemma 4",
             sizeName = "E4B",
             variantName = "LiteRT CPU/GPU",
-            targetHardware = null
+            targetHardware = null,
+            maxContextTokens = 32000
         ),
         embeddingModel
     )

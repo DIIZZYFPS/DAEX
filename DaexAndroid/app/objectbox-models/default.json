@@ -41,7 +41,7 @@
     },
     {
       "id": "2:6638959390687185976",
-      "lastPropertyId": "9:7557992793652441687",
+      "lastPropertyId": "11:2463945863462381491",
       "name": "MessageEntity",
       "properties": [
         {
@@ -93,6 +93,16 @@
           "indexId": "3:8822647111761342622",
           "type": 28,
           "flags": 8
+        },
+        {
+          "id": "10:4311811902362201361",
+          "name": "isPinned",
+          "type": 1
+        },
+        {
+          "id": "11:2463945863462381491",
+          "name": "isCompacted",
+          "type": 1
         }
       ],
       "relations": []
