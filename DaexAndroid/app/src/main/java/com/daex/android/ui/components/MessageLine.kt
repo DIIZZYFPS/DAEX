@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daex.android.services.Message
+import com.daex.android.services.PermissionRequest
 import com.daex.android.ui.theme.DaexTheme
 import com.mikepenz.markdown.m3.Markdown
 
@@ -28,8 +29,43 @@ fun MessageLine(
     message: Message,
     isLastModel: Boolean = false,
     isGenerating: Boolean = false,
-    tokenSpeed: Double = 0.0
+    tokenSpeed: Double = 0.0,
+    activePermission: PermissionRequest? = null
 ) {
+    if (message.role == "system" || message.content.startsWith("[SYSTEM_LOG]:")) {
+        val logText = message.content.removePrefix("[SYSTEM_LOG]:").trim()
+        val isInProgress = logText.endsWith("...")
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 6.dp, horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (isInProgress) {
+                DaexLoader(size = 10.dp)
+                Spacer(modifier = Modifier.width(8.dp))
+            } else {
+                BasicText(
+                    text = "▲",
+                    style = DaexTheme.typography.mono.copy(
+                        color = DaexTheme.colors.primary,
+                        fontSize = 10.sp
+                    )
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+            }
+            BasicText(
+                text = logText,
+                style = DaexTheme.typography.mono.copy(
+                    color = DaexTheme.colors.onSurface.copy(alpha = 0.5f),
+                    fontSize = 10.sp,
+                    letterSpacing = 0.5.sp
+                )
+            )
+        }
+        return
+    }
+
     val isUser = message.role == "user"
 
     if (isUser) {
@@ -103,14 +139,23 @@ fun MessageLine(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(6.dp)
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(DaexTheme.colors.primary.copy(alpha = if (isGenerating) 1f else 0.5f))
-                                )
+                                if (!message.toolStatus.isNullOrEmpty() && isGenerating) {
+                                    DaexLoader(size = 12.dp)
+                                } else {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(DaexTheme.colors.primary.copy(alpha = if (isGenerating) 1f else 0.5f))
+                                    )
+                                }
+                                val headerText = when {
+                                    !message.toolStatus.isNullOrEmpty() -> message.toolStatus.uppercase()
+                                    isGenerating && message.content.isEmpty() -> "THINKING..."
+                                    else -> "THOUGHT PROCESS"
+                                }
                                 BasicText(
-                                    text = if (isGenerating && message.content.isEmpty()) "THINKING..." else "THOUGHT PROCESS",
+                                    text = headerText,
                                     style = DaexTheme.typography.mono.copy(
                                         color = DaexTheme.colors.primary.copy(alpha = 0.8f),
                                         fontSize = 10.sp,
@@ -158,6 +203,113 @@ fun MessageLine(
                     content = message.content,
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+
+            activePermission?.let { request ->
+                Spacer(modifier = Modifier.height(12.dp))
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.02f))
+                        .border(1.dp, DaexTheme.colors.primary.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.02f))
+                            .border(0.5.dp, Color.White.copy(alpha = 0.08f), RoundedCornerShape(8.dp))
+                            .padding(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(DaexTheme.colors.warning)
+                                )
+                                BasicText(
+                                    text = "TOOL CALL REQUEST",
+                                    style = DaexTheme.typography.mono.copy(
+                                        color = DaexTheme.colors.warning,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
+                            BasicText(
+                                text = request.toolName,
+                                style = DaexTheme.typography.mono.copy(
+                                    color = Color.White.copy(alpha = 0.4f),
+                                    fontSize = 8.sp
+                                )
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(6.dp))
+                        BasicText(
+                            text = request.description,
+                            style = DaexTheme.typography.body2.copy(
+                                color = Color.White.copy(alpha = 0.8f),
+                                fontSize = 12.sp,
+                                lineHeight = 16.sp
+                            )
+                        )
+                    }
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(Color.White.copy(alpha = 0.04f))
+                                .clickable { request.callback.complete(false) }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            BasicText(
+                                text = "DENY",
+                                style = DaexTheme.typography.mono.copy(
+                                    color = Color.White.copy(alpha = 0.4f),
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(DaexTheme.colors.primary.copy(alpha = 0.2f))
+                                .border(0.5.dp, DaexTheme.colors.primary, RoundedCornerShape(6.dp))
+                                .clickable { request.callback.complete(true) }
+                                .padding(vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            BasicText(
+                                text = "APPROVE",
+                                style = DaexTheme.typography.mono.copy(
+                                    color = DaexTheme.colors.primary,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+                    }
+                }
             }
 
             if (isLastModel && tokenSpeed > 0) {

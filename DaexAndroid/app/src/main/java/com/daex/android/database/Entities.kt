@@ -24,6 +24,8 @@ data class MessageEntity(
     var timestamp: Long = System.currentTimeMillis(),
     var tokensPerSecond: Double = 0.0,
     var thoughtContent: String? = null,
+    var isPinned: Boolean = false,
+    var isCompacted: Boolean = false,
     
     @HnswIndex(dimensions = 768)
     var embedding: FloatArray? = null

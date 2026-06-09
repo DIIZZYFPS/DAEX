@@ -6,6 +6,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,7 +28,8 @@ class DaexInferenceViewModel(
     private val daexMemory: DaexMemory? = null,
     private val daexCoreMemory: DaexCoreMemory? = null,
     private val preferences: DaexPreferences? = null,
-    private val daexRag: DaexRag? = null
+    private val daexRag: DaexRag? = null,
+    private val daexSkillManager: DaexSkillManager? = null
 ) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -75,6 +77,9 @@ class DaexInferenceViewModel(
     private val _currentConversationId = MutableStateFlow<String?>(null)
     val currentConversationId: StateFlow<String?> = _currentConversationId.asStateFlow()
 
+    private val _activePermission = MutableStateFlow<PermissionRequest?>(null)
+    val activePermission: StateFlow<PermissionRequest?> = _activePermission.asStateFlow()
+
     private val _coreMemoryText = MutableStateFlow("")
     val coreMemoryText: StateFlow<String> = _coreMemoryText.asStateFlow()
 
@@ -113,8 +118,7 @@ class DaexInferenceViewModel(
     val deviceSpecs: DeviceSpecs? = deviceService?.getDeviceSpecs()
 
     private var generationJob: Job? = null
-    private var exchangesSinceCompaction = 0
-    private val COMPACTION_INTERVAL = 5
+    private var curationJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -316,6 +320,16 @@ class DaexInferenceViewModel(
             }
         }
     }
+
+    suspend fun requestPermission(toolName: String, description: String): Boolean {
+        val deferred = kotlinx.coroutines.CompletableDeferred<Boolean>()
+        _activePermission.value = PermissionRequest(toolName, description, deferred)
+        return try {
+            deferred.await()
+        } finally {
+            _activePermission.value = null
+        }
+    }
     
     // ... rest of class unchanged
 
@@ -475,6 +489,7 @@ class DaexInferenceViewModel(
             _errorMessage.value = "Model is not loaded yet."
             return
         }
+        curationJob?.cancel()
 
         viewModelScope.launch {
             var convId = _currentConversationId.value
@@ -507,21 +522,43 @@ class DaexInferenceViewModel(
                     val fullHistory = (daexMemory?.getRecentHistory(convId) ?: emptyList())
                         .filter { it.id != modelMsgId }
                     
-                    // SLIDING WINDOW LOGIC
-                    val MAX_CHARS = 8192
-                    var currentCharCount = 0
-                    val windowedHistory = mutableListOf<Message>()
+                    // TOKEN-BASED COMPACTION & PRESSURE TRACKING
+                    var activeHistory = fullHistory.filter { !it.isCompacted }
+                    val maxContextLimit = _currentModel.value?.maxContextTokens ?: 8192
                     
-                    for (msg in fullHistory.reversed()) {
-                        val msgLength = msg.content.length + (msg.thoughtContent?.length ?: 0)
-                        if (currentCharCount + msgLength > MAX_CHARS && windowedHistory.isNotEmpty()) {
-                            break 
+                    var currentTokens = activeHistory.sumOf { estimateMessageTokens(it) }
+                    
+                    if (currentTokens > maxContextLimit / 2) {
+                        android.util.Log.i("DaexInference", "Context pressure warning: $currentTokens tokens. Triggering compaction check...")
+                        // 1. Cheap local pruning pass
+                        val pruned = pruneToolOutputs(activeHistory)
+                        val prunedTokens = pruned.sumOf { estimateMessageTokens(it) }
+                        
+                        if (prunedTokens <= maxContextLimit / 2) {
+                            android.util.Log.i("DaexInference", "Local pruning reduced tokens to $prunedTokens. Saving pruned logs...")
+                            for (i in activeHistory.indices) {
+                                if (activeHistory[i].content != pruned[i].content) {
+                                    daexMemory?.saveMessage(convId, pruned[i])
+                                }
+                            }
+                            activeHistory = pruned
+                        } else {
+                            // 2. Perform deep on-device compaction
+                            _isReflecting.value = true
+                            try {
+                                performCompaction(convId, fullHistory, maxContextLimit)
+                                // Reload active history (ignoring compacted turns, including new summary)
+                                activeHistory = (daexMemory?.getRecentHistory(convId) ?: emptyList())
+                                    .filter { it.id != modelMsgId && !it.isCompacted }
+                            } catch (e: Exception) {
+                                android.util.Log.e("DaexInference", "Context compaction failed", e)
+                            } finally {
+                                _isReflecting.value = false
+                            }
                         }
-                        currentCharCount += msgLength
-                        windowedHistory.add(0, msg)
                     }
 
-                    val inferenceHistory = windowedHistory.toMutableList()
+                    val inferenceHistory = activeHistory.toMutableList()
                     
                     var rawText = ""
                     val coreMemoryContent = daexCoreMemory?.getMemoryContent() ?: ""
@@ -540,6 +577,11 @@ class DaexInferenceViewModel(
                             android.util.Log.e("DaexInference", "RAG query failed, continuing without context", e)
                         }
                     }
+
+                    // --- MODULAR SKILLS INFO INJECTION ---
+                    if (daexSkillManager != null) {
+                        systemContext += "\n\nYou have domain-specific \"skills\" (additional instructions/parameters) available. If you need a special skill or want to see what is available, call the listSkills() tool. If you find a matching skill, call the loadSkill(skillName) tool to retrieve its instructions.\n"
+                    }
                     val result = daexService.generateResponse(
                         messages = inferenceHistory,
                         systemContext = systemContext,
@@ -548,7 +590,33 @@ class DaexInferenceViewModel(
                         topK = _inferenceTopK.value,
                         topP = _inferenceTopP.value,
                         customSystemPrompt = _customSystemPrompt.value,
-                        isToolCallingEnabled = _isToolCallingEnabled.value
+                        isToolCallingEnabled = _isToolCallingEnabled.value,
+                        onRequestPermission = { toolName, description ->
+                            requestPermission(toolName, description)
+                        },
+                        onStatusUpdate = { status ->
+                            val updated = _messages.value.toMutableList()
+                            val idx = updated.indexOfFirst { it.id == modelMsgId }
+                            if (idx != -1) {
+                                updated[idx] = updated[idx].copy(toolStatus = status)
+                                _messages.value = updated
+                            }
+                            if (status != null) {
+                                val convId = _currentConversationId.value
+                                if (convId != null) {
+                                    val logMsgId = "log_" + System.currentTimeMillis()
+                                    val logMsg = Message(
+                                        id = logMsgId,
+                                        role = "system",
+                                        content = "[SYSTEM_LOG]: ${status.uppercase()}"
+                                    )
+                                    _messages.value = _messages.value + logMsg
+                                    viewModelScope.launch {
+                                        daexMemory?.saveMessage(convId, logMsg)
+                                    }
+                                }
+                            }
+                        }
                     ) { token ->
                         if (!isActive) return@generateResponse
                         rawText += token
@@ -595,18 +663,38 @@ class DaexInferenceViewModel(
                         daexMemory?.saveMessage(convId, finalModelMsg)
                     }
 
-                    // --- MEMORY COMPACTION TRIGGER ---
-                    exchangesSinceCompaction++
-                    if (exchangesSinceCompaction >= COMPACTION_INTERVAL && daexCoreMemory != null) {
-                        _isReflecting.value = true
-                        try {
-                            val recentMsgs = daexMemory?.getRecentHistory(convId, limit = 20) ?: emptyList()
-                            daexCoreMemory.compactMemory(recentMsgs, daexService)
-                            exchangesSinceCompaction = 0
-                        } catch (e: Exception) {
-                            android.util.Log.e("DaexInference", "Memory compaction failed", e)
-                        } finally {
-                            _isReflecting.value = false
+                    // --- DEBUNCED GLOBAL MEMORY CURATION TRIGGER ---
+                    curationJob?.cancel()
+                    curationJob = viewModelScope.launch {
+                        delay(90000) // 90 seconds inactivity
+                        if (daexCoreMemory != null) {
+                            _isReflecting.value = true
+                            val logMsgId = "log_" + System.currentTimeMillis()
+                            var logMsg = Message(
+                                id = logMsgId,
+                                role = "system",
+                                content = "[SYSTEM_LOG]: CURATING GLOBAL MEMORY..."
+                            )
+                            _messages.value = _messages.value + logMsg
+                            daexMemory?.saveMessage(convId, logMsg)
+
+                            try {
+                                val recentMsgs = daexMemory?.getRecentHistory(convId, limit = 20) ?: emptyList()
+                                daexCoreMemory.compactMemory(recentMsgs, daexService)
+                                logMsg = logMsg.copy(content = "[SYSTEM_LOG]: GLOBAL MEMORY CURATED")
+                            } catch (e: Exception) {
+                                android.util.Log.e("DaexInference", "Memory curation failed", e)
+                                logMsg = logMsg.copy(content = "[SYSTEM_LOG]: GLOBAL MEMORY CURATION FAILED")
+                            } finally {
+                                val updatedMsgs = _messages.value.toMutableList()
+                                val logIdx = updatedMsgs.indexOfFirst { it.id == logMsgId }
+                                if (logIdx != -1) {
+                                    updatedMsgs[logIdx] = logMsg
+                                    _messages.value = updatedMsgs
+                                }
+                                daexMemory?.saveMessage(convId, logMsg)
+                                _isReflecting.value = false
+                            }
                         }
                     }
 
@@ -697,5 +785,118 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             _uploadedFiles.value = daexRag?.getUploadedFiles() ?: emptyList()
         }
+    }
+
+    fun estimateTokens(content: String): Int {
+        return content.length / 4
+    }
+
+    fun estimateMessageTokens(msg: Message): Int {
+        return (msg.content.length + (msg.thoughtContent?.length ?: 0)) / 4
+    }
+
+    fun pruneToolOutputs(messages: List<Message>): List<Message> {
+        return messages.map { msg ->
+            if (msg.role == "model" && msg.content.length > 800) {
+                val lines = msg.content.lines()
+                if (lines.size > 20) {
+                    val summaryText = "[Verbose tool output pruned: ${lines.size} lines, first line: ${lines.firstOrNull()}]"
+                    msg.copy(content = summaryText)
+                } else {
+                    msg
+                }
+            } else {
+                msg
+            }
+        }
+    }
+
+    suspend fun performCompaction(convId: String, messages: List<Message>, maxContextLimit: Int) {
+        val uncompactedMessages = messages.filter { !it.isCompacted }
+        if (uncompactedMessages.size < 15) return
+
+        val headMessages = uncompactedMessages.take(2)
+        val tailMessages = uncompactedMessages.takeLast(10)
+        val middleMessages = uncompactedMessages.subList(2, uncompactedMessages.size - 10)
+        if (middleMessages.isEmpty()) return
+
+        val logMsgId = "log_" + System.currentTimeMillis()
+        var logMsg = Message(
+            id = logMsgId,
+            role = "system",
+            content = "[SYSTEM_LOG]: COMPACTING HISTORICAL CONTEXT..."
+        )
+        _messages.value = _messages.value + logMsg
+        daexMemory?.saveMessage(convId, logMsg)
+
+        android.util.Log.d("DaexCompaction", "Compacting ${middleMessages.size} middle messages...")
+
+        val middleTokens = middleMessages.sumOf { estimateMessageTokens(it) }
+        val targetTokens = (middleTokens * 0.20).toInt().coerceIn(100, 512)
+        android.util.Log.d("DaexCompaction", "Middle region contains $middleTokens tokens. Summary budget: $targetTokens tokens.")
+
+        val middleText = middleMessages.joinToString("\n") { "${it.role}: ${it.content}" }
+        val compactorPrompt = """
+            You are an assistant summarizing a conversational history.
+            Provide a concise summary of the following conversation history. Describe the user's requirements, the actions taken, and the results obtained so far.
+            You must format the summary strictly using the following key-value template, starting exactly with '[CONTEXT COMPACTION]:':
+
+            [CONTEXT COMPACTION]:
+            - ACTIVE GOAL: <short objective>
+            - STATE: <key progress / current status>
+            - NEXT: <next steps>
+
+            CONVERSATION HISTORY:
+            $middleText
+
+            SUMMARY:
+        """.trimIndent()
+
+        var summary = ""
+        var isSuccess = false
+        try {
+            summary = daexService.generateSilent(compactorPrompt, maxTokens = targetTokens).trim()
+            isSuccess = summary.isNotBlank() && summary.startsWith("[CONTEXT COMPACTION]:")
+        } catch (e: Exception) {
+            android.util.Log.e("DaexCompaction", "On-device compaction failed, using fallback", e)
+        }
+
+        if (!isSuccess) {
+            val topics = middleMessages.filter { it.role == "user" }.take(3).joinToString(", ") { it.content.take(30) + "..." }
+            summary = "[CONTEXT COMPACTION]:\n- ACTIVE GOAL: General conversation\n- STATE: A conversation segment of ${middleMessages.size} turns took place. Topics covered: $topics\n- NEXT: Continue conversation"
+        }
+
+        val newTokens = estimateTokens(summary)
+        val savedTokens = (middleTokens - newTokens).coerceAtLeast(0)
+        val logContent = if (isSuccess) {
+            "[SYSTEM_LOG]: CONTEXT COMPACTED (Saved $savedTokens tokens)"
+        } else {
+            "[SYSTEM_LOG]: CONTEXT COMPACTED WITH FALLBACK (Saved $savedTokens tokens)"
+        }
+        logMsg = logMsg.copy(content = logContent)
+        val updatedMsgs = _messages.value.toMutableList()
+        val logIdx = updatedMsgs.indexOfFirst { it.id == logMsgId }
+        if (logIdx != -1) {
+            updatedMsgs[logIdx] = logMsg
+            _messages.value = updatedMsgs
+        }
+        daexMemory?.saveMessage(convId, logMsg)
+
+        val summaryMsgId = "summary_" + System.currentTimeMillis()
+        val summaryMsg = Message(
+            id = summaryMsgId,
+            role = "model",
+            content = summary,
+            isPinned = false,
+            isCompacted = false
+        )
+        android.util.Log.d("DaexCompaction", "Generated summary: $summary")
+        daexMemory?.saveMessage(convId, summaryMsg)
+
+        for (msg in middleMessages) {
+            val updatedMsg = msg.copy(isCompacted = true)
+            daexMemory?.saveMessage(convId, updatedMsg)
+        }
+        android.util.Log.d("DaexCompaction", "Compaction complete. Persisted summary.")
     }
 }

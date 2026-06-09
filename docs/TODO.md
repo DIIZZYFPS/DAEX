@@ -1,32 +1,20 @@
-# Project Aegis TODO List
+# DAEX Agent Overhaul Roadmap
 
-## Phase 1: Mobile UI Architecture (COMPLETED)
-We are building the mobile UI first to ensure the rendering loop and JSI bridge are ready before tackling compilation hurdles.
-- [x] Initialize React Native (0.85+ TypeScript) application.
-- [x] Create base UI: Terminal-adjacent aesthetic (Monospace, Cyan on Black).
-- [x] Build `MobileExecution.tsx` with real-time response streams.
-- [x] Implement Markdown rendering for structured AI output.
-- [x] Add real-time performance metrics (TPS/Generation status).
+## Phase 1: Agent Overhaul (Skills & Dynamic Compaction)
 
-## Phase 1.5: GGUF Validation (COMPLETED)
-Used as a baseline for performance testing on device silicon before moving to ExecuTorch.
-- [x] Integrate `llama.rn` for local GGUF inference.
-- [x] Implement `modelManager` for in-app GGUF downloads (Gemma 4 E4B Q4_K_M).
-- [x] Enable Vulkan GPU offload support for mobile hardware.
-- [x] Optimize chat interface for high-frequency token updates.
+Revamp the tool execution pipeline to support interactive workflows, dynamic skill loading, and token-constrained context compaction.
+- [ ] **Asynchronous UI Action Channel**
+  - [x] Implement Kotlin `Channel<AgentAction>` to stream live tool execution progress (e.g. "Pruning...", "Executing...") to the chat interface.
+  - [x] Implement interactive permission dialogs in the UI for sensitive tool calls (e.g. launching applications) that suspend model generation until approved/denied.
+  - [ ] Add support for dynamic API key requests during execution instead of storing secrets globally.
+- [x] **Token-Based Context Compaction & Pressure Tracking**
+  - [x] Calculate real-time token pressure based on model context length (e.g., triggering compaction when history consumes >50% of the active context window).
+  - [x] Implement a cheap local pre-pass to prune redundant queries, deduplicate identical tool outputs, and strip heavy multimodal payloads.
+  - [x] Implement Head/Tail Protection: pin system instructions + initial exchange (Head) and keep the most recent messages/tokens (Tail) intact.
+  - [x] Setup middle-turn summarization: compress intermediate turns using a fast local or remote summarizer model into a single `[CONTEXT COMPACTION]:` block with structured handoff formats and dynamic token targeting.
+  - [x] Add local deterministic fallback compiler to generate text-based history summaries if the LLM summarization pass fails.
+- [ ] **Modular Skills & Generic MCP Router**
+  - [x] Implement `load_skill` and `list_skills` tools to dynamically list and inject domain-specific instructions from Markdown files on demand, optimizing the system prompt.
+  - [ ] Implement a generic `runMcpTool(toolName, input)` router to connect the local LiteRT client to external Model Context Protocol (MCP) servers.
+  - [ ] Ensure automatic redaction of sensitive credentials and tokens before prompt submission.
 
-## Phase 2: The Forge (Model Compilation)
-- [/] Provision WSL2/Ubuntu environment.
-- [ ] Install ExecuTorch source and PyTorch Nightly.
-- [ ] Download and configure Qualcomm AI Engine Direct SDK (QNN SDK).
-- [ ] Write Python export script to ingest **Gemma 4 E4B**.
-- [ ] Apply INT4 PT2E quantization (`torchao`).
-- [ ] Generate the serialized `aegis_gemma4.pte` file using `QnnPartitioner`.
-
-## Phase 3: Hardware Integration & Polish
-- [ ] Implement `react-native-executorch` into the project.
-- [ ] Write the Android C++ / JNI wrapper to explicitly register the QNN Delegate for Hexagon.
-- [ ] Side-load the `.pte` file onto the S26 Ultra via `adb`.
-- [ ] Connect the `react-native-executorch` backend to the local React UI.
-- [ ] Validate NPU execution via Android Logcat (Ensure no CPU fallback to XNNPACK).
-- [ ] Handle graceful segmentation fault or memory exits.
