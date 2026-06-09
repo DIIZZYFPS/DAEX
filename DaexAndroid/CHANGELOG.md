@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.2.1...DaexAndroid-v0.3.0) (2026-06-09)
+
+
+### Features
+
+* Improved Agent loop, added tools and skills, contextual timestamps ([#15](https://github.com/DIIZZYFPS/DAEX/issues/15)) ([ba0d1e7](https://github.com/DIIZZYFPS/DAEX/commit/ba0d1e776036b9d885190cdb5278ff2259dd58c8))
+
 ## [0.2.1](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.2.0...DaexAndroid-v0.2.1) (2026-06-04)
 
 
