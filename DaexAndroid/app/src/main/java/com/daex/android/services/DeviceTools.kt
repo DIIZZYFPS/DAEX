@@ -154,35 +154,51 @@ class DeviceTools(
         return instructions ?: "Skill '$skillName' not found or could not be loaded."
     }
 
-    @Tool(description = "Run a native system intent to trigger device actions (like sending emails)")
+    @Tool(description = "List all available modular skills and their descriptions. Use this to find out what capabilities are available to be loaded via loadSkill.")
+    fun listSkills(): String {
+        Log.d(TAG, "listSkills execution triggered")
+        onStatusUpdate?.invoke("Listing skills...")
+        val catalog = skillManager.getSkillCatalog()
+        onStatusUpdate?.invoke(null)
+        return catalog
+    }
+
+    @Tool(description = "Send an email. Launches the native device email client pre-filled with recipient, subject, and body.")
+    fun sendEmail(
+        @ToolParam(description = "The email address of the recipient.") to: String,
+        @ToolParam(description = "The subject line of the email.") subject: String,
+        @ToolParam(description = "The body text of the email.") body: String
+    ): String {
+        Log.d(TAG, "sendEmail tool triggered. To: '$to', subject: '$subject'")
+        onStatusUpdate?.invoke("Preparing email...")
+        
+        return try {
+            val emailIntent = Intent(Intent.ACTION_SENDTO).apply {
+                data = android.net.Uri.parse("mailto:")
+                if (to.isNotEmpty()) putExtra(Intent.EXTRA_EMAIL, arrayOf(to))
+                putExtra(Intent.EXTRA_SUBJECT, subject)
+                putExtra(Intent.EXTRA_TEXT, body)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(emailIntent)
+            "Launched email client successfully."
+        } catch (e: Exception) {
+            "Failed to launch email client: ${e.message}"
+        } finally {
+            onStatusUpdate?.invoke(null)
+        }
+    }
+
+    @Tool(description = "Run a native system intent to trigger device actions")
     fun runIntent(
-        @ToolParam(description = "The intent action name (e.g., 'send_email')") intent: String,
+        @ToolParam(description = "The intent action name") intent: String,
         @ToolParam(description = "JSON parameters matching the target intent specification") parameters: String
     ): String {
         Log.d(TAG, "runIntent triggered: intent=$intent, parameters=$parameters")
         onStatusUpdate?.invoke(null)
         
         return try {
-            if (intent == "send_email") {
-                val json = JSONObject(parameters)
-                val email = json.optString("extra_email", "")
-                val subject = json.optString("extra_subject", "")
-                val text = json.optString("extra_text", "")
-                
-                val emailIntent = Intent(Intent.ACTION_SEND).apply {
-                    data = android.net.Uri.parse("mailto:")
-                    type = "text/plain"
-                    if (email.isNotEmpty()) putExtra(Intent.EXTRA_EMAIL, arrayOf(email))
-                    putExtra(Intent.EXTRA_SUBJECT, subject)
-                    putExtra(Intent.EXTRA_TEXT, text)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                
-                context.startActivity(emailIntent)
-                "Launched email client successfully."
-            } else {
-                "Unknown intent action: $intent"
-            }
+            "Unknown intent action: $intent"
         } catch (e: Exception) {
             "Failed to run intent: ${e.message}"
         } finally {

@@ -578,11 +578,9 @@ class DaexInferenceViewModel(
                         }
                     }
 
-                    // --- MODULAR SKILLS CATALOG INJECTION ---
-                    val skillCatalog = daexSkillManager?.getSkillCatalog() ?: ""
-                    if (skillCatalog.isNotEmpty() && skillCatalog.contains("<available_skills>")) {
-                        systemContext += "\n\n$skillCatalog\n"
-                        systemContext += "Before replying, scan the available skills above. If one matches the user's task, call the loadSkill(skillName) tool to retrieve its detailed instructions and parameters.\n"
+                    // --- MODULAR SKILLS INFO INJECTION ---
+                    if (daexSkillManager != null) {
+                        systemContext += "\n\nYou have domain-specific \"skills\" (additional instructions/parameters) available. If you need a special skill or want to see what is available, call the listSkills() tool. If you find a matching skill, call the loadSkill(skillName) tool to retrieve its instructions.\n"
                     }
                     val result = daexService.generateResponse(
                         messages = inferenceHistory,
@@ -668,7 +666,7 @@ class DaexInferenceViewModel(
                     // --- DEBUNCED GLOBAL MEMORY CURATION TRIGGER ---
                     curationJob?.cancel()
                     curationJob = viewModelScope.launch {
-                        delay(30000) // 30 seconds inactivity
+                        delay(90000) // 90 seconds inactivity
                         if (daexCoreMemory != null) {
                             _isReflecting.value = true
                             val logMsgId = "log_" + System.currentTimeMillis()

@@ -14,7 +14,7 @@ Revamp the tool execution pipeline to support interactive workflows, dynamic ski
   - [x] Setup middle-turn summarization: compress intermediate turns using a fast local or remote summarizer model into a single `[CONTEXT COMPACTION]:` block with structured handoff formats and dynamic token targeting.
   - [x] Add local deterministic fallback compiler to generate text-based history summaries if the LLM summarization pass fails.
 - [ ] **Modular Skills & Generic MCP Router**
-  - [ ] Implement `load_skill` tool to dynamically inject domain-specific instructions from Markdown files on demand, optimizing the system prompt.
+  - [x] Implement `load_skill` and `list_skills` tools to dynamically list and inject domain-specific instructions from Markdown files on demand, optimizing the system prompt.
   - [ ] Implement a generic `runMcpTool(toolName, input)` router to connect the local LiteRT client to external Model Context Protocol (MCP) servers.
   - [ ] Ensure automatic redaction of sensitive credentials and tokens before prompt submission.
 

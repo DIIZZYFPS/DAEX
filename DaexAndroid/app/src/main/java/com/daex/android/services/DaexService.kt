@@ -211,13 +211,14 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 append(customSystemPrompt)
                 append("\n\n")
             } else {
-                append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n\n")
+                append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n")
+                append("Do not self-reference as an AI, assistant, or mention 'Icarus' or 'DAEX' in your responses. Avoid meta-commentary about running on-device or your technical setup unless directly asked. Respond naturally and directly to the user.\n\n")
             }
             if (systemContext.isNotBlank()) {
                 append("<global_memory>\n")
                 append(systemContext)
                 append("\n</global_memory>\n\n")
-                append("The above is your persistent memory. Use it to personalize your responses. Do NOT attempt to update it yourself.\n")
+                append("The above is your persistent memory. Use it to personalize your responses. Do NOT mention your memory or refer to it, and do NOT attempt to update it yourself.\n")
             }
         }
 
