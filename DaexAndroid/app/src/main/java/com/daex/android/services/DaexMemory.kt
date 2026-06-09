@@ -68,6 +68,7 @@ class DaexMemory(private val boxStore: BoxStore) {
                 conversationId = conversationId,
                 role = message.role,
                 content = message.content,
+                timestamp = message.timestamp,
                 tokensPerSecond = message.tokensPerSecond,
                 thoughtContent = message.thoughtContent,
                 isPinned = message.isPinned,
@@ -76,6 +77,7 @@ class DaexMemory(private val boxStore: BoxStore) {
             )
         } else {
             entity.content = message.content
+            entity.timestamp = message.timestamp
             entity.tokensPerSecond = message.tokensPerSecond
             entity.thoughtContent = message.thoughtContent
             entity.isPinned = message.isPinned
@@ -156,6 +158,7 @@ class DaexMemory(private val boxStore: BoxStore) {
         tokensPerSecond = this.tokensPerSecond,
         thoughtContent = this.thoughtContent,
         isPinned = this.isPinned,
-        isCompacted = this.isCompacted
+        isCompacted = this.isCompacted,
+        timestamp = this.timestamp
     )
 }

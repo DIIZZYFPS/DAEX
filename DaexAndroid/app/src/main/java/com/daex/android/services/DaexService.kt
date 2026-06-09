@@ -31,7 +31,8 @@ data class Message(
     val thoughtContent: String? = null,
     val toolStatus: String? = null,
     val isPinned: Boolean = false,
-    val isCompacted: Boolean = false
+    val isCompacted: Boolean = false,
+    val timestamp: Long = System.currentTimeMillis()
 )
 
 interface DaexService {
@@ -212,8 +213,18 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 append("\n\n")
             } else {
                 append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n")
-                append("Do not self-reference as an AI, assistant, or mention 'Icarus' or 'DAEX' in your responses. Avoid meta-commentary about running on-device or your technical setup unless directly asked. Respond naturally and directly to the user.\n\n")
+                append("Do not self-reference as an AI, assistant, or mention 'Icarus' or 'DAEX' in your responses. Avoid meta-commentary about running on-device or your technical setup unless directly asked. Respond naturally and directly to the user.\n")
+                append("In the chat history, turns are prefixed with dynamic relative timestamps indicating elapsed time (e.g. '[5m ago]', '[1h ago]'). Do NOT include any timestamp prefixes in your new response.\n\n")
             }
+            
+            try {
+                val formatter = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy, h:mm a", java.util.Locale.getDefault())
+                val currentDateTimeStr = formatter.format(java.util.Date())
+                append("Current Reference Time: $currentDateTimeStr\n\n")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to format current date time for system prompt", e)
+            }
+
             if (systemContext.isNotBlank()) {
                 append("<global_memory>\n")
                 append(systemContext)
@@ -226,11 +237,22 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         val history = messages.dropLast(1)
         val activePrompt = messages.lastOrNull()?.content ?: ""
 
+        val now = System.currentTimeMillis()
         val initialLiteRtMessages = history.map { msg ->
+            val diffSec = (now - msg.timestamp) / 1000
+            val relativeTime = when {
+                diffSec < 0 -> "just now"
+                diffSec < 60 -> "just now"
+                diffSec < 3600 -> "${diffSec / 60}m ago"
+                diffSec < 86400 -> "${diffSec / 3600}h ago"
+                else -> "${diffSec / 86400}d ago"
+            }
+            val contentWithTime = "[$relativeTime] ${msg.content}"
+
             when (msg.role) {
-                "user" -> LiteRtMessage.user(msg.content)
-                "model" -> LiteRtMessage.model(LiteRtContents.of(msg.content))
-                else -> LiteRtMessage.user(msg.content)
+                "user" -> LiteRtMessage.user(contentWithTime)
+                "model" -> LiteRtMessage.model(LiteRtContents.of(contentWithTime))
+                else -> LiteRtMessage.user(contentWithTime)
             }
         }
 
