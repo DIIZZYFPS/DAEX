@@ -15,9 +15,19 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.firstOrNull
+import android.os.VibrationEffect
 
 enum class ModelStatus {
     NOT_DOWNLOADED, DOWNLOADING, LOADING, READY, ERROR
+}
+
+enum class HapticType {
+    CLICK,
+    TICK,
+    DOUBLE_CLICK,
+    HEAVY_CLICK,
+    START_RESPONSE,
+    SUCCESS_COMPLETION
 }
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -29,7 +39,8 @@ class DaexInferenceViewModel(
     private val daexCoreMemory: DaexCoreMemory? = null,
     private val preferences: DaexPreferences? = null,
     private val daexRag: DaexRag? = null,
-    private val daexSkillManager: DaexSkillManager? = null
+    private val daexSkillManager: DaexSkillManager? = null,
+    private val context: android.content.Context? = null
 ) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -124,6 +135,12 @@ class DaexInferenceViewModel(
     private val _maxTokens = MutableStateFlow(1024)
     val maxTokens: StateFlow<Int> = _maxTokens.asStateFlow()
 
+    private val _isHapticEnabled = MutableStateFlow(true)
+    val isHapticEnabled: StateFlow<Boolean> = _isHapticEnabled.asStateFlow()
+
+    private val _isAuraEnabled = MutableStateFlow(true)
+    val isAuraEnabled: StateFlow<Boolean> = _isAuraEnabled.asStateFlow()
+
     val deviceSpecs: DeviceSpecs? = deviceService?.getDeviceSpecs()
 
     private var generationJob: Job? = null
@@ -187,6 +204,18 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             preferences?.maxTokensFlow?.collectLatest { maxTokens ->
                 _maxTokens.value = maxTokens
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.isHapticEnabledFlow?.collectLatest { enabled ->
+                _isHapticEnabled.value = enabled
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.isAuraEnabledFlow?.collectLatest { enabled ->
+                _isAuraEnabled.value = enabled
             }
         }
 
@@ -338,6 +367,80 @@ class DaexInferenceViewModel(
         _maxTokens.value = maxTokens
         viewModelScope.launch {
             preferences?.setMaxTokens(maxTokens)
+        }
+    }
+
+    fun setHapticEnabled(enabled: Boolean) {
+        _isHapticEnabled.value = enabled
+        viewModelScope.launch {
+            preferences?.setHapticEnabled(enabled)
+        }
+    }
+
+    fun setAuraEnabled(enabled: Boolean) {
+        _isAuraEnabled.value = enabled
+        viewModelScope.launch {
+            preferences?.setAuraEnabled(enabled)
+        }
+    }
+
+    fun triggerHapticFeedback(context: android.content.Context? = null, force: Boolean = false, type: HapticType = HapticType.CLICK) {
+        if (_isHapticEnabled.value || force) {
+            val targetContext = context ?: this.context ?: return
+            try {
+                val vibrator = targetContext.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                if (vibrator != null && vibrator.hasVibrator()) {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        val effect = when (type) {
+                            HapticType.CLICK -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
+                            HapticType.TICK -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK)
+                            HapticType.DOUBLE_CLICK -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK)
+                            HapticType.HEAVY_CLICK -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK)
+                            HapticType.START_RESPONSE -> {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                                    try {
+                                        VibrationEffect.startComposition()
+                                            .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.5f)
+                                            .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.3f, 50)
+                                            .compose()
+                                    } catch (e: Exception) {
+                                        VibrationEffect.createPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK)
+                                    }
+                                } else {
+                                    VibrationEffect.createPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK)
+                                }
+                            }
+                            HapticType.SUCCESS_COMPLETION -> {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                                    try {
+                                        VibrationEffect.startComposition()
+                                            .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.8f)
+                                            .addPrimitive(VibrationEffect.Composition.PRIMITIVE_THUD, 0.5f, 100)
+                                            .compose()
+                                    } catch (e: Exception) {
+                                        VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
+                                    }
+                                } else {
+                                    VibrationEffect.createWaveform(longArrayOf(0, 30, 80, 40), intArrayOf(0, 200, 0, 100), -1)
+                                }
+                            }
+                        }
+                        vibrator.vibrate(effect)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        when (type) {
+                            HapticType.CLICK -> vibrator.vibrate(40)
+                            HapticType.TICK -> vibrator.vibrate(10)
+                            HapticType.DOUBLE_CLICK -> vibrator.vibrate(longArrayOf(0, 30, 60, 30), -1)
+                            HapticType.HEAVY_CLICK -> vibrator.vibrate(80)
+                            HapticType.START_RESPONSE -> vibrator.vibrate(longArrayOf(0, 30, 50, 30), -1)
+                            HapticType.SUCCESS_COMPLETION -> vibrator.vibrate(longArrayOf(0, 35, 80, 50), -1)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DaexInferenceViewModel", "Failed to trigger haptic feedback", e)
+            }
         }
     }
 
@@ -576,6 +679,7 @@ class DaexInferenceViewModel(
             
             _isGenerating.value = true
             _tokenSpeed.value = 0.0
+            triggerHapticFeedback(type = HapticType.START_RESPONSE)
 
             generationJob = viewModelScope.launch {
                 try {
@@ -734,6 +838,7 @@ class DaexInferenceViewModel(
                         }
                     }
                     _tokenSpeed.value = result.tokensPerSecond
+                    triggerHapticFeedback(type = HapticType.SUCCESS_COMPLETION)
                     
                     // Save final result to DB
                     val updatedList = _messages.value

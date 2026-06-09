@@ -64,7 +64,8 @@ class MainActivity : ComponentActivity() {
                     daexCoreMemory = daexCoreMemory,
                     preferences = daexPreferences,
                     daexRag = daexRag,
-                    daexSkillManager = daexSkillManager
+                    daexSkillManager = daexSkillManager,
+                    context = applicationContext
                 ) 
             }
             var currentScreen by remember { mutableStateOf<Screen?>(null) }

@@ -92,14 +92,15 @@ fun DaexTextField(
     enabled: Boolean = true,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
-    textStyle: TextStyle = DaexTheme.typography.body1.copy(color = DaexTheme.colors.onBackground)
+    textStyle: TextStyle = DaexTheme.typography.body1.copy(color = DaexTheme.colors.onBackground),
+    backgroundColor: Color = DaexTheme.colors.surface
 ) {
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
-            .background(DaexTheme.colors.surface)
+            .background(backgroundColor)
             .padding(12.dp),
         textStyle = textStyle,
         enabled = enabled,

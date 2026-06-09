@@ -22,6 +22,11 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.*
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.daex.android.services.DaexInferenceViewModel
@@ -59,8 +64,49 @@ fun ExecutionScreen(
     val isVectorizing by viewModel.isVectorizing.collectAsState()
     val uploadedFiles by viewModel.uploadedFiles.collectAsState()
     val downloadedModelIds by viewModel.downloadedModelIds.collectAsState()
+    val isAuraEnabled by viewModel.isAuraEnabled.collectAsState()
     
     val context = LocalContext.current
+
+    val isModelThinking = remember(messages, isGenerating) {
+        val lastMsg = messages.lastOrNull()
+        isGenerating && lastMsg != null && lastMsg.role == "model" && lastMsg.content.isEmpty() && !lastMsg.thoughtContent.isNullOrEmpty()
+    }
+
+    // Reactive aura background transition states
+    val infiniteTransition = rememberInfiniteTransition(label = "AuraPulse")
+    val auraScale by infiniteTransition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 6000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "AuraScale"
+    )
+
+    val auraColor by animateColorAsState(
+        targetValue = when {
+            modelStatus == ModelStatus.ERROR -> DaexTheme.colors.error
+            isModelThinking -> Color(0xFF6366F1) // Indigo for thinking state
+            isGenerating -> Color(0xFFA855F7) // Purple for generating final response
+            modelStatus == ModelStatus.LOADING || modelStatus == ModelStatus.DOWNLOADING || isReflecting || isVectorizing -> DaexTheme.colors.warning
+            else -> DaexTheme.colors.primary
+        },
+        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+        label = "AuraColor"
+    )
+
+    val centerAlpha by animateFloatAsState(
+        targetValue = when {
+            isModelThinking -> 0.14f
+            isGenerating -> 0.10f
+            else -> 0.07f
+        },
+        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+        label = "AuraAlpha"
+    )
+
     var inputText by remember { mutableStateOf("") }
     var sidebarVisible by remember { mutableStateOf(false) }
     var selectorVisible by remember { mutableStateOf(false) }
@@ -189,11 +235,50 @@ fun ExecutionScreen(
         else -> DaexTheme.colors.warning
     }
 
+    val primaryColorVal = DaexTheme.colors.primary
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(DaexTheme.colors.background)
+                .drawBehind {
+                    if (isAuraEnabled) {
+                        // 1. Dominant Right Reactive Aura
+                        val rightCenter = Offset(x = size.width * 0.85f, y = size.height * 0.35f)
+                        val rightBaseRadius = size.width * 0.8f
+                        val rightRadius = rightBaseRadius * auraScale
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    auraColor.copy(alpha = centerAlpha),
+                                    auraColor.copy(alpha = centerAlpha * 0.4f),
+                                    Color.Transparent
+                                ),
+                                center = rightCenter,
+                                radius = rightRadius
+                            ),
+                            center = rightCenter,
+                            radius = rightRadius
+                        )
+
+                        // 2. Secondary Left Calm Ambient Aura
+                        val leftCenter = Offset(x = size.width * 0.15f, y = size.height * 0.75f)
+                        val leftRadius = size.width * 0.6f
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    primaryColorVal.copy(alpha = 0.04f),
+                                    Color.Transparent
+                                ),
+                                center = leftCenter,
+                                radius = leftRadius
+                            ),
+                            center = leftCenter,
+                            radius = leftRadius
+                        )
+                    }
+                }
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 .windowInsetsPadding(WindowInsets.ime) // Root Column handles the IME
@@ -208,13 +293,19 @@ fun ExecutionScreen(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { selectorVisible = true }
+                    modifier = Modifier.clickable {
+                        viewModel.triggerHapticFeedback(context)
+                        selectorVisible = true
+                    }
                 ) {
                     BasicText(
                         text = "☰",
                         style = DaexTheme.typography.h2.copy(color = DaexTheme.colors.primary),
                         modifier = Modifier
-                            .clickable { sidebarVisible = true }
+                            .clickable {
+                                viewModel.triggerHapticFeedback(context)
+                                sidebarVisible = true
+                            }
                             .padding(8.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -317,7 +408,10 @@ fun ExecutionScreen(
                         text = "+",
                         style = DaexTheme.typography.h2.copy(color = DaexTheme.colors.primary),
                         modifier = Modifier
-                            .clickable { viewModel.clearMessages() }
+                            .clickable {
+                                viewModel.triggerHapticFeedback(context)
+                                viewModel.clearMessages()
+                            }
                             .padding(8.dp)
                     )
                 }
@@ -409,6 +503,7 @@ fun ExecutionScreen(
             Box(modifier = Modifier.weight(1f)) {
                 if (messages.isEmpty()) {
                     SuggestedPrompts(onSelectPrompt = {
+                        viewModel.triggerHapticFeedback(context)
                         if (isModelReady && !isGenerating) {
                             viewModel.submitPrompt(it)
                         } else if (!isModelReady) {
@@ -476,7 +571,10 @@ fun ExecutionScreen(
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(if (isReasoningEnabled) DaexTheme.colors.primary.copy(alpha=0.15f) else DaexTheme.colors.onSurface.copy(alpha=0.1f))
                                     .border(0.5.dp, if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.2f), RoundedCornerShape(16.dp))
-                                    .clickable { viewModel.toggleReasoning() }
+                                    .clickable {
+                                        viewModel.triggerHapticFeedback(context)
+                                        viewModel.toggleReasoning()
+                                    }
                                     .padding(horizontal = 12.dp, vertical = 6.dp)
                             ) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -556,7 +654,10 @@ fun ExecutionScreen(
                         ) {
                             // Attachment button
                             DaexButton(
-                                onClick = { filePickerLauncher.launch("*/*") },
+                                onClick = {
+                                    viewModel.triggerHapticFeedback(context)
+                                    filePickerLauncher.launch("*/*")
+                                },
                                 enabled = !isGenerating && !isVectorizing && isModelReady,
                                 modifier = Modifier.size(36.dp),
                                 backgroundColor = Color.Transparent,
@@ -575,12 +676,14 @@ fun ExecutionScreen(
                                 onValueChange = { inputText = it },
                                 modifier = Modifier.weight(1f),
                                 placeholder = if (isModelReady) "Initialize execution with Icarus..." else "Engine not loaded...",
-                                enabled = !isGenerating && isModelReady
+                                enabled = !isGenerating && isModelReady,
+                                backgroundColor = Color.Transparent
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             DaexButton(
                                 onClick = {
                                     if (inputText.isNotBlank()) {
+                                        viewModel.triggerHapticFeedback(context)
                                         viewModel.submitPrompt(inputText)
                                         inputText = ""
                                     }
@@ -613,6 +716,7 @@ fun ExecutionScreen(
             visible = selectorVisible,
             onClose = { selectorVisible = false },
             onSelect = { 
+                viewModel.triggerHapticFeedback(context)
                 selectedModel = it
                 selectorVisible = false
                 viewModel.loadModel(it)

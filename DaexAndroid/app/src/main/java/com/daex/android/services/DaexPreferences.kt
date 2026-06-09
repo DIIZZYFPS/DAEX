@@ -29,6 +29,8 @@ class DaexPreferences(private val context: Context) {
         val CUSTOM_SYSTEM_PROMPT = stringPreferencesKey("custom_system_prompt")
         val IS_TOOL_CALLING_ENABLED = booleanPreferencesKey("is_tool_calling_enabled")
         val MAX_TOKENS = intPreferencesKey("max_tokens")
+        val IS_HAPTIC_ENABLED = booleanPreferencesKey("is_haptic_enabled")
+        val IS_AURA_ENABLED = booleanPreferencesKey("is_aura_enabled")
     }
 
     val lastUsedModelIdFlow: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -82,6 +84,14 @@ class DaexPreferences(private val context: Context) {
 
     val maxTokensFlow: Flow<Int> = context.dataStore.data.map { preferences ->
         preferences[MAX_TOKENS] ?: 1024
+    }
+
+    val isHapticEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[IS_HAPTIC_ENABLED] ?: true
+    }
+
+    val isAuraEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[IS_AURA_ENABLED] ?: true
     }
 
     suspend fun setDarkMode(isDark: Boolean) {
@@ -155,6 +165,18 @@ class DaexPreferences(private val context: Context) {
     suspend fun setMaxTokens(maxTokens: Int) {
         context.dataStore.edit { preferences ->
             preferences[MAX_TOKENS] = maxTokens
+        }
+    }
+
+    suspend fun setHapticEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[IS_HAPTIC_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setAuraEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[IS_AURA_ENABLED] = enabled
         }
     }
 }

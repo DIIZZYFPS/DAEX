@@ -31,6 +31,7 @@ import com.daex.android.services.Model
 import com.daex.android.services.ModelBank
 import com.daex.android.services.ModelManager
 import com.daex.android.services.ModelStatus
+import com.daex.android.services.HapticType
 import com.daex.android.ui.components.DaexSwitch
 import com.daex.android.ui.theme.DaexTheme
 
@@ -59,6 +60,8 @@ fun SettingsScreen(
     val uploadedFiles by viewModel.uploadedFiles.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
     val maxTokens by viewModel.maxTokens.collectAsState()
+    val isHapticEnabled by viewModel.isHapticEnabled.collectAsState()
+    val isAuraEnabled by viewModel.isAuraEnabled.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("TUNING", "THEME", "SYSTEM")
@@ -123,7 +126,10 @@ fun SettingsScreen(
                 Box(
                     modifier = Modifier
                         .weight(1f)
-                        .clickable { selectedTab = index }
+                        .clickable {
+                            viewModel.triggerHapticFeedback(context)
+                            selectedTab = index
+                        }
                         .padding(vertical = 8.dp),
                     contentAlignment = Alignment.Center
                 ) {
@@ -169,7 +175,8 @@ fun SettingsScreen(
                                 valueFormatter = { String.format(java.util.Locale.US, "%.2f", it) },
                                 onValueChange = { viewModel.setInferenceTemperature(it) },
                                 primaryColor = primaryColor,
-                                subtitle = "Strict (0.0) ─── Creative (2.0)"
+                                subtitle = "Strict (0.0) ─── Creative (2.0)",
+                                viewModel = viewModel
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             SliderParameter(
@@ -178,7 +185,8 @@ fun SettingsScreen(
                                 valueRange = 1f..100f,
                                 valueFormatter = { it.toInt().toString() },
                                 onValueChange = { viewModel.setInferenceTopK(it.toInt()) },
-                                primaryColor = primaryColor
+                                primaryColor = primaryColor,
+                                viewModel = viewModel
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             SliderParameter(
@@ -187,7 +195,8 @@ fun SettingsScreen(
                                 valueRange = 0f..1f,
                                 valueFormatter = { String.format(java.util.Locale.US, "%.2f", it) },
                                 onValueChange = { viewModel.setInferenceTopP(it) },
-                                primaryColor = primaryColor
+                                primaryColor = primaryColor,
+                                viewModel = viewModel
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             SliderParameter(
@@ -197,7 +206,8 @@ fun SettingsScreen(
                                 valueFormatter = { it.toInt().toString() + " tokens" },
                                 onValueChange = { viewModel.setMaxTokens(it.toInt()) },
                                 primaryColor = primaryColor,
-                                subtitle = "Concise (128) ─── Detailed (4096)"
+                                subtitle = "Concise (128) ─── Detailed (4096)",
+                                viewModel = viewModel
                             )
                         }
                     }
@@ -424,6 +434,94 @@ fun SettingsScreen(
                                     }
                                 }
                             }
+
+                            Spacer(modifier = Modifier.height(24.dp))
+
+                            BasicText(
+                                text = "AMBIENT EFFECTS",
+                                style = DaexTheme.typography.mono.copy(
+                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                    fontSize = 10.sp,
+                                    letterSpacing = 1.sp
+                                ),
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    BasicText(
+                                        text = "Ambient Reactive Aura",
+                                        style = DaexTheme.typography.body1.copy(
+                                            color = DaexTheme.colors.onBackground,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    )
+                                    BasicText(
+                                        text = "Draw dynamic, state-reactive gradients in the background",
+                                        style = DaexTheme.typography.mono.copy(
+                                            color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                            fontSize = 11.sp
+                                        ),
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                                DaexSwitch(
+                                    checked = isAuraEnabled,
+                                    onCheckedChange = { viewModel.setAuraEnabled(it) }
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(24.dp))
+
+                            BasicText(
+                                text = "TACTILE HAPTIC OPTIONS",
+                                style = DaexTheme.typography.mono.copy(
+                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                    fontSize = 10.sp,
+                                    letterSpacing = 1.sp
+                                ),
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    BasicText(
+                                        text = "Haptic Tap Pulses",
+                                        style = DaexTheme.typography.body1.copy(
+                                            color = DaexTheme.colors.onBackground,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    )
+                                    BasicText(
+                                        text = "Tactile feedback clicks on key buttons",
+                                        style = DaexTheme.typography.mono.copy(
+                                            color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                            fontSize = 11.sp
+                                        ),
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                                DaexSwitch(
+                                    checked = isHapticEnabled,
+                                    onCheckedChange = { viewModel.setHapticEnabled(it) }
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            ActionButton(
+                                text = "Test tactile haptic pulse",
+                                color = primaryColor,
+                                onClick = { viewModel.triggerHapticFeedback(context, force = true) }
+                            )
                         }
                     }
                 }
@@ -643,8 +741,12 @@ private fun SliderParameter(
     valueFormatter: (Float) -> String,
     onValueChange: (Float) -> Unit,
     primaryColor: Color,
-    subtitle: String? = null
+    subtitle: String? = null,
+    viewModel: DaexInferenceViewModel? = null
 ) {
+    val context = LocalContext.current
+    var lastFormattedValue by remember(value) { mutableStateOf(valueFormatter(value)) }
+
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -679,7 +781,14 @@ private fun SliderParameter(
         }
         Slider(
             value = value,
-            onValueChange = onValueChange,
+            onValueChange = { newValue ->
+                val formatted = valueFormatter(newValue)
+                if (formatted != lastFormattedValue) {
+                    lastFormattedValue = formatted
+                    viewModel?.triggerHapticFeedback(context, type = HapticType.TICK)
+                }
+                onValueChange(newValue)
+            },
             valueRange = valueRange,
             colors = SliderDefaults.colors(
                 thumbColor = primaryColor,
