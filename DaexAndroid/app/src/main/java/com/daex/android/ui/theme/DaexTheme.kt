@@ -106,6 +106,22 @@ object DaexTheme {
     val typography: DaexTypography
         @Composable
         get() = LocalDaexTypography.current
+
+    fun getAdjustedColor(color: Color, isDark: Boolean): Color {
+        return if (isDark) {
+            color
+        } else {
+            when (color) {
+                Color(0xFF00FFFF) -> Color(0xFF0891B2) // Cyan -> Deep Cyan
+                Color(0xFFA855F7) -> Color(0xFF7C3AED) // Purple -> Deep Purple
+                Color(0xFF4ADE80) -> Color(0xFF16A34A) // Green -> Deep Green
+                Color(0xFF3B82F6) -> Color(0xFF1D4ED8) // Blue -> Dark Blue
+                Color(0xFFF59E0B) -> Color(0xFFD97706) // Amber -> Dark Amber
+                Color(0xFFFF003C) -> Color(0xFFD6002F) // Cyber Red -> Crimson Red
+                else -> color
+            }
+        }
+    }
 }
 
 @Composable
@@ -114,12 +130,14 @@ fun DaexAppTheme(
     isDark: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    val adjustedPrimary = DaexTheme.getAdjustedColor(primaryColor, isDark)
+
     val colors = if (isDark) {
         DaexColors(
-            primary = primaryColor,
+            primary = adjustedPrimary,
             background = Color(0xFF000000),
             surface = Color(0xFF0D0D0D),
-            surfaceVariant = primaryColor.copy(alpha = 0.15f),
+            surfaceVariant = adjustedPrimary.copy(alpha = 0.15f),
             onBackground = Color(0xFFFFFFFF),
             onSurface = Color(0xFFE2E8F0),
             onPrimary = Color(0xFF000000),
@@ -129,10 +147,10 @@ fun DaexAppTheme(
         )
     } else {
         DaexColors(
-            primary = primaryColor,
+            primary = adjustedPrimary,
             background = Color(0xFFF8FAFC),
             surface = Color(0xFFFFFFFF),
-            surfaceVariant = primaryColor.copy(alpha = 0.1f),
+            surfaceVariant = adjustedPrimary.copy(alpha = 0.1f),
             onBackground = Color(0xFF0F172A),
             onSurface = Color(0xFF334155),
             onPrimary = Color(0xFFFFFFFF),

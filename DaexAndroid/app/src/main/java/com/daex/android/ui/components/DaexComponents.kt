@@ -134,12 +134,21 @@ fun DaexSwitch(
         label = "switch_thumb"
     )
     
+    val isDark = DaexTheme.colors.onBackground == Color(0xFFFFFFFF)
+    val actualUncheckedColor = if (uncheckedColor == Color(0xFFFFFFFF)) {
+        if (isDark) Color(0xFFFFFFFF) else DaexTheme.colors.onSurface.copy(alpha = 0.4f)
+    } else {
+        uncheckedColor
+    }
+    
+    val trackColor = if (checked) checkedColor.copy(alpha = 0.4f) else DaexTheme.colors.onSurface.copy(alpha = 0.15f)
+
     Box(
         modifier = modifier
             .width(52.dp)
             .height(28.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(if (checked) checkedColor.copy(alpha = 0.4f) else Color(0x26FFFFFF))
+            .background(trackColor)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
@@ -152,7 +161,7 @@ fun DaexSwitch(
                 .offset(x = thumbOffset)
                 .size(20.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(if (checked) checkedColor else uncheckedColor)
+                .background(if (checked) checkedColor else actualUncheckedColor)
         )
     }
 }

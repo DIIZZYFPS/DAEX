@@ -174,7 +174,7 @@ fun SettingsScreen(
                                 valueRange = 0f..2f,
                                 valueFormatter = { String.format(java.util.Locale.US, "%.2f", it) },
                                 onValueChange = { viewModel.setInferenceTemperature(it) },
-                                primaryColor = primaryColor,
+                                primaryColor = DaexTheme.colors.primary,
                                 subtitle = "Strict (0.0) ─── Creative (2.0)",
                                 viewModel = viewModel
                             )
@@ -185,7 +185,7 @@ fun SettingsScreen(
                                 valueRange = 1f..100f,
                                 valueFormatter = { it.toInt().toString() },
                                 onValueChange = { viewModel.setInferenceTopK(it.toInt()) },
-                                primaryColor = primaryColor,
+                                primaryColor = DaexTheme.colors.primary,
                                 viewModel = viewModel
                             )
                             Spacer(modifier = Modifier.height(16.dp))
@@ -195,7 +195,7 @@ fun SettingsScreen(
                                 valueRange = 0f..1f,
                                 valueFormatter = { String.format(java.util.Locale.US, "%.2f", it) },
                                 onValueChange = { viewModel.setInferenceTopP(it) },
-                                primaryColor = primaryColor,
+                                primaryColor = DaexTheme.colors.primary,
                                 viewModel = viewModel
                             )
                             Spacer(modifier = Modifier.height(16.dp))
@@ -205,7 +205,7 @@ fun SettingsScreen(
                                 valueRange = 128f..4096f,
                                 valueFormatter = { it.toInt().toString() + " tokens" },
                                 onValueChange = { viewModel.setMaxTokens(it.toInt()) },
-                                primaryColor = primaryColor,
+                                primaryColor = DaexTheme.colors.primary,
                                 subtitle = "Concise (128) ─── Detailed (4096)",
                                 viewModel = viewModel
                             )
@@ -409,11 +409,12 @@ fun SettingsScreen(
                             ) {
                                 items(themeColors) { color ->
                                     val isSelected = color == primaryColor
+                                    val displayColor = DaexTheme.getAdjustedColor(color, isDark)
                                     Box(
                                         modifier = Modifier
                                             .size(36.dp)
                                             .clip(CircleShape)
-                                            .background(color)
+                                            .background(displayColor)
                                             .border(
                                                 width = if (isSelected) 3.dp else 0.dp,
                                                 color = if (isDark) Color.White else Color.Black,
@@ -426,7 +427,7 @@ fun SettingsScreen(
                                             BasicText(
                                                 text = "✓",
                                                 style = DaexTheme.typography.body1.copy(
-                                                    color = if (color == Color.White) Color.Black else Color.White,
+                                                    color = if (displayColor == Color.White) Color.Black else Color.White,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                             )
@@ -519,7 +520,7 @@ fun SettingsScreen(
 
                             ActionButton(
                                 text = "Test tactile haptic pulse",
-                                color = primaryColor,
+                                color = DaexTheme.colors.primary,
                                 onClick = { viewModel.triggerHapticFeedback(context, force = true) }
                             )
                         }
