@@ -28,6 +28,7 @@ class DaexPreferences(private val context: Context) {
         val INFERENCE_TOP_P = floatPreferencesKey("inference_top_p")
         val CUSTOM_SYSTEM_PROMPT = stringPreferencesKey("custom_system_prompt")
         val IS_TOOL_CALLING_ENABLED = booleanPreferencesKey("is_tool_calling_enabled")
+        val MAX_TOKENS = intPreferencesKey("max_tokens")
     }
 
     val lastUsedModelIdFlow: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -77,6 +78,10 @@ class DaexPreferences(private val context: Context) {
 
     val isToolCallingEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[IS_TOOL_CALLING_ENABLED] ?: false
+    }
+
+    val maxTokensFlow: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[MAX_TOKENS] ?: 1024
     }
 
     suspend fun setDarkMode(isDark: Boolean) {
@@ -144,6 +149,12 @@ class DaexPreferences(private val context: Context) {
     suspend fun setToolCallingEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[IS_TOOL_CALLING_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setMaxTokens(maxTokens: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[MAX_TOKENS] = maxTokens
         }
     }
 }

@@ -34,14 +34,12 @@ fun ModelSelectorModal(
     onClose: () -> Unit,
     onSelect: (Model) -> Unit,
     onOpenMarketplace: () -> Unit,
-    modelManager: ModelManager?
+    downloadedModelIds: Set<String>,
+    onDelete: ((Model) -> Unit)? = null
 ) {
     val allModels = ModelBank.generativeModels
-    var downloadedModels by remember { mutableStateOf<List<Model>>(emptyList()) }
-
-    LaunchedEffect(visible) {
-        if (!visible || modelManager == null) return@LaunchedEffect
-        downloadedModels = allModels.filter { modelManager.isModelDownloaded(it) }
+    val downloadedModels = remember(downloadedModelIds) {
+        allModels.filter { downloadedModelIds.contains(it.id) }
     }
 
     AnimatedVisibility(
@@ -128,21 +126,52 @@ fun ModelSelectorModal(
                                     .clip(RoundedCornerShape(16.dp))
                                     .background(Color.White.copy(alpha = 0.03f))
                                     .border(0.5.dp, Color.White.copy(alpha = 0.1f), RoundedCornerShape(16.dp))
-                                    .clickable { onSelect(model) }
-                                    .padding(16.dp)
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
                                         modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(DaexTheme.colors.success)
-                                    )
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    BasicText(
-                                        text = model.name,
-                                        style = DaexTheme.typography.body1.copy(color = Color.White, fontWeight = FontWeight.Bold)
-                                    )
+                                            .weight(1f)
+                                            .clickable { onSelect(model) }
+                                            .padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .clip(CircleShape)
+                                                .background(DaexTheme.colors.success)
+                                        )
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        BasicText(
+                                            text = model.name,
+                                            style = DaexTheme.typography.body1.copy(color = Color.White, fontWeight = FontWeight.Bold)
+                                        )
+                                    }
+                                    
+                                    if (onDelete != null) {
+                                        Box(
+                                            modifier = Modifier
+                                                .padding(end = 16.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(DaexTheme.colors.error.copy(alpha = 0.15f))
+                                                .border(0.5.dp, DaexTheme.colors.error, RoundedCornerShape(8.dp))
+                                                .clickable { onDelete(model) }
+                                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            BasicText(
+                                                text = "DELETE",
+                                                style = DaexTheme.typography.mono.copy(
+                                                    color = DaexTheme.colors.error,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

@@ -104,6 +104,11 @@ class DaexMemory(private val boxStore: BoxStore) {
         }
     }
 
+    suspend fun deleteAllConversations() = withContext(Dispatchers.IO) {
+        conversationBox.removeAll()
+        messageBox.removeAll()
+    }
+
     suspend fun searchSimilarContext(queryVector: FloatArray, maxResults: Int = 5, queryText: String = ""): List<Message> = withContext(Dispatchers.IO) {
         val count = messageBox.count()
         android.util.Log.d("DaexMemory", "Searching across $count messages")

@@ -49,6 +49,7 @@ interface DaexService {
         isToolCallingEnabled: Boolean = false,
         onRequestPermission: (suspend (String, String) -> Boolean)? = null,
         onStatusUpdate: ((String?) -> Unit)? = null,
+        maxTokens: Int = 1024,
         onToken: (String) -> Unit
     ): GenerationResult
     suspend fun generateSilent(prompt: String, maxTokens: Int = 512): String
@@ -121,6 +122,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 val config = EngineConfig(
                     modelPath = modelPath,
                     backend = backend,
+                    maxNumTokens = 4096, // Safe default KV cache size that accommodates system prompt, RAG context, history and response
                     cacheDir = context.cacheDir.absolutePath
                 )
 
@@ -152,11 +154,11 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 when (backendType) {
                     BackendType.NPU -> {
                         Log.w("DaexService", "NPU initialization failed (missing TF_LITE_AUX), attempting fallback to GPU", e)
-                        initContext(modelPath, BackendType.GPU)
+                        initContext(modelPath, BackendType.GPU, isSpeculativeDecodingEnabled)
                     }
                     BackendType.GPU -> {
                         Log.w("DaexService", "GPU initialization failed, attempting fallback to CPU", e)
-                        initContext(modelPath, BackendType.CPU)
+                        initContext(modelPath, BackendType.CPU, isSpeculativeDecodingEnabled)
                     }
                     BackendType.CPU -> {
                         isLoaded = false
@@ -202,6 +204,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         isToolCallingEnabled: Boolean,
         onRequestPermission: (suspend (String, String) -> Boolean)?,
         onStatusUpdate: ((String?) -> Unit)?,
+        maxTokens: Int,
         onToken: (String) -> Unit
     ): GenerationResult {
         Log.i(TAG, "generateResponse: isToolCallingEnabled=$isToolCallingEnabled, temperature=$temperature, topK=$topK, topP=$topP, customPromptLength=${customSystemPrompt.length}")
@@ -230,6 +233,12 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 append(systemContext)
                 append("\n</global_memory>\n\n")
                 append("The above is your persistent memory. Use it to personalize your responses. Do NOT mention your memory or refer to it, and do NOT attempt to update it yourself.\n")
+            }
+
+            if (maxTokens <= 256) {
+                append("\nIMPORTANT CONSTRAINT: The user has requested an extremely brief response. Keep both your internal thinking/reasoning and final response very short, concise, and direct (under 50 words).\n")
+            } else if (maxTokens <= 512) {
+                append("\nIMPORTANT CONSTRAINT: The user has requested a concise response. Keep your reasoning and final response relatively brief.\n")
             }
         }
 
@@ -294,6 +303,8 @@ class DaexServiceImpl(private val context: Context) : DaexService {
 
         var decodeStartTime = 0L
         var tokenCount = 0
+        var responseTokenCount = 0
+        var isLimitReached = false
         val fullText = StringBuilder()
 
         var hasStartedThinking = false
@@ -301,38 +312,55 @@ class DaexServiceImpl(private val context: Context) : DaexService {
 
         val extraContext = mapOf("enable_thinking" to isReasoningEnabled)
 
-        withContext(Dispatchers.IO) {
-            activeConversation.sendMessageAsync(activePrompt, extraContext).collect { reply ->
-                val thinkingChunk = reply.channels["thinking"]
-                val chunk = reply.contents.toString()
+        try {
+            withContext(Dispatchers.IO) {
+                activeConversation.sendMessageAsync(activePrompt, extraContext).collect { reply ->
+                    val thinkingChunk = reply.channels["thinking"]
+                    val chunk = reply.contents.toString()
 
-                val hasThinking = !thinkingChunk.isNullOrEmpty()
-                val hasNormal = chunk.isNotEmpty()
+                    val hasThinking = !thinkingChunk.isNullOrEmpty()
+                    val hasNormal = chunk.isNotEmpty()
 
-                if (hasThinking || hasNormal) {
-                    if (decodeStartTime == 0L) {
-                        decodeStartTime = System.currentTimeMillis()
+                    if (hasThinking || hasNormal) {
+                        if (decodeStartTime == 0L) {
+                            decodeStartTime = System.currentTimeMillis()
+                        }
+                    }
+
+                    if (hasThinking) {
+                        if (!hasStartedThinking) {
+                            onToken("<|think|>")
+                            hasStartedThinking = true
+                        }
+                        tokenCount++
+                        onToken(thinkingChunk!!)
+                    }
+
+                    if (hasNormal) {
+                        if (hasStartedThinking && !hasEndedThinking) {
+                            onToken("</think|>")
+                            hasEndedThinking = true
+                        }
+                        tokenCount++
+                        responseTokenCount++
+                        fullText.append(chunk)
+                        onToken(chunk)
+
+                        if (responseTokenCount >= maxTokens) {
+                            isLimitReached = true
+                            cancelGeneration()
+                        }
                     }
                 }
-
-                if (hasThinking) {
-                    if (!hasStartedThinking) {
-                        onToken("<|think|>")
-                        hasStartedThinking = true
-                    }
-                    tokenCount++
-                    onToken(thinkingChunk!!)
-                }
-
-                if (hasNormal) {
-                    if (hasStartedThinking && !hasEndedThinking) {
-                        onToken("</think|>")
-                        hasEndedThinking = true
-                    }
-                    tokenCount++
-                    fullText.append(chunk)
-                    onToken(chunk)
-                }
+            }
+        } catch (e: Throwable) {
+            val isCancellation = e is java.util.concurrent.CancellationException ||
+                                 e is kotlinx.coroutines.CancellationException ||
+                                 e.message?.contains("cancel", ignoreCase = true) == true
+            if (isLimitReached || isCancellation) {
+                Log.d(TAG, "Generation stopped. isLimitReached=$isLimitReached, isCancellation=$isCancellation")
+            } else {
+                throw e
             }
         }
 

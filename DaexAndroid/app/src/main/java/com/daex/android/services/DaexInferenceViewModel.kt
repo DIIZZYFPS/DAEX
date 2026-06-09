@@ -41,6 +41,12 @@ class DaexInferenceViewModel(
     private val _downloadProgress = MutableStateFlow(0)
     val downloadProgress: StateFlow<Int> = _downloadProgress.asStateFlow()
 
+    private val _downloadingModelId = MutableStateFlow<String?>(null)
+    val downloadingModelId: StateFlow<String?> = _downloadingModelId.asStateFlow()
+
+    private val _downloadedModelIds = MutableStateFlow<Set<String>>(emptySet())
+    val downloadedModelIds: StateFlow<Set<String>> = _downloadedModelIds.asStateFlow()
+
     private val _embeddingDownloadProgress = MutableStateFlow<Int?>(null)
     val embeddingDownloadProgress: StateFlow<Int?> = _embeddingDownloadProgress.asStateFlow()
 
@@ -115,6 +121,9 @@ class DaexInferenceViewModel(
     private val _isToolCallingEnabled = MutableStateFlow(false)
     val isToolCallingEnabled: StateFlow<Boolean> = _isToolCallingEnabled.asStateFlow()
 
+    private val _maxTokens = MutableStateFlow(1024)
+    val maxTokens: StateFlow<Int> = _maxTokens.asStateFlow()
+
     val deviceSpecs: DeviceSpecs? = deviceService?.getDeviceSpecs()
 
     private var generationJob: Job? = null
@@ -172,6 +181,12 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             preferences?.isToolCallingEnabledFlow?.collectLatest { enabled ->
                 _isToolCallingEnabled.value = enabled
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.maxTokensFlow?.collectLatest { maxTokens ->
+                _maxTokens.value = maxTokens
             }
         }
 
@@ -241,6 +256,18 @@ class DaexInferenceViewModel(
                 }
             }
         }
+        refreshDownloadedModels()
+    }
+
+    fun refreshDownloadedModels() {
+        viewModelScope.launch {
+            if (modelManager == null) return@launch
+            val downloaded = ModelBank.generativeModels
+                .filter { modelManager.isModelDownloaded(it) }
+                .map { it.id }
+                .toSet()
+            _downloadedModelIds.value = downloaded
+        }
     }
 
     fun setThemeColor(color: Color) {
@@ -307,6 +334,13 @@ class DaexInferenceViewModel(
         }
     }
 
+    fun setMaxTokens(maxTokens: Int) {
+        _maxTokens.value = maxTokens
+        viewModelScope.launch {
+            preferences?.setMaxTokens(maxTokens)
+        }
+    }
+
     fun selectConversation(id: String) {
         _currentConversationId.value = id
         // Optionally load the model associated with the conversation
@@ -354,8 +388,9 @@ class DaexInferenceViewModel(
     }
 
     fun downloadModel(model: Model) {
-        if (_modelStatus.value == ModelStatus.DOWNLOADING || modelManager == null) return
+        if (_downloadingModelId.value != null || modelManager == null) return
 
+        _downloadingModelId.value = model.id
         _modelStatus.value = ModelStatus.DOWNLOADING
         _downloadProgress.value = 0
         _errorMessage.value = null
@@ -365,9 +400,12 @@ class DaexInferenceViewModel(
                 modelManager.downloadModel(model) { progress ->
                     _downloadProgress.value = progress.percent
                 }
+                _downloadingModelId.value = null
                 _modelStatus.value = ModelStatus.NOT_DOWNLOADED
                 _downloadProgress.value = 100
+                refreshDownloadedModels()
             } catch (e: Exception) {
+                _downloadingModelId.value = null
                 _modelStatus.value = ModelStatus.ERROR
                 _errorMessage.value = e.message ?: "Download failed"
             }
@@ -376,6 +414,7 @@ class DaexInferenceViewModel(
 
     fun cancelDownload() {
         modelManager?.cancelDownload()
+        _downloadingModelId.value = null
         _modelStatus.value = ModelStatus.NOT_DOWNLOADED
         _downloadProgress.value = 0
     }
@@ -387,6 +426,7 @@ class DaexInferenceViewModel(
             
             val isDownloaded = modelManager.isModelDownloaded(model)
             if (!isDownloaded) {
+                _downloadingModelId.value = model.id
                 _modelStatus.value = ModelStatus.DOWNLOADING
                 _downloadProgress.value = 0
                 _errorMessage.value = null
@@ -395,11 +435,14 @@ class DaexInferenceViewModel(
                     modelManager.downloadModel(model) { progress ->
                         _downloadProgress.value = progress.percent
                     }
+                    refreshDownloadedModels()
                 } catch (e: Exception) {
+                    _downloadingModelId.value = null
                     _modelStatus.value = ModelStatus.ERROR
                     _errorMessage.value = e.message ?: "Download failed"
                     return@launch
                 }
+                _downloadingModelId.value = null
             }
 
             _modelStatus.value = ModelStatus.LOADING
@@ -441,6 +484,24 @@ class DaexInferenceViewModel(
             daexService.releaseContext()
             _modelStatus.value = ModelStatus.NOT_DOWNLOADED
             _tokenSpeed.value = 0.0
+        }
+    }
+
+    fun deleteModel(model: Model) {
+        viewModelScope.launch {
+            if (modelManager == null) return@launch
+            try {
+                if (_currentModel.value?.id == model.id) {
+                    daexService.releaseContext()
+                    _currentModel.value = null
+                    _tokenSpeed.value = 0.0
+                    _modelStatus.value = ModelStatus.NOT_DOWNLOADED
+                }
+                modelManager.deleteModel(model)
+                refreshDownloadedModels()
+            } catch (e: Exception) {
+                android.util.Log.e("DaexInferenceViewModel", "Failed to delete model: ${model.name}", e)
+            }
         }
     }
 
@@ -615,8 +676,27 @@ class DaexInferenceViewModel(
                                         daexMemory?.saveMessage(convId, logMsg)
                                     }
                                 }
+                            } else {
+                                val convId = _currentConversationId.value
+                                if (convId != null) {
+                                    val messagesCopy = _messages.value.toMutableList()
+                                    val logIdx = messagesCopy.indexOfLast { 
+                                        it.role == "system" && it.content.startsWith("[SYSTEM_LOG]:") && it.content.endsWith("...")
+                                    }
+                                    if (logIdx != -1) {
+                                        val oldMsg = messagesCopy[logIdx]
+                                        val cleanContent = oldMsg.content.removeSuffix("...")
+                                        val updatedMsg = oldMsg.copy(content = cleanContent)
+                                        messagesCopy[logIdx] = updatedMsg
+                                        _messages.value = messagesCopy
+                                        viewModelScope.launch {
+                                            daexMemory?.saveMessage(convId, updatedMsg)
+                                        }
+                                    }
+                                }
                             }
-                        }
+                        },
+                        maxTokens = _maxTokens.value
                     ) { token ->
                         if (!isActive) return@generateResponse
                         rawText += token
@@ -724,6 +804,13 @@ class DaexInferenceViewModel(
         _currentConversationId.value = null
         _messages.value = emptyList()
         _tokenSpeed.value = 0.0
+    }
+
+    fun deleteAllConversations() {
+        viewModelScope.launch {
+            daexMemory?.deleteAllConversations()
+            clearMessages()
+        }
     }
 
     fun deleteConversation(id: String) {

@@ -42,7 +42,8 @@ fun ExecutionScreen(
     viewModel: DaexInferenceViewModel,
     modelManager: ModelManager,
     onBack: () -> Unit,
-    onOpenGallery: () -> Unit
+    onOpenGallery: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     val messages by viewModel.messages.collectAsState()
     val activePermission by viewModel.activePermission.collectAsState()
@@ -57,6 +58,7 @@ fun ExecutionScreen(
     val isReasoningEnabled by viewModel.isReasoningEnabled.collectAsState()
     val isVectorizing by viewModel.isVectorizing.collectAsState()
     val uploadedFiles by viewModel.uploadedFiles.collectAsState()
+    val downloadedModelIds by viewModel.downloadedModelIds.collectAsState()
     
     val context = LocalContext.current
     var inputText by remember { mutableStateOf("") }
@@ -104,6 +106,7 @@ fun ExecutionScreen(
 
     LaunchedEffect(Unit) {
         viewModel.refreshUploadedFiles()
+        viewModel.refreshDownloadedModels()
     }
     var selectedModel by remember { mutableStateOf(ModelBank.generativeModels.first()) }
     
@@ -226,13 +229,21 @@ fun ExecutionScreen(
                                 letterSpacing = 2.sp
                             )
                         )
-                        if (isModelReady && currentModel != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             BasicText(
-                                text = currentModel!!.name.uppercase(),
+                                text = (currentModel?.name ?: "SELECT ENGINE").uppercase(),
                                 style = DaexTheme.typography.mono.copy(
-                                    color = DaexTheme.colors.primary.copy(alpha = 0.6f),
+                                    color = DaexTheme.colors.primary.copy(alpha = if (currentModel != null) 0.6f else 0.4f),
                                     fontSize = 8.sp,
                                     letterSpacing = 1.sp
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            BasicText(
+                                text = "▾",
+                                style = DaexTheme.typography.mono.copy(
+                                    color = DaexTheme.colors.primary.copy(alpha = if (currentModel != null) 0.6f else 0.4f),
+                                    fontSize = 8.sp
                                 )
                             )
                         }
@@ -596,9 +607,7 @@ fun ExecutionScreen(
             }
         }
         
-        var settingsVisible by remember { mutableStateOf(false) }
         var memoryEditorVisible by remember { mutableStateOf(false) }
-        var changelogVisible by remember { mutableStateOf(false) }
 
         ModelSelectorModal(
             visible = selectorVisible,
@@ -612,7 +621,8 @@ fun ExecutionScreen(
                 selectorVisible = false
                 onOpenGallery()
             },
-            modelManager = modelManager
+            downloadedModelIds = downloadedModelIds,
+            onDelete = { viewModel.deleteModel(it) }
         )
 
         Sidebar(
@@ -624,59 +634,10 @@ fun ExecutionScreen(
             },
             onOpenSettings = {
                 sidebarVisible = false
-                settingsVisible = true
+                onOpenSettings()
             },
             onOpenGallery = onOpenGallery,
             viewModel = viewModel
-        )
-
-        SettingsModal(
-            visible = settingsVisible,
-            onClose = { settingsVisible = false },
-            modelStatus = modelStatus,
-            selectedModel = currentModel ?: selectedModel,
-            useGPU = viewModel.useGPU.collectAsState().value,
-            isDark = viewModel.isDarkMode.collectAsState().value,
-            primaryColor = viewModel.primaryColor.collectAsState().value,
-            onToggleGPU = { viewModel.toggleGPU() },
-            onToggleDark = { viewModel.setDarkMode(it) },
-            onSelectColor = { viewModel.setThemeColor(it) },
-            onDownloadModel = { 
-                currentModel?.let { viewModel.downloadModel(it) } ?: run { selectorVisible = true }
-            },
-            onChangeModel = {
-                settingsVisible = false
-                selectorVisible = true
-            },
-            onDeleteModel = { /* TODO */ },
-            onClearConversations = { 
-                viewModel.clearMessages()
-                settingsVisible = false
-            },
-            onEditMemory = {
-                settingsVisible = false
-                memoryEditorVisible = true
-                viewModel.loadCoreMemory()
-            },
-            onShareLogs = {
-                LogShareHelper.shareAppLogs(context)
-            },
-            deviceSpecs = viewModel.deviceSpecs,
-            isSpeculativeDecodingEnabled = viewModel.isSpeculativeDecodingEnabled.collectAsState().value,
-            onToggleSpeculativeDecoding = { viewModel.setSpeculativeDecodingEnabled(it) },
-            inferenceTemperature = viewModel.inferenceTemperature.collectAsState().value,
-            onTemperatureChange = { viewModel.setInferenceTemperature(it) },
-            inferenceTopK = viewModel.inferenceTopK.collectAsState().value,
-            onTopKChange = { viewModel.setInferenceTopK(it) },
-            inferenceTopP = viewModel.inferenceTopP.collectAsState().value,
-            onTopPChange = { viewModel.setInferenceTopP(it) },
-            customSystemPrompt = viewModel.customSystemPrompt.collectAsState().value,
-            onCustomSystemPromptChange = { viewModel.setCustomSystemPrompt(it) },
-            isToolCallingEnabled = viewModel.isToolCallingEnabled.collectAsState().value,
-            onToggleToolCalling = { viewModel.setToolCallingEnabled(it) },
-            uploadedFiles = uploadedFiles,
-            onDeleteFile = { viewModel.deleteUploadedFile(it) },
-            onViewChangelog = { changelogVisible = true }
         )
 
         MemoryEditorModal(
@@ -687,11 +648,6 @@ fun ExecutionScreen(
                 viewModel.saveCoreMemory(it)
                 memoryEditorVisible = false
             }
-        )
-
-        ChangelogModal(
-            visible = changelogVisible,
-            onClose = { changelogVisible = false }
         )
     }
 }
