@@ -44,6 +44,8 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.ui.text.font.FontWeight
 import com.daex.android.ui.theme.DaexTheme
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.unit.IntOffset
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -75,6 +77,7 @@ fun ExecutionScreen(
     val isAuraEnabled by viewModel.isAuraEnabled.collectAsState()
     val voiceState by viewModel.voiceState.collectAsState()
     val voiceAmplitude by viewModel.voiceAmplitude.collectAsState()
+    val selectedBackend by viewModel.selectedBackend.collectAsState()
     
     val context = LocalContext.current
 
@@ -392,136 +395,218 @@ fun ExecutionScreen(
                 .windowInsetsPadding(WindowInsets.ime) // Root Column handles the IME
         ) {
             // Header
-            Row(
+            // Header
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable {
-                        viewModel.triggerHapticFeedback(context)
-                        selectorVisible = true
-                    }
+                // Left Slot: Hamburger Menu
+                BasicText(
+                    text = "☰",
+                    style = DaexTheme.typography.h2.copy(color = DaexTheme.colors.primary),
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .clickable {
+                            viewModel.triggerHapticFeedback(context)
+                            sidebarVisible = true
+                        }
+                        .padding(8.dp)
+                )
+
+                // Center Slot: Brand + Engine Selector
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .clickable {
+                            viewModel.triggerHapticFeedback(context)
+                            selectorVisible = true
+                        }
                 ) {
                     BasicText(
-                        text = "☰",
-                        style = DaexTheme.typography.h2.copy(color = DaexTheme.colors.primary),
-                        modifier = Modifier
-                            .clickable {
-                                viewModel.triggerHapticFeedback(context)
-                                sidebarVisible = true
-                            }
-                            .padding(8.dp)
+                        text = "DAEX", 
+                        style = DaexTheme.typography.h1.copy(
+                            color = DaexTheme.colors.onBackground,
+                            fontSize = 16.sp,
+                            letterSpacing = 2.sp
+                        )
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    DaexLogo(size = 22.dp, ambient = true)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         BasicText(
-                            text = "DAEX", 
-                            style = DaexTheme.typography.h1.copy(
-                                color = DaexTheme.colors.onBackground,
-                                fontSize = 16.sp,
-                                letterSpacing = 2.sp
+                            text = (currentModel?.name ?: "SELECT ENGINE").uppercase(),
+                            style = DaexTheme.typography.mono.copy(
+                                color = DaexTheme.colors.primary.copy(alpha = if (currentModel != null) 0.6f else 0.4f),
+                                fontSize = 8.sp,
+                                letterSpacing = 1.sp
                             )
                         )
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            BasicText(
-                                text = (currentModel?.name ?: "SELECT ENGINE").uppercase(),
-                                style = DaexTheme.typography.mono.copy(
-                                    color = DaexTheme.colors.primary.copy(alpha = if (currentModel != null) 0.6f else 0.4f),
-                                    fontSize = 8.sp,
-                                    letterSpacing = 1.sp
-                                )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        BasicText(
+                            text = "▾",
+                            style = DaexTheme.typography.mono.copy(
+                                color = DaexTheme.colors.primary.copy(alpha = if (currentModel != null) 0.6f else 0.4f),
+                                fontSize = 8.sp
                             )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            BasicText(
-                                text = "▾",
-                                style = DaexTheme.typography.mono.copy(
-                                    color = DaexTheme.colors.primary.copy(alpha = if (currentModel != null) 0.6f else 0.4f),
-                                    fontSize = 8.sp
-                                )
-                            )
-                        }
+                        )
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Status Badge
-                    Box {
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(DaexTheme.colors.primary.copy(alpha = 0.08f))
-                                .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
-                                .clickable { 
-                                    if (modelStatus == ModelStatus.READY) {
-                                        backendMenuExpanded = true 
-                                    }
+                // Right Slot: Status Badge
+                Box(
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(DaexTheme.colors.primary.copy(alpha = 0.08f))
+                            .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                            .clickable { 
+                                if (modelStatus == ModelStatus.READY) {
+                                    backendMenuExpanded = true 
                                 }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(statusColor)
+                        )
+                        BasicText(
+                            text = statusBadgeText + if (modelStatus == ModelStatus.READY) " ▾" else "",
+                            style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.onSurface, fontSize = 10.sp)
+                        )
+                    }
+
+                    if (backendMenuExpanded) {
+                        Popup(
+                            alignment = Alignment.TopEnd,
+                            offset = IntOffset(x = 0, y = 110),
+                            onDismissRequest = { backendMenuExpanded = false }
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(statusColor)
-                            )
-                            BasicText(
-                                text = statusBadgeText + if (modelStatus == ModelStatus.READY) " ▾" else "",
-                                style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.onSurface, fontSize = 10.sp)
-                            )
-                        }
+                                    .width(170.dp)
+                                    .height(IntrinsicSize.Min)
+                            ) {
+                                // Glassmorphic background
+                                Box(
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .graphicsLayer {
+                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                                renderEffect = android.graphics.RenderEffect
+                                                    .createBlurEffect(15f, 15f, android.graphics.Shader.TileMode.DECAL)
+                                                    .asComposeRenderEffect()
+                                            }
+                                        }
+                                        .background(DaexTheme.colors.surface.copy(alpha = 0.85f))
+                                        .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                                )
 
-                        DropdownMenu(
-                            expanded = backendMenuExpanded,
-                            onDismissRequest = { backendMenuExpanded = false }
-                        ) {
-                            if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.CPU)) {
-                                DropdownMenuItem(
-                                    text = { Text("CPU Backend", color = DaexTheme.colors.onBackground) },
-                                    onClick = {
-                                        backendMenuExpanded = false
-                                        viewModel.setBackend(BackendType.CPU)
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(6.dp)
+                                ) {
+                                    if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.CPU)) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    backendMenuExpanded = false
+                                                    viewModel.setBackend(BackendType.CPU)
+                                                }
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (selectedBackend == BackendType.CPU) DaexTheme.colors.primary else Color.Transparent)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            BasicText(
+                                                text = "CPU Backend",
+                                                style = DaexTheme.typography.body2.copy(
+                                                    color = if (selectedBackend == BackendType.CPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (selectedBackend == BackendType.CPU) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            )
+                                        }
                                     }
-                                )
-                            }
-                            if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.GPU)) {
-                                DropdownMenuItem(
-                                    text = { Text("GPU Offload", color = DaexTheme.colors.onBackground) },
-                                    onClick = {
-                                        backendMenuExpanded = false
-                                        viewModel.setBackend(BackendType.GPU)
+
+                                    if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.GPU)) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    backendMenuExpanded = false
+                                                    viewModel.setBackend(BackendType.GPU)
+                                                }
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (selectedBackend == BackendType.GPU) DaexTheme.colors.primary else Color.Transparent)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            BasicText(
+                                                text = "GPU Offload",
+                                                style = DaexTheme.typography.body2.copy(
+                                                    color = if (selectedBackend == BackendType.GPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (selectedBackend == BackendType.GPU) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            )
+                                        }
                                     }
-                                )
-                            }
-                            if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.NPU)) {
-                                DropdownMenuItem(
-                                    text = { Text("NPU Acceleration", color = DaexTheme.colors.onBackground) },
-                                    onClick = {
-                                        backendMenuExpanded = false
-                                        viewModel.setBackend(BackendType.NPU)
+
+                                    if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.NPU)) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    backendMenuExpanded = false
+                                                    viewModel.setBackend(BackendType.NPU)
+                                                }
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (selectedBackend == BackendType.NPU) DaexTheme.colors.primary else Color.Transparent)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            BasicText(
+                                                text = "NPU Acceleration",
+                                                style = DaexTheme.typography.body2.copy(
+                                                    color = if (selectedBackend == BackendType.NPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (selectedBackend == BackendType.NPU) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            )
+                                        }
                                     }
-                                )
+                                }
                             }
                         }
                     }
-
-                    BasicText(
-                        text = "+",
-                        style = DaexTheme.typography.h2.copy(color = DaexTheme.colors.primary),
-                        modifier = Modifier
-                            .clickable {
-                                viewModel.triggerHapticFeedback(context)
-                                viewModel.clearMessages()
-                            }
-                            .padding(8.dp)
-                    )
                 }
             }
             
