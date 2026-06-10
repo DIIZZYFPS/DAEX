@@ -41,6 +41,11 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.ui.text.font.FontWeight
 import com.daex.android.ui.theme.DaexTheme
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.content.Context
 
 @Composable
 fun ExecutionScreen(
@@ -68,9 +73,80 @@ fun ExecutionScreen(
     
     val context = LocalContext.current
 
+    val listState = rememberLazyListState()
+    var autoScrollEnabled by remember { mutableStateOf(true) }
+
+    // Detect if user is near the bottom
+    val isAtBottom by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val visibleItemsInfo = layoutInfo.visibleItemsInfo
+            if (layoutInfo.totalItemsCount == 0) return@derivedStateOf true
+            val lastVisibleItem = visibleItemsInfo.lastOrNull() ?: return@derivedStateOf true
+            // If the last item is visible, we're at the bottom
+            lastVisibleItem.index >= layoutInfo.totalItemsCount - 1
+        }
+    }
+
+    // Monitor scroll gestures to disable auto-scroll on upward movement
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            val startOffset = listState.firstVisibleItemScrollOffset
+            val startIndex = listState.firstVisibleItemIndex
+            
+            snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+                .collect { (index, offset) ->
+                    if (index < startIndex || (index == startIndex && offset < startOffset)) {
+                        // Scrolling UP
+                        autoScrollEnabled = false
+                    }
+                }
+        }
+    }
+    
+    // Re-enable auto-scroll when user reaches the bottom
+    LaunchedEffect(isAtBottom) {
+        if (isAtBottom) {
+            autoScrollEnabled = true
+        }
+    }
+
     val isModelThinking = remember(messages, isGenerating) {
         val lastMsg = messages.lastOrNull()
         isGenerating && lastMsg != null && lastMsg.role == "model" && lastMsg.content.isEmpty() && !lastMsg.thoughtContent.isNullOrEmpty()
+    }
+
+    // Listen to accelerometer for device tilt-reactive aura
+    val sensorManager = remember(context) { 
+        context.getSystemService(Context.SENSOR_SERVICE) as SensorManager 
+    }
+    val accelerometer = remember(sensorManager) { 
+        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) 
+    }
+    
+    var tiltX by remember { mutableFloatStateOf(0f) }
+    var tiltY by remember { mutableFloatStateOf(0f) }
+    
+    DisposableEffect(isAuraEnabled, accelerometer) {
+        if (!isAuraEnabled || accelerometer == null) return@DisposableEffect onDispose {}
+        
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                event?.let {
+                    val rawX = it.values[0]
+                    val rawY = it.values[1]
+                    // Smooth values with low-pass filter
+                    tiltX = tiltX + 0.1f * (rawX - tiltX)
+                    tiltY = tiltY + 0.1f * (rawY - tiltY)
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+        
+        sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_UI)
+        onDispose {
+            sensorManager.unregisterListener(listener)
+        }
     }
 
     // Reactive aura background transition states
@@ -99,12 +175,19 @@ fun ExecutionScreen(
 
     val centerAlpha by animateFloatAsState(
         targetValue = when {
-            isModelThinking -> 0.14f
-            isGenerating -> 0.10f
-            else -> 0.07f
+            isModelThinking -> 0.28f // Increased from 0.14f
+            isGenerating -> 0.22f // Increased from 0.10f
+            else -> 0.16f // Increased from 0.07f
         },
         animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
         label = "AuraAlpha"
+    )
+
+    val isScrolling = listState.isScrollInProgress
+    val scrollRadiusMultiplier by animateFloatAsState(
+        targetValue = if (isScrolling) 1.15f else 1.0f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "AuraScrollRadius"
     )
 
     var inputText by remember { mutableStateOf("") }
@@ -156,43 +239,7 @@ fun ExecutionScreen(
     }
     var selectedModel by remember { mutableStateOf(ModelBank.generativeModels.first()) }
     
-    val listState = rememberLazyListState()
-    var autoScrollEnabled by remember { mutableStateOf(true) }
-
-    // Detect if user is near the bottom
-    val isAtBottom by remember {
-        derivedStateOf {
-            val layoutInfo = listState.layoutInfo
-            val visibleItemsInfo = layoutInfo.visibleItemsInfo
-            if (layoutInfo.totalItemsCount == 0) return@derivedStateOf true
-            val lastVisibleItem = visibleItemsInfo.lastOrNull() ?: return@derivedStateOf true
-            // If the last item is visible, we're at the bottom
-            lastVisibleItem.index >= layoutInfo.totalItemsCount - 1
-        }
-    }
-
-    // Monitor scroll gestures to disable auto-scroll on upward movement
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress) {
-            val startOffset = listState.firstVisibleItemScrollOffset
-            val startIndex = listState.firstVisibleItemIndex
-            
-            snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-                .collect { (index, offset) ->
-                    if (index < startIndex || (index == startIndex && offset < startOffset)) {
-                        // Scrolling UP
-                        autoScrollEnabled = false
-                    }
-                }
-        }
-    }
-    
-    // Re-enable auto-scroll when user reaches the bottom
-    LaunchedEffect(isAtBottom) {
-        if (isAtBottom) {
-            autoScrollEnabled = true
-        }
-    }
+    // Scroll tracking was moved to the top of the Composable
 
     val lastMessageContent = messages.lastOrNull()?.content ?: ""
 
@@ -244,10 +291,24 @@ fun ExecutionScreen(
                 .background(DaexTheme.colors.background)
                 .drawBehind {
                     if (isAuraEnabled) {
+                        // Calculate tilt shifts from accelerometer values
+                        val maxShiftX = 35.dp.toPx()
+                        val maxShiftY = 35.dp.toPx()
+                        val shiftX = (-tiltX * 4.5f.dp.toPx()).coerceIn(-maxShiftX, maxShiftX)
+                        val shiftY = (tiltY * 4.5f.dp.toPx()).coerceIn(-maxShiftY, maxShiftY)
+
+                        // Calculate scroll wave drift
+                        val scrollVal = listState.firstVisibleItemIndex * 200f + listState.firstVisibleItemScrollOffset
+                        val scrollSine = kotlin.math.sin(scrollVal * 0.002f)
+                        val scrollShiftY = scrollSine * 25.dp.toPx()
+
                         // 1. Dominant Right Reactive Aura
-                        val rightCenter = Offset(x = size.width * 0.85f, y = size.height * 0.35f)
+                        val rightCenter = Offset(
+                            x = size.width * 0.85f + shiftX, 
+                            y = size.height * 0.35f + shiftY + scrollShiftY
+                        )
                         val rightBaseRadius = size.width * 0.8f
-                        val rightRadius = rightBaseRadius * auraScale
+                        val rightRadius = rightBaseRadius * auraScale * scrollRadiusMultiplier
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
@@ -263,12 +324,15 @@ fun ExecutionScreen(
                         )
 
                         // 2. Secondary Left Calm Ambient Aura
-                        val leftCenter = Offset(x = size.width * 0.15f, y = size.height * 0.75f)
+                        val leftCenter = Offset(
+                            x = size.width * 0.15f + shiftX, 
+                            y = size.height * 0.75f + shiftY - scrollShiftY
+                        )
                         val leftRadius = size.width * 0.6f
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    primaryColorVal.copy(alpha = 0.04f),
+                                    primaryColorVal.copy(alpha = 0.08f),
                                     Color.Transparent
                                 ),
                                 center = leftCenter,

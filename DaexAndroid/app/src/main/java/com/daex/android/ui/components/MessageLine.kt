@@ -11,6 +11,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
+import androidx.compose.animation.core.*
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,6 +34,45 @@ fun MessageLine(
     tokenSpeed: Double = 0.0,
     activePermission: PermissionRequest? = null
 ) {
+    val infiniteTransition = rememberInfiniteTransition(label = "ThinkingAnim")
+    
+    val breathingAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.4f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "BreathingAlpha"
+    )
+    
+    val breathingScale by infiniteTransition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "BreathingScale"
+    )
+    
+    val dotCountFloat by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 4f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 1600
+                0f at 0
+                1f at 400
+                2f at 800
+                3f at 1200
+                4f at 1600
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "DotCount"
+    )
+    val dotCount = dotCountFloat.toInt().coerceIn(0, 3)
     if (message.role == "system" || message.content.startsWith("[SYSTEM_LOG]:")) {
         val logText = message.content.removePrefix("[SYSTEM_LOG]:").trim()
         val isInProgress = logText.endsWith("...")
@@ -139,21 +180,29 @@ fun MessageLine(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                if (!message.toolStatus.isNullOrEmpty() && isGenerating) {
-                                    DaexLoader(size = 12.dp)
-                                } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .clip(RoundedCornerShape(3.dp))
-                                            .background(DaexTheme.colors.primary.copy(alpha = if (isGenerating) 1f else 0.5f))
-                                    )
-                                }
-                                val headerText = when {
-                                    !message.toolStatus.isNullOrEmpty() -> message.toolStatus.uppercase()
-                                    isGenerating && message.content.isEmpty() -> "THINKING..."
-                                    else -> "THOUGHT PROCESS"
-                                }
+                                 if (!message.toolStatus.isNullOrEmpty() && isGenerating) {
+                                     DaexLoader(size = 12.dp)
+                                 } else {
+                                     val isThinkingOrGenerating = isGenerating && isLastModel
+                                     val dotAlpha = if (isThinkingOrGenerating) breathingAlpha else (if (isGenerating) 1f else 0.5f)
+                                     val dotScale = if (isThinkingOrGenerating) breathingScale else 1.0f
+                                     Box(
+                                         modifier = Modifier
+                                             .scale(dotScale)
+                                             .size(6.dp)
+                                             .clip(RoundedCornerShape(3.dp))
+                                             .background(DaexTheme.colors.primary.copy(alpha = dotAlpha))
+                                     )
+                                 }
+                                 val headerText = when {
+                                     !message.toolStatus.isNullOrEmpty() -> message.toolStatus.uppercase()
+                                     isGenerating && message.content.isEmpty() -> {
+                                         val dots = ".".repeat(dotCount)
+                                         val spaces = " ".repeat(3 - dotCount)
+                                         "THINKING$dots$spaces"
+                                     }
+                                     else -> "THOUGHT PROCESS"
+                                 }
                                 BasicText(
                                     text = headerText,
                                     style = DaexTheme.typography.mono.copy(
