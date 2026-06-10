@@ -27,6 +27,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.daex.android.services.DaexInferenceViewModel
@@ -34,6 +35,8 @@ import com.daex.android.services.ModelBank
 import com.daex.android.services.ModelManager
 import com.daex.android.services.ModelStatus
 import com.daex.android.services.PermissionRequest
+import com.daex.android.services.VoiceState
+import androidx.compose.animation.Crossfade
 import com.daex.android.ui.components.*
 import com.daex.android.services.BackendType
 import androidx.compose.material3.DropdownMenu
@@ -70,6 +73,8 @@ fun ExecutionScreen(
     val uploadedFiles by viewModel.uploadedFiles.collectAsState()
     val downloadedModelIds by viewModel.downloadedModelIds.collectAsState()
     val isAuraEnabled by viewModel.isAuraEnabled.collectAsState()
+    val voiceState by viewModel.voiceState.collectAsState()
+    val voiceAmplitude by viewModel.voiceAmplitude.collectAsState()
     
     val context = LocalContext.current
 
@@ -191,6 +196,43 @@ fun ExecutionScreen(
     )
 
     var inputText by remember { mutableStateOf("") }
+
+    val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.triggerHapticFeedback(context)
+            viewModel.toggleVoiceInput { recognizedText ->
+                inputText = recognizedText
+            }
+        }
+    }
+
+    val voiceModeProgress by animateFloatAsState(
+        targetValue = if (voiceState == VoiceState.LISTENING) 1f else 0f,
+        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        label = "VoiceModeProgress"
+    )
+
+    val smoothedAmplitude by animateFloatAsState(
+        targetValue = voiceAmplitude,
+        animationSpec = spring(
+            dampingRatio = 0.8f,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "SmoothedAmplitude"
+    )
+
+    val wavePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * kotlin.math.PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "WavePhase"
+    )
+
     var sidebarVisible by remember { mutableStateOf(false) }
     var selectorVisible by remember { mutableStateOf(false) }
     var backendMenuExpanded by remember { mutableStateOf(false) }
@@ -312,8 +354,8 @@ fun ExecutionScreen(
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    auraColor.copy(alpha = centerAlpha),
-                                    auraColor.copy(alpha = centerAlpha * 0.4f),
+                                    auraColor.copy(alpha = centerAlpha * (1f - voiceModeProgress)),
+                                    auraColor.copy(alpha = centerAlpha * 0.4f * (1f - voiceModeProgress)),
                                     Color.Transparent
                                 ),
                                 center = rightCenter,
@@ -332,7 +374,7 @@ fun ExecutionScreen(
                         drawCircle(
                             brush = Brush.radialGradient(
                                 colors = listOf(
-                                    primaryColorVal.copy(alpha = 0.08f),
+                                    primaryColorVal.copy(alpha = 0.08f * (1f - voiceModeProgress)),
                                     Color.Transparent
                                 ),
                                 center = leftCenter,
@@ -341,6 +383,8 @@ fun ExecutionScreen(
                             center = leftCenter,
                             radius = leftRadius
                         )
+
+
                     }
                 }
                 .windowInsetsPadding(WindowInsets.statusBars)
@@ -599,120 +643,203 @@ fun ExecutionScreen(
                     }
                 }
 
-                // --- LAYERED INPUT BAR (Overlay Style) ---
-                Box(
+                // --- LAYERED INPUT BAR (Floating Pill Style) ---
+                Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
+                        .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
                 ) {
-                    // 1. Blurred Background Layer (Matches size of foreground container)
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .graphicsLayer {
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                    renderEffect = android.graphics.RenderEffect
-                                        .createBlurEffect(20f, 20f, android.graphics.Shader.TileMode.DECAL)
-                                        .asComposeRenderEffect()
-                                }
-                            }
-                            .background(DaexTheme.colors.background.copy(alpha = 0.85f))
-                            .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f))
-                    )
-
-                    // 2. Foreground Content Layer (SHARP)
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp, top = 8.dp, start = 16.dp, end = 16.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        horizontalArrangement = Arrangement.End
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                            horizontalArrangement = Arrangement.End
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(if (isReasoningEnabled) DaexTheme.colors.primary.copy(alpha=0.15f) else DaexTheme.colors.onSurface.copy(alpha=0.1f))
+                                .border(0.5.dp, if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.2f), RoundedCornerShape(16.dp))
+                                .clickable {
+                                    viewModel.triggerHapticFeedback(context)
+                                    viewModel.toggleReasoning()
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(if (isReasoningEnabled) DaexTheme.colors.primary.copy(alpha=0.15f) else DaexTheme.colors.onSurface.copy(alpha=0.1f))
-                                    .border(0.5.dp, if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.2f), RoundedCornerShape(16.dp))
-                                    .clickable {
-                                        viewModel.triggerHapticFeedback(context)
-                                        viewModel.toggleReasoning()
-                                    }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.4f))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.4f))
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                BasicText(
+                                    text = if (isReasoningEnabled) "REASONING" else "FAST",
+                                    style = DaexTheme.typography.mono.copy(
+                                        color = if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.6f),
+                                        fontSize = 10.sp,
+                                        letterSpacing = 1.sp
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                )
+                            }
+                        }
+                    }
+
+                    // Uploaded file chips
+                    if (uploadedFiles.isNotEmpty()) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(uploadedFiles.size) { index ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(DaexTheme.colors.primary.copy(alpha = 0.12f))
+                                        .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
                                     BasicText(
-                                        text = if (isReasoningEnabled) "REASONING" else "FAST",
-                                        style = DaexTheme.typography.mono.copy(
-                                            color = if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.6f),
-                                            fontSize = 10.sp,
-                                            letterSpacing = 1.sp
+                                        text = uploadedFiles[index],
+                                        style = DaexTheme.typography.caption.copy(
+                                            color = DaexTheme.colors.primary
                                         )
                                     )
                                 }
                             }
                         }
+                    }
+ 
+                    if (isVectorizing) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = DaexTheme.colors.warning,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            BasicText(
+                                text = "Vectorizing file...",
+                                style = DaexTheme.typography.caption.copy(
+                                    color = DaexTheme.colors.warning
+                                )
+                            )
+                        }
+                    }
+ 
+                    // Main Floating Pill
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min)
+                    ) {
+                        // Blurred Background Pill Layer
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clip(RoundedCornerShape(28.dp))
+                                .graphicsLayer {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                        renderEffect = android.graphics.RenderEffect
+                                            .createBlurEffect(20f, 20f, android.graphics.Shader.TileMode.DECAL)
+                                            .asComposeRenderEffect()
+                                    }
+                                }
+                                .background(DaexTheme.colors.background.copy(alpha = 0.85f))
+                                .drawBehind {
+                                    if (voiceModeProgress > 0f) {
+                                        val waveAlpha = voiceModeProgress
+                                        val baseLineY = size.height * 0.5f
+                                        val widthF = size.width
+                                        val piF = kotlin.math.PI.toFloat()
 
-                        // Uploaded file chips
-                        if (uploadedFiles.isNotEmpty()) {
-                            LazyRow(
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                items(uploadedFiles.size) { index ->
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(DaexTheme.colors.primary.copy(alpha = 0.12f))
-                                            .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        BasicText(
-                                            text = uploadedFiles[index],
-                                            style = DaexTheme.typography.caption.copy(
-                                                color = DaexTheme.colors.primary
+                                        // Wave 1 (Back, slow, dark)
+                                        val path1 = Path()
+                                        val amplitude1 = 4.dp.toPx() + (smoothedAmplitude * 10.dp.toPx())
+                                        path1.moveTo(0f, size.height)
+                                        for (x in 0..size.width.toInt() step 10) {
+                                            val xf = x.toFloat()
+                                            val envelope = kotlin.math.sin(xf / widthF * piF)
+                                            val sineVal = kotlin.math.sin(xf * 0.01f + wavePhase)
+                                            val y = baseLineY + sineVal * amplitude1 * 0.4f * envelope
+                                            path1.lineTo(xf, y)
+                                        }
+                                        path1.lineTo(size.width, size.height)
+                                        path1.close()
+                                        drawPath(
+                                            path = path1,
+                                            brush = Brush.verticalGradient(
+                                                colors = listOf(
+                                                    auraColor.copy(alpha = waveAlpha * 0.25f),
+                                                    Color.Transparent
+                                                ),
+                                                startY = baseLineY - amplitude1,
+                                                endY = size.height
+                                            )
+                                        )
+
+                                        // Wave 2 (Middle, medium speed)
+                                        val path2 = Path()
+                                        val amplitude2 = 6.dp.toPx() + (smoothedAmplitude * 14.dp.toPx())
+                                        path2.moveTo(0f, size.height)
+                                        for (x in 0..size.width.toInt() step 10) {
+                                            val xf = x.toFloat()
+                                            val envelope = kotlin.math.sin(xf / widthF * piF)
+                                            val sineVal = kotlin.math.sin(xf * 0.015f - wavePhase * 2.0f + 1.0f)
+                                            val y = baseLineY + sineVal * amplitude2 * 0.6f * envelope
+                                            path2.lineTo(xf, y)
+                                        }
+                                        path2.lineTo(size.width, size.height)
+                                        path2.close()
+                                        drawPath(
+                                            path = path2,
+                                            brush = Brush.verticalGradient(
+                                                colors = listOf(
+                                                    auraColor.copy(alpha = waveAlpha * 0.40f),
+                                                    Color.Transparent
+                                                ),
+                                                startY = baseLineY - amplitude2,
+                                                endY = size.height
+                                            )
+                                        )
+
+                                        // Wave 3 (Front, fast, dynamic)
+                                        val path3 = Path()
+                                        val amplitude3 = 8.dp.toPx() + (smoothedAmplitude * 18.dp.toPx())
+                                        path3.moveTo(0f, size.height)
+                                        for (x in 0..size.width.toInt() step 10) {
+                                            val xf = x.toFloat()
+                                            val envelope = kotlin.math.sin(xf / widthF * piF)
+                                            val sineVal = kotlin.math.sin(xf * 0.02f + wavePhase * 3.0f + 2.5f)
+                                            val y = baseLineY + sineVal * amplitude3 * 0.8f * envelope
+                                            path3.lineTo(xf, y)
+                                        }
+                                        path3.lineTo(size.width, size.height)
+                                        path3.close()
+                                        drawPath(
+                                            path = path3,
+                                            brush = Brush.verticalGradient(
+                                                colors = listOf(
+                                                    auraColor.copy(alpha = waveAlpha * 0.60f),
+                                                    Color.Transparent
+                                                ),
+                                                startY = baseLineY - amplitude3,
+                                                endY = size.height
                                             )
                                         )
                                     }
                                 }
-                            }
-                        }
-     
-                        if (isVectorizing) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    color = DaexTheme.colors.warning,
-                                    strokeWidth = 2.dp
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                BasicText(
-                                    text = "Vectorizing file...",
-                                    style = DaexTheme.typography.caption.copy(
-                                        color = DaexTheme.colors.warning
-                                    )
-                                )
-                            }
-                        }
-     
+                                .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.15f), RoundedCornerShape(28.dp))
+                        )
+
+                        // Foreground Input Row (Pill Style)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(DaexTheme.colors.onSurface.copy(alpha = 0.05f))
-                                .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
                                 .padding(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -725,7 +852,8 @@ fun ExecutionScreen(
                                 enabled = !isGenerating && !isVectorizing && isModelReady,
                                 modifier = Modifier.size(36.dp),
                                 backgroundColor = Color.Transparent,
-                                useDefaultPadding = false
+                                useDefaultPadding = false,
+                                shape = CircleShape
                             ) {
                                 BasicText(
                                     text = "+",
@@ -735,37 +863,65 @@ fun ExecutionScreen(
                                     )
                                 )
                             }
+                            val placeholderText = when {
+                                !isModelReady -> "Engine not loaded..."
+                                voiceState == VoiceState.LISTENING -> "Listening to speech..."
+                                voiceState == VoiceState.PROCESSING -> "Processing speech..."
+                                else -> "Initialize execution with Icarus..."
+                            }
                             DaexTextField(
                                 value = inputText,
                                 onValueChange = { inputText = it },
                                 modifier = Modifier.weight(1f),
-                                placeholder = if (isModelReady) "Initialize execution with Icarus..." else "Engine not loaded...",
-                                enabled = !isGenerating && isModelReady,
+                                placeholder = placeholderText,
+                                enabled = !isGenerating && isModelReady && voiceState != VoiceState.LISTENING,
                                 backgroundColor = Color.Transparent
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             DaexButton(
                                 onClick = {
-                                    if (inputText.isNotBlank()) {
+                                    if (inputText.isNotEmpty()) {
                                         viewModel.triggerHapticFeedback(context)
                                         viewModel.submitPrompt(inputText)
                                         inputText = ""
+                                    } else {
+                                        // Voice mode mic tap
+                                        val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(
+                                            context,
+                                            android.Manifest.permission.RECORD_AUDIO
+                                        )
+                                        if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                            viewModel.triggerHapticFeedback(context)
+                                            viewModel.toggleVoiceInput { recognizedText ->
+                                                inputText = recognizedText
+                                            }
+                                        } else {
+                                            recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                        }
                                     }
                                 },
-                                enabled = !isGenerating && isModelReady && inputText.isNotBlank(),
+                                enabled = !isGenerating && isModelReady && (inputText.isNotEmpty() || voiceState != VoiceState.PROCESSING),
                                 modifier = Modifier.size(44.dp),
                                 backgroundColor = if (isGenerating || !isModelReady) DaexTheme.colors.primary.copy(alpha = 0.1f) else DaexTheme.colors.primary,
-                                useDefaultPadding = false
+                                useDefaultPadding = false,
+                                shape = CircleShape
                             ) {
-                                if (isGenerating) {
+                                if (isGenerating || voiceState == VoiceState.PROCESSING) {
                                     DaexLoader(size = 28.dp)
                                 } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(14.dp)
-                                            .clip(CircleShape)
-                                            .background(if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary)
-                                    )
+                                    Crossfade(targetState = inputText.isEmpty(), label = "morph_button") { isEmpty ->
+                                        if (isEmpty) {
+                                            DaexMicIcon(
+                                                color = if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        } else {
+                                            DaexSendIcon(
+                                                color = if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }

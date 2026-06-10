@@ -29,6 +29,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.daex.android.ui.theme.DaexTheme
+import androidx.compose.foundation.Canvas
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
 
 @Composable
 fun Modifier.liquidGlass(
@@ -56,6 +64,7 @@ fun DaexButton(
     enabled: Boolean = true,
     backgroundColor: Color = DaexTheme.colors.primary,
     useDefaultPadding: Boolean = true,
+    shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(8.dp),
     content: @Composable () -> Unit
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -66,7 +75,7 @@ fun DaexButton(
     Box(
         modifier = modifier
             .scale(scale)
-            .clip(RoundedCornerShape(8.dp))
+            .clip(shape)
             .background(backgroundColor.copy(alpha = alpha))
             .clickable(
                 interactionSource = interactionSource,
@@ -162,6 +171,71 @@ fun DaexSwitch(
                 .size(20.dp)
                 .clip(RoundedCornerShape(10.dp))
                 .background(if (checked) checkedColor else actualUncheckedColor)
+        )
+    }
+}
+
+@Composable
+fun DaexSendIcon(
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.25f, h * 0.45f)
+            lineTo(w * 0.5f, h * 0.2f)
+            lineTo(w * 0.75f, h * 0.45f)
+        }
+        drawPath(
+            path = path,
+            color = color,
+            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.5f, h * 0.2f),
+            end = Offset(w * 0.5f, h * 0.8f),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+fun DaexMicIcon(
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        // Mic capsule
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.35f, h * 0.15f),
+            size = Size(w * 0.3f, h * 0.45f),
+            cornerRadius = CornerRadius(w * 0.15f, w * 0.15f),
+            style = Stroke(width = 2.dp.toPx())
+        )
+        // Mic cradle
+        val cradlePath = Path().apply {
+            moveTo(w * 0.2f, h * 0.4f)
+            quadraticTo(w * 0.5f, h * 0.75f, w * 0.8f, h * 0.4f)
+        }
+        drawPath(
+            path = cradlePath,
+            color = color,
+            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round)
+        )
+        // Stem
+        drawLine(
+            color = color,
+            start = Offset(w * 0.5f, h * 0.65f),
+            end = Offset(w * 0.5f, h * 0.85f),
+            strokeWidth = 2.dp.toPx(),
+            cap = StrokeCap.Round
         )
     }
 }

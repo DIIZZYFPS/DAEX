@@ -21,6 +21,10 @@ enum class ModelStatus {
     NOT_DOWNLOADED, DOWNLOADING, LOADING, READY, ERROR
 }
 
+enum class VoiceState {
+    IDLE, LISTENING, PROCESSING
+}
+
 enum class HapticType {
     CLICK,
     TICK,
@@ -140,6 +144,15 @@ class DaexInferenceViewModel(
 
     private val _isAuraEnabled = MutableStateFlow(true)
     val isAuraEnabled: StateFlow<Boolean> = _isAuraEnabled.asStateFlow()
+
+    // Voice Mode State Flows
+    private val _voiceState = MutableStateFlow(VoiceState.IDLE)
+    val voiceState: StateFlow<VoiceState> = _voiceState.asStateFlow()
+
+    private val _voiceAmplitude = MutableStateFlow(0f)
+    val voiceAmplitude: StateFlow<Float> = _voiceAmplitude.asStateFlow()
+
+    private var speechManager: SpeechManager? = null
 
     val deviceSpecs: DeviceSpecs? = deviceService?.getDeviceSpecs()
 
@@ -318,6 +331,36 @@ class DaexInferenceViewModel(
         _isReasoningEnabled.value = newValue
         viewModelScope.launch {
             preferences?.setReasoningEnabled(newValue)
+        }
+    }
+
+    fun setVoiceState(state: VoiceState) {
+        _voiceState.value = state
+    }
+
+    fun setVoiceAmplitude(amplitude: Float) {
+        _voiceAmplitude.value = amplitude
+    }
+
+    fun toggleVoiceInput(onTextResult: (String) -> Unit) {
+        val ctx = context ?: return
+        if (speechManager == null) {
+            speechManager = SpeechManager(
+                context = ctx,
+                onAmplitudeChanged = { setVoiceAmplitude(it) },
+                onResult = { result ->
+                    onTextResult(result)
+                },
+                onStateChanged = { state ->
+                    setVoiceState(state)
+                }
+            )
+        }
+
+        if (_voiceState.value == VoiceState.LISTENING) {
+            speechManager?.stopListening()
+        } else {
+            speechManager?.startListening()
         }
     }
 
@@ -1090,5 +1133,10 @@ class DaexInferenceViewModel(
             daexMemory?.saveMessage(convId, updatedMsg)
         }
         android.util.Log.d("DaexCompaction", "Compaction complete. Persisted summary.")
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        speechManager?.destroy()
     }
 }
