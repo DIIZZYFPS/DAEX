@@ -566,6 +566,10 @@ class DaexInferenceViewModel(
     }
 
     fun loadModel(model: Model) {
+        if (_isGenerating.value || _isReflecting.value || _isVectorizing.value) {
+            _errorMessage.value = "Cannot change models while the engine is busy."
+            return
+        }
         _currentModel.value = model
         viewModelScope.launch {
             if (modelManager == null) return@launch
@@ -634,6 +638,10 @@ class DaexInferenceViewModel(
     }
 
     fun deleteModel(model: Model) {
+        if (_isGenerating.value || _isReflecting.value || _isVectorizing.value) {
+            _errorMessage.value = "Cannot delete models while the engine is busy."
+            return
+        }
         viewModelScope.launch {
             if (modelManager == null) return@launch
             try {
@@ -652,11 +660,19 @@ class DaexInferenceViewModel(
     }
 
     fun toggleGPU(model: Model? = null) {
+        if (_isGenerating.value || _isReflecting.value || _isVectorizing.value) {
+            _errorMessage.value = "Cannot change backend while the engine is busy."
+            return
+        }
         val nextBackend = if (_selectedBackend.value == BackendType.CPU) BackendType.GPU else BackendType.CPU
         setBackend(nextBackend, model)
     }
 
     fun setBackend(backend: BackendType, model: Model? = null) {
+        if (_isGenerating.value || _isReflecting.value || _isVectorizing.value) {
+            _errorMessage.value = "Cannot change backend while the engine is busy."
+            return
+        }
         val targetModel = model ?: _currentModel.value
         if (targetModel != null && !targetModel.supportedBackends.contains(backend)) {
             _errorMessage.value = "${targetModel.name} does not support ${backend.name} execution."
@@ -680,6 +696,7 @@ class DaexInferenceViewModel(
                     _selectedBackend.value = actualBackend
                     _hardwareState.value = actualBackend.name
                     _modelStatus.value = ModelStatus.READY
+                    preferences?.setLastUsedModel(targetModel.id, actualBackend.name)
                 } catch (e: Exception) {
                     _modelStatus.value = ModelStatus.ERROR
                     _errorMessage.value = e.message ?: "Failed to reload model"
@@ -687,6 +704,11 @@ class DaexInferenceViewModel(
             }
         } else {
             _hardwareState.value = backend.name
+            targetModel?.let {
+                viewModelScope.launch {
+                    preferences?.setLastUsedModel(it.id, backend.name)
+                }
+            }
         }
     }
 
@@ -708,17 +730,48 @@ class DaexInferenceViewModel(
 
             if (convId == null) return@launch
 
-            val userMsgId = System.currentTimeMillis().toString()
-            val modelMsgId = (System.currentTimeMillis() + 1).toString()
+            val userMsgId: String
+            val modelMsgId: String
+            val userMsg: Message
+            val modelMsg: Message
 
-            // Create messages: userMsg is CLEAN for UI and DB.
-            val userMsg = Message(id = userMsgId, role = "user", content = prompt)
-            val modelMsg = Message(id = modelMsgId, role = "model", content = "")
+            val currentMsgs = _messages.value
+            val lastUserIdx = currentMsgs.indexOfLast { it.role == "user" }
+            val lastModelIdx = currentMsgs.indexOfLast { it.role == "model" }
+            val lastMsgIsStopped = lastModelIdx != -1 && 
+                    currentMsgs[lastModelIdx].content.contains("[Generation stopped by user]")
 
-            _messages.value = _messages.value + listOf(userMsg, modelMsg)
-
-            daexMemory?.saveMessage(convId, userMsg)
-            daexMemory?.saveMessage(convId, modelMsg)
+            if (lastMsgIsStopped && lastUserIdx != -1 && lastModelIdx > lastUserIdx) {
+                // Edit last turn in-place in DB and memory
+                val oldUserMsg = currentMsgs[lastUserIdx]
+                val oldModelMsg = currentMsgs[lastModelIdx]
+                
+                userMsgId = oldUserMsg.id
+                modelMsgId = oldModelMsg.id
+                
+                userMsg = oldUserMsg.copy(content = prompt, timestamp = System.currentTimeMillis())
+                modelMsg = oldModelMsg.copy(content = "", thoughtContent = null, tokensPerSecond = 0.0, timestamp = System.currentTimeMillis() + 1)
+                
+                val updated = currentMsgs.toMutableList()
+                updated[lastUserIdx] = userMsg
+                updated[lastModelIdx] = modelMsg
+                _messages.value = updated
+                
+                daexMemory?.saveMessage(convId, userMsg)
+                daexMemory?.saveMessage(convId, modelMsg)
+            } else {
+                // Create new message turn
+                userMsgId = System.currentTimeMillis().toString()
+                modelMsgId = (System.currentTimeMillis() + 1).toString()
+                
+                userMsg = Message(id = userMsgId, role = "user", content = prompt)
+                modelMsg = Message(id = modelMsgId, role = "model", content = "")
+                
+                _messages.value = _messages.value + listOf(userMsg, modelMsg)
+                
+                daexMemory?.saveMessage(convId, userMsg)
+                daexMemory?.saveMessage(convId, modelMsg)
+            }
             
             _isGenerating.value = true
             _tokenSpeed.value = 0.0
@@ -927,10 +980,19 @@ class DaexInferenceViewModel(
                     }
 
                 } catch (e: Exception) {
+                    val isCancellation = e is kotlinx.coroutines.CancellationException ||
+                                         e is java.util.concurrent.CancellationException ||
+                                         e.message?.contains("cancel", ignoreCase = true) == true
+                    
                     val updated = _messages.value.toMutableList()
                     val idx = updated.indexOfFirst { it.id == modelMsgId }
                     if (idx != -1) {
-                        val errorContent = updated[idx].content + "\n[Error: ${e.message ?: "Generation failed"}]"
+                        val messageToAppend = if (isCancellation) {
+                            "\n\n[Generation stopped by user]"
+                        } else {
+                            "\n[Error: ${e.message ?: "Generation failed"}]"
+                        }
+                        val errorContent = updated[idx].content + messageToAppend
                         updated[idx] = updated[idx].copy(content = errorContent)
                         _messages.value = updated
                         daexMemory?.saveMessage(convId, updated[idx])

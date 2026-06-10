@@ -420,8 +420,10 @@ fun ExecutionScreen(
                     modifier = Modifier
                         .align(Alignment.Center)
                         .clickable {
-                            viewModel.triggerHapticFeedback(context)
-                            selectorVisible = true
+                            if (!isGenerating && !isReflecting && !isVectorizing) {
+                                viewModel.triggerHapticFeedback(context)
+                                selectorVisible = true
+                            }
                         }
                 ) {
                     BasicText(
@@ -441,14 +443,17 @@ fun ExecutionScreen(
                                 letterSpacing = 1.sp
                             )
                         )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        BasicText(
-                            text = "▾",
-                            style = DaexTheme.typography.mono.copy(
-                                color = DaexTheme.colors.primary.copy(alpha = if (currentModel != null) 0.6f else 0.4f),
-                                fontSize = 8.sp
+                        val canChangeModel = !isGenerating && !isReflecting && !isVectorizing
+                        if (canChangeModel) {
+                            Spacer(modifier = Modifier.width(4.dp))
+                            BasicText(
+                                text = "▾",
+                                style = DaexTheme.typography.mono.copy(
+                                    color = DaexTheme.colors.primary.copy(alpha = if (currentModel != null) 0.6f else 0.4f),
+                                    fontSize = 8.sp
+                                )
                             )
-                        )
+                        }
                     }
                 }
 
@@ -462,7 +467,7 @@ fun ExecutionScreen(
                             .background(DaexTheme.colors.primary.copy(alpha = 0.08f))
                             .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
                             .clickable { 
-                                if (modelStatus == ModelStatus.READY) {
+                                if (modelStatus == ModelStatus.READY && !isGenerating && !isReflecting && !isVectorizing) {
                                     backendMenuExpanded = true 
                                 }
                             }
@@ -476,8 +481,9 @@ fun ExecutionScreen(
                                 .clip(CircleShape)
                                 .background(statusColor)
                         )
+                        val showBadgeDropdown = modelStatus == ModelStatus.READY && !isGenerating && !isReflecting && !isVectorizing
                         BasicText(
-                            text = statusBadgeText + if (modelStatus == ModelStatus.READY) " ▾" else "",
+                            text = statusBadgeText + if (showBadgeDropdown) " ▾" else "",
                             style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.onSurface, fontSize = 10.sp)
                         )
                     }
@@ -965,7 +971,14 @@ fun ExecutionScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             DaexButton(
                                 onClick = {
-                                    if (inputText.isNotEmpty()) {
+                                    if (isGenerating) {
+                                        viewModel.triggerHapticFeedback(context)
+                                        viewModel.cancelGeneration()
+                                        val lastUserMsg = messages.lastOrNull { it.role == "user" }
+                                        if (lastUserMsg != null) {
+                                            inputText = lastUserMsg.content
+                                        }
+                                    } else if (inputText.isNotEmpty()) {
                                         viewModel.triggerHapticFeedback(context)
                                         viewModel.submitPrompt(inputText)
                                         inputText = ""
@@ -985,13 +998,18 @@ fun ExecutionScreen(
                                         }
                                     }
                                 },
-                                enabled = !isGenerating && isModelReady && (inputText.isNotEmpty() || voiceState != VoiceState.PROCESSING),
+                                enabled = (isGenerating || isModelReady) && (isGenerating || inputText.isNotEmpty() || voiceState != VoiceState.PROCESSING),
                                 modifier = Modifier.size(44.dp),
-                                backgroundColor = if (isGenerating || !isModelReady) DaexTheme.colors.primary.copy(alpha = 0.1f) else DaexTheme.colors.primary,
+                                backgroundColor = if (isGenerating) DaexTheme.colors.primary else if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.1f) else DaexTheme.colors.primary,
                                 useDefaultPadding = false,
                                 shape = CircleShape
                             ) {
-                                if (isGenerating || voiceState == VoiceState.PROCESSING) {
+                                if (isGenerating) {
+                                    DaexStopIcon(
+                                        color = DaexTheme.colors.onPrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                } else if (voiceState == VoiceState.PROCESSING) {
                                     DaexLoader(size = 28.dp)
                                 } else {
                                     Crossfade(targetState = inputText.isEmpty(), label = "morph_button") { isEmpty ->

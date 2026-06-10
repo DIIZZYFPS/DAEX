@@ -239,3 +239,20 @@ fun DaexMicIcon(
         )
     }
 }
+
+@Composable
+fun DaexStopIcon(
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.28f, h * 0.28f),
+            size = Size(w * 0.44f, h * 0.44f),
+            cornerRadius = CornerRadius(w * 0.08f, w * 0.08f)
+        )
+    }
+}
