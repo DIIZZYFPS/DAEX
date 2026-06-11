@@ -930,27 +930,52 @@ class DaexInferenceViewModel(
                         var thought: String? = null
                         var actual = rawText
                         
-                        // Parse think/channel tags only — no reflection parsing needed
+                        // Parse think/channel tags only — support multiple blocks dynamically
                         val thinkTags = listOf(
-                            Pair("<|channel>", "<channel|>"),
                             Pair("<|think|>", "</think|>"),
-                            Pair("<think>", "</think>")
+                            Pair("<think>", "</think>"),
+                            Pair("<|channel>", "<channel|>")
                         )
                         
-                        for (tagPair in thinkTags) {
-                            val startIdx = rawText.indexOf(tagPair.first)
-                            if (startIdx != -1) {
-                                val endIdx = rawText.indexOf(tagPair.second, startIdx + tagPair.first.length)
-                                if (endIdx != -1) {
-                                    thought = rawText.substring(startIdx + tagPair.first.length, endIdx).trim()
-                                    actual = rawText.substring(0, startIdx) + rawText.substring(endIdx + tagPair.second.length)
-                                } else {
-                                    thought = rawText.substring(startIdx + tagPair.first.length).trim()
-                                    actual = rawText.substring(0, startIdx)
+                        val extractedThoughts = mutableListOf<String>()
+                        val modifiedText = java.lang.StringBuilder()
+                        
+                        var i = 0
+                        while (i < rawText.length) {
+                            var foundTag = false
+                            for (tagPair in thinkTags) {
+                                if (rawText.startsWith(tagPair.first, i)) {
+                                    val startIdx = i + tagPair.first.length
+                                    val endIdx = rawText.indexOf(tagPair.second, startIdx)
+                                    if (endIdx != -1) {
+                                        val content = rawText.substring(startIdx, endIdx).trim()
+                                        if (content.isNotEmpty()) {
+                                            extractedThoughts.add(content)
+                                        }
+                                        i = endIdx + tagPair.second.length
+                                        foundTag = true
+                                        break
+                                    } else {
+                                        val content = rawText.substring(startIdx).trim()
+                                        if (content.isNotEmpty()) {
+                                            extractedThoughts.add(content)
+                                        }
+                                        i = rawText.length
+                                        foundTag = true
+                                        break
+                                    }
                                 }
-                                break
+                            }
+                            if (!foundTag) {
+                                modifiedText.append(rawText[i])
+                                i++
                             }
                         }
+                        
+                        if (extractedThoughts.isNotEmpty()) {
+                            thought = extractedThoughts.joinToString("\n\n")
+                        }
+                        actual = modifiedText.toString()
                         
                         val updated = _messages.value.toMutableList()
                         val idx = updated.indexOfFirst { it.id == modelMsgId }
