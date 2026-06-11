@@ -25,6 +25,9 @@ import com.daex.android.services.Message
 import com.daex.android.services.PermissionRequest
 import com.daex.android.ui.theme.DaexTheme
 import com.mikepenz.markdown.m3.Markdown
+import androidx.compose.ui.platform.LocalContext
+import android.content.Context
+import java.io.File
 
 @Composable
 fun MessageLine(
@@ -239,6 +242,79 @@ fun MessageLine(
                 }
             }
 
+            if (message.content.isNotEmpty() || message.hyperframeFile != null) {
+                val context = LocalContext.current
+                val hyperframeFile = message.hyperframeFile
+                if (hyperframeFile != null) {
+                    val cleanContent = remember(message.content) {
+                        val startTag = "```html"
+                        val endTag = "```"
+                        val startIdx = message.content.indexOf(startTag)
+                        if (startIdx != -1) {
+                            val endIdx = message.content.indexOf(endTag, startIdx + startTag.length)
+                            if (endIdx != -1) {
+                                (message.content.substring(0, startIdx) + message.content.substring(endIdx + endTag.length)).trim()
+                            } else {
+                                message.content.substring(0, startIdx).trim()
+                            }
+                        } else {
+                            message.content.trim()
+                        }
+                    }
+                    if (cleanContent.isNotEmpty()) {
+                        Markdown(
+                            content = cleanContent,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                    InlineHyperframeCard(
+                        htmlContent = "",
+                        fileName = hyperframeFile,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                } else {
+                    val hyperframe = remember(message.content) { extractHyperframeHtml(context, message.content) }
+                    if (hyperframe != null) {
+                        val (html, fileName) = hyperframe
+                        val cleanContent = remember(message.content) {
+                            val startTag = "```html"
+                            val endTag = "```"
+                            val startIdx = message.content.indexOf(startTag)
+                            if (startIdx != -1) {
+                                val endIdx = message.content.indexOf(endTag, startIdx + startTag.length)
+                                if (endIdx != -1) {
+                                    (message.content.substring(0, startIdx) + message.content.substring(endIdx + endTag.length)).trim()
+                                } else {
+                                    message.content.substring(0, startIdx).trim()
+                                }
+                            } else {
+                                ""
+                            }
+                        }
+                        
+                        if (cleanContent.isNotEmpty()) {
+                            Markdown(
+                                content = cleanContent,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                        }
+                        
+                        InlineHyperframeCard(
+                            htmlContent = html,
+                            fileName = fileName,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        Markdown(
+                            content = message.content,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+
             if (message.content.isEmpty() && isGenerating && message.thoughtContent.isNullOrEmpty()) {
                 BasicText(
                     text = "▊",
@@ -246,11 +322,6 @@ fun MessageLine(
                         color = DaexTheme.colors.onSurface.copy(alpha = 0.3f),
                         fontSize = 14.sp
                     )
-                )
-            } else if (message.content.isNotEmpty()) {
-                Markdown(
-                    content = message.content,
-                    modifier = Modifier.fillMaxWidth()
                 )
             }
 
@@ -390,4 +461,79 @@ fun MessageLine(
             }
         }
     }
+}
+
+private fun extractHyperframeHtml(context: Context, content: String): Pair<String, String>? {
+    val startTag = "```html"
+    val endTag = "```"
+    val startIndex = content.indexOf(startTag)
+    if (startIndex != -1) {
+        val codeStart = startIndex + startTag.length
+        val endIndex = content.indexOf(endTag, codeStart)
+        if (endIndex != -1) {
+            val html = content.substring(codeStart, endIndex).trim()
+            if (html.contains("data-composition-id=")) {
+                val match = Regex("data-composition-id=\"([^\"]+)\"").find(html)
+                val id = match?.groupValues?.get(1) ?: "hyperframe"
+                return Pair(html, "$id.html")
+            }
+        }
+    }
+    if (content.trim().startsWith("<!DOCTYPE html>") || content.contains("data-composition-id=")) {
+        val html = content.trim()
+        if (html.contains("data-composition-id=")) {
+            val match = Regex("data-composition-id=\"([^\"]+)\"").find(html)
+            val id = match?.groupValues?.get(1) ?: "hyperframe"
+            return Pair(html, "$id.html")
+        }
+    }
+    
+    // Scan for references to local HTML files mentioned in text
+    val fileMatches = Regex("([a-zA-Z0-9_-]+\\.html)").findAll(content)
+    for (match in fileMatches) {
+        val fileName = match.groupValues[1]
+        val file = File(File(context.filesDir, "hyperframes"), fileName)
+        if (file.exists()) {
+            try {
+                val html = file.readText()
+                return Pair(html, fileName)
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+    }
+
+    // Scan for references to local MP4 files compiled on device
+    val videoMatches = Regex("([a-zA-Z0-9_-]+\\.mp4)").findAll(content)
+    for (match in videoMatches) {
+        val videoName = match.groupValues[1]
+        val videoFile = File(File(context.filesDir, "hyperframes"), videoName)
+        if (videoFile.exists()) {
+            val baseName = videoName.substringBeforeLast(".")
+            
+            // Try to find the corresponding HTML file
+            val dir = File(context.filesDir, "hyperframes")
+            var htmlFile = File(dir, "$baseName.html")
+            
+            // Fallback: search for any HTML file starting with baseName
+            if (!htmlFile.exists() && dir.exists()) {
+                val matchingFiles = dir.listFiles { _, name -> 
+                    name.startsWith(baseName) && name.endsWith(".html") 
+                }
+                if (matchingFiles != null && matchingFiles.isNotEmpty()) {
+                    htmlFile = matchingFiles[0]
+                }
+            }
+            
+            val html = if (htmlFile.exists()) {
+                try { htmlFile.readText() } catch (e: Exception) { "" }
+            } else {
+                ""
+            }
+            
+            val htmlFileName = if (htmlFile.exists()) htmlFile.name else "$baseName.html"
+            return Pair(html, htmlFileName)
+        }
+    }
+    return null
 }

@@ -32,11 +32,17 @@ data class Message(
     val toolStatus: String? = null,
     val isPinned: Boolean = false,
     val isCompacted: Boolean = false,
-    val timestamp: Long = System.currentTimeMillis()
+    val timestamp: Long = System.currentTimeMillis(),
+    val hyperframeFile: String? = null // Runtime-only: set by saveHyperframe tool callback, not persisted
 )
 
 interface DaexService {
-    suspend fun initContext(modelPath: String, backendType: BackendType, isSpeculativeDecodingEnabled: Boolean = true): BackendType
+    suspend fun initContext(
+        modelPath: String,
+        backendType: BackendType,
+        isSpeculativeDecodingEnabled: Boolean = true,
+        maxContextTokens: Int = 8192
+    ): BackendType
     suspend fun releaseContext()
     suspend fun generateResponse(
         messages: List<Message>,
@@ -49,6 +55,7 @@ interface DaexService {
         isToolCallingEnabled: Boolean = false,
         onRequestPermission: (suspend (String, String) -> Boolean)? = null,
         onStatusUpdate: ((String?) -> Unit)? = null,
+        onHyperframeSaved: ((String) -> Unit)? = null,
         maxTokens: Int = 1024,
         onToken: (String) -> Unit
     ): GenerationResult
@@ -71,11 +78,17 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         
     }
 
-    override suspend fun initContext(modelPath: String, backendType: BackendType, isSpeculativeDecodingEnabled: Boolean): BackendType {
+    override suspend fun initContext(
+        modelPath: String,
+        backendType: BackendType,
+        isSpeculativeDecodingEnabled: Boolean,
+        maxContextTokens: Int
+    ): BackendType {
         return withContext(Dispatchers.IO) {
+            val clampedMaxContext = minOf(maxContextTokens, 8192)
             try {
                 releaseContext()
-                Log.d("DaexService", "Initializing LiteRT-LM Engine with model: $modelPath (backend=$backendType, speculative=$isSpeculativeDecodingEnabled)")
+                Log.d("DaexService", "Initializing LiteRT-LM Engine with model: $modelPath (backend=$backendType, speculative=$isSpeculativeDecodingEnabled, maxContext=$clampedMaxContext)")
                 
                 // Set native log severity to FATAL to suppress noisy NPU dispatch warning logs
                 try {
@@ -122,7 +135,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 val config = EngineConfig(
                     modelPath = modelPath,
                     backend = backend,
-                    maxNumTokens = 4096, // Safe default KV cache size that accommodates system prompt, RAG context, history and response
+                    maxNumTokens = clampedMaxContext, // Clamped KV cache size to prevent OOM
                     cacheDir = context.cacheDir.absolutePath
                 )
 
@@ -154,11 +167,11 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 when (backendType) {
                     BackendType.NPU -> {
                         Log.w("DaexService", "NPU initialization failed (missing TF_LITE_AUX), attempting fallback to GPU", e)
-                        initContext(modelPath, BackendType.GPU, isSpeculativeDecodingEnabled)
+                        initContext(modelPath, BackendType.GPU, isSpeculativeDecodingEnabled, clampedMaxContext)
                     }
                     BackendType.GPU -> {
                         Log.w("DaexService", "GPU initialization failed, attempting fallback to CPU", e)
-                        initContext(modelPath, BackendType.CPU, isSpeculativeDecodingEnabled)
+                        initContext(modelPath, BackendType.CPU, isSpeculativeDecodingEnabled, clampedMaxContext)
                     }
                     BackendType.CPU -> {
                         isLoaded = false
@@ -204,6 +217,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         isToolCallingEnabled: Boolean,
         onRequestPermission: (suspend (String, String) -> Boolean)?,
         onStatusUpdate: ((String?) -> Unit)?,
+        onHyperframeSaved: ((String) -> Unit)?,
         maxTokens: Int,
         onToken: (String) -> Unit
     ): GenerationResult {
@@ -279,7 +293,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         )
 
         val tools = if (isToolCallingEnabled) {
-            listOf(tool(DeviceTools(context, onRequestPermission, onStatusUpdate)))
+            listOf(tool(DeviceTools(context, onRequestPermission, onStatusUpdate, onHyperframeSaved)))
         } else {
             emptyList()
         }
@@ -307,8 +321,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         var isLimitReached = false
         val fullText = StringBuilder()
 
-        var hasStartedThinking = false
-        var hasEndedThinking = false
+        var isCurrentlyThinking = false
 
         val extraContext = mapOf("enable_thinking" to isReasoningEnabled)
 
@@ -328,18 +341,18 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                     }
 
                     if (hasThinking) {
-                        if (!hasStartedThinking) {
+                        if (!isCurrentlyThinking) {
                             onToken("<|think|>")
-                            hasStartedThinking = true
+                            isCurrentlyThinking = true
                         }
                         tokenCount++
                         onToken(thinkingChunk!!)
                     }
 
                     if (hasNormal) {
-                        if (hasStartedThinking && !hasEndedThinking) {
+                        if (isCurrentlyThinking) {
                             onToken("</think|>")
-                            hasEndedThinking = true
+                            isCurrentlyThinking = false
                         }
                         tokenCount++
                         responseTokenCount++
@@ -364,7 +377,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
             }
         }
 
-        if (hasStartedThinking && !hasEndedThinking) {
+        if (isCurrentlyThinking) {
             onToken("</think|>")
         }
 

@@ -621,7 +621,12 @@ class DaexInferenceViewModel(
                     model.supportedBackends.firstOrNull() ?: BackendType.CPU
                 }
                 _selectedBackend.value = targetBackend
-                val actualBackend = daexService.initContext(modelPath, targetBackend, _isSpeculativeDecodingEnabled.value)
+                val actualBackend = daexService.initContext(
+                    modelPath = modelPath,
+                    backendType = targetBackend,
+                    isSpeculativeDecodingEnabled = _isSpeculativeDecodingEnabled.value,
+                    maxContextTokens = model.maxContextTokens
+                )
                 _selectedBackend.value = actualBackend
                 _hardwareState.value = actualBackend.name
                 
@@ -718,7 +723,12 @@ class DaexInferenceViewModel(
                 try {
                     daexService.releaseContext()
                     val modelPath = modelManager?.getModelPath(targetModel) ?: ""
-                    val actualBackend = daexService.initContext(modelPath, backend, _isSpeculativeDecodingEnabled.value)
+                    val actualBackend = daexService.initContext(
+                        modelPath = modelPath,
+                        backendType = backend,
+                        isSpeculativeDecodingEnabled = _isSpeculativeDecodingEnabled.value,
+                        maxContextTokens = targetModel.maxContextTokens
+                    )
                     _selectedBackend.value = actualBackend
                     _hardwareState.value = actualBackend.name
                     _modelStatus.value = ModelStatus.READY
@@ -811,7 +821,7 @@ class DaexInferenceViewModel(
                     
                     // TOKEN-BASED COMPACTION & PRESSURE TRACKING
                     var activeHistory = fullHistory.filter { !it.isCompacted }
-                    val maxContextLimit = _currentModel.value?.maxContextTokens ?: 8192
+                    val maxContextLimit = minOf(_currentModel.value?.maxContextTokens ?: 8192, 8192)
                     
                     var currentTokens = activeHistory.sumOf { estimateMessageTokens(it) }
                     
@@ -868,6 +878,17 @@ class DaexInferenceViewModel(
                     // --- MODULAR SKILLS INFO INJECTION ---
                     if (daexSkillManager != null) {
                         systemContext += "\n\nYou have domain-specific \"skills\" (additional instructions/parameters) available. If you need a special skill or want to see what is available, call the listSkills() tool. If you find a matching skill, call the loadSkill(skillName) tool to retrieve its instructions.\n"
+                        
+                        // Proactively preload 'hyperframe' instructions if prompt keywords match
+                        val lowerPrompt = prompt.lowercase(java.util.Locale.getDefault())
+                        val hyperframeKeywords = listOf("video", "hyperframe", "animation", "render", "timeline", "heygen", "movie", "composition")
+                        if (hyperframeKeywords.any { lowerPrompt.contains(it) }) {
+                            val hyperframeInstructions = daexSkillManager.loadSkillInstructions("hyperframe")
+                            if (hyperframeInstructions != null) {
+                                systemContext += "\n\n[PRELOADED SKILL: hyperframe]\n$hyperframeInstructions\n"
+                                android.util.Log.d("DaexInference", "Proactively preloaded 'hyperframe' skill into system context.")
+                            }
+                        }
                     }
                     val result = daexService.generateResponse(
                         messages = inferenceHistory,
@@ -922,6 +943,14 @@ class DaexInferenceViewModel(
                                 }
                             }
                         },
+                        onHyperframeSaved = { filename ->
+                            val updated = _messages.value.toMutableList()
+                            val idx = updated.indexOfFirst { it.id == modelMsgId }
+                            if (idx != -1) {
+                                updated[idx] = updated[idx].copy(hyperframeFile = filename)
+                                _messages.value = updated
+                            }
+                        },
                         maxTokens = _maxTokens.value
                     ) { token ->
                         if (!isActive) return@generateResponse
@@ -930,27 +959,52 @@ class DaexInferenceViewModel(
                         var thought: String? = null
                         var actual = rawText
                         
-                        // Parse think/channel tags only — no reflection parsing needed
+                        // Parse think/channel tags only — support multiple blocks dynamically
                         val thinkTags = listOf(
-                            Pair("<|channel>", "<channel|>"),
                             Pair("<|think|>", "</think|>"),
-                            Pair("<think>", "</think>")
+                            Pair("<think>", "</think>"),
+                            Pair("<|channel>", "<channel|>")
                         )
                         
-                        for (tagPair in thinkTags) {
-                            val startIdx = rawText.indexOf(tagPair.first)
-                            if (startIdx != -1) {
-                                val endIdx = rawText.indexOf(tagPair.second, startIdx + tagPair.first.length)
-                                if (endIdx != -1) {
-                                    thought = rawText.substring(startIdx + tagPair.first.length, endIdx).trim()
-                                    actual = rawText.substring(0, startIdx) + rawText.substring(endIdx + tagPair.second.length)
-                                } else {
-                                    thought = rawText.substring(startIdx + tagPair.first.length).trim()
-                                    actual = rawText.substring(0, startIdx)
+                        val extractedThoughts = mutableListOf<String>()
+                        val modifiedText = StringBuilder()
+                        
+                        var i = 0
+                        while (i < rawText.length) {
+                            var foundTag = false
+                            for (tagPair in thinkTags) {
+                                if (rawText.startsWith(tagPair.first, i)) {
+                                    val startIdx = i + tagPair.first.length
+                                    val endIdx = rawText.indexOf(tagPair.second, startIdx)
+                                    if (endIdx != -1) {
+                                        val content = rawText.substring(startIdx, endIdx).trim()
+                                        if (content.isNotEmpty()) {
+                                            extractedThoughts.add(content)
+                                        }
+                                        i = endIdx + tagPair.second.length
+                                        foundTag = true
+                                        break
+                                    } else {
+                                        val content = rawText.substring(startIdx).trim()
+                                        if (content.isNotEmpty()) {
+                                            extractedThoughts.add(content)
+                                        }
+                                        i = rawText.length
+                                        foundTag = true
+                                        break
+                                    }
                                 }
-                                break
+                            }
+                            if (!foundTag) {
+                                modifiedText.append(rawText[i])
+                                i++
                             }
                         }
+                        
+                        if (extractedThoughts.isNotEmpty()) {
+                            thought = extractedThoughts.joinToString("\n\n")
+                        }
+                        actual = modifiedText.toString()
                         
                         val updated = _messages.value.toMutableList()
                         val idx = updated.indexOfFirst { it.id == modelMsgId }

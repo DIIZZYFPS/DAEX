@@ -90,6 +90,10 @@ dependencies {
     // PDF Parsing
     implementation("com.itextpdf:itext7-core:7.2.5")
 
+    // ExoPlayer Media3
+    implementation("androidx.media3:media3-exoplayer:1.4.1")
+    implementation("androidx.media3:media3-ui:1.4.1")
+
     // Room (Removed - Migrated to ObjectBox)
 
 
