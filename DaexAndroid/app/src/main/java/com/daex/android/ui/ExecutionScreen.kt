@@ -22,6 +22,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.*
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Path
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.daex.android.services.DaexInferenceViewModel
@@ -29,6 +35,8 @@ import com.daex.android.services.ModelBank
 import com.daex.android.services.ModelManager
 import com.daex.android.services.ModelStatus
 import com.daex.android.services.PermissionRequest
+import com.daex.android.services.VoiceState
+import androidx.compose.animation.Crossfade
 import com.daex.android.ui.components.*
 import com.daex.android.services.BackendType
 import androidx.compose.material3.DropdownMenu
@@ -36,13 +44,21 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
 import androidx.compose.ui.text.font.FontWeight
 import com.daex.android.ui.theme.DaexTheme
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.unit.IntOffset
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
+import android.content.Context
 
 @Composable
 fun ExecutionScreen(
     viewModel: DaexInferenceViewModel,
     modelManager: ModelManager,
     onBack: () -> Unit,
-    onOpenGallery: () -> Unit
+    onOpenGallery: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
     val messages by viewModel.messages.collectAsState()
     val activePermission by viewModel.activePermission.collectAsState()
@@ -57,9 +73,170 @@ fun ExecutionScreen(
     val isReasoningEnabled by viewModel.isReasoningEnabled.collectAsState()
     val isVectorizing by viewModel.isVectorizing.collectAsState()
     val uploadedFiles by viewModel.uploadedFiles.collectAsState()
+    val downloadedModelIds by viewModel.downloadedModelIds.collectAsState()
+    val isAuraEnabled by viewModel.isAuraEnabled.collectAsState()
+    val voiceState by viewModel.voiceState.collectAsState()
+    val voiceAmplitude by viewModel.voiceAmplitude.collectAsState()
+    val selectedBackend by viewModel.selectedBackend.collectAsState()
+    val suggestedPrompts by viewModel.suggestedPrompts.collectAsState()
     
     val context = LocalContext.current
+
+    val listState = rememberLazyListState()
+    var autoScrollEnabled by remember { mutableStateOf(true) }
+
+    // Detect if user is near the bottom
+    val isAtBottom by remember {
+        derivedStateOf {
+            val layoutInfo = listState.layoutInfo
+            val visibleItemsInfo = layoutInfo.visibleItemsInfo
+            if (layoutInfo.totalItemsCount == 0) return@derivedStateOf true
+            val lastVisibleItem = visibleItemsInfo.lastOrNull() ?: return@derivedStateOf true
+            // If the last item is visible, we're at the bottom
+            lastVisibleItem.index >= layoutInfo.totalItemsCount - 1
+        }
+    }
+
+    // Monitor scroll gestures to disable auto-scroll on upward movement
+    LaunchedEffect(listState.isScrollInProgress) {
+        if (listState.isScrollInProgress) {
+            val startOffset = listState.firstVisibleItemScrollOffset
+            val startIndex = listState.firstVisibleItemIndex
+            
+            snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
+                .collect { (index, offset) ->
+                    if (index < startIndex || (index == startIndex && offset < startOffset)) {
+                        // Scrolling UP
+                        autoScrollEnabled = false
+                    }
+                }
+        }
+    }
+    
+    // Re-enable auto-scroll when user reaches the bottom
+    LaunchedEffect(isAtBottom) {
+        if (isAtBottom) {
+            autoScrollEnabled = true
+        }
+    }
+
+    val isModelThinking = remember(messages, isGenerating) {
+        val lastMsg = messages.lastOrNull()
+        isGenerating && lastMsg != null && lastMsg.role == "model" && lastMsg.content.isEmpty() && !lastMsg.thoughtContent.isNullOrEmpty()
+    }
+
+    // Listen to accelerometer for device tilt-reactive aura
+    val sensorManager = remember(context) { 
+        context.getSystemService(Context.SENSOR_SERVICE) as SensorManager 
+    }
+    val accelerometer = remember(sensorManager) { 
+        sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER) 
+    }
+    
+    var tiltX by remember { mutableFloatStateOf(0f) }
+    var tiltY by remember { mutableFloatStateOf(0f) }
+    
+    DisposableEffect(isAuraEnabled, accelerometer) {
+        if (!isAuraEnabled || accelerometer == null) return@DisposableEffect onDispose {}
+        
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent?) {
+                event?.let {
+                    val rawX = it.values[0]
+                    val rawY = it.values[1]
+                    // Smooth values with low-pass filter
+                    tiltX = tiltX + 0.1f * (rawX - tiltX)
+                    tiltY = tiltY + 0.1f * (rawY - tiltY)
+                }
+            }
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+        }
+        
+        sensorManager.registerListener(listener, accelerometer, SensorManager.SENSOR_DELAY_UI)
+        onDispose {
+            sensorManager.unregisterListener(listener)
+        }
+    }
+
+    // Reactive aura background transition states
+    val infiniteTransition = rememberInfiniteTransition(label = "AuraPulse")
+    val auraScale by infiniteTransition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 6000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "AuraScale"
+    )
+
+    val auraColor by animateColorAsState(
+        targetValue = when {
+            modelStatus == ModelStatus.ERROR -> DaexTheme.colors.error
+            isModelThinking -> Color(0xFF6366F1) // Indigo for thinking state
+            isGenerating -> Color(0xFFA855F7) // Purple for generating final response
+            modelStatus == ModelStatus.LOADING || modelStatus == ModelStatus.DOWNLOADING || isReflecting || isVectorizing -> DaexTheme.colors.warning
+            else -> DaexTheme.colors.primary
+        },
+        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+        label = "AuraColor"
+    )
+
+    val centerAlpha by animateFloatAsState(
+        targetValue = when {
+            isModelThinking -> 0.28f // Increased from 0.14f
+            isGenerating -> 0.22f // Increased from 0.10f
+            else -> 0.16f // Increased from 0.07f
+        },
+        animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+        label = "AuraAlpha"
+    )
+
+    val isScrolling = listState.isScrollInProgress
+    val scrollRadiusMultiplier by animateFloatAsState(
+        targetValue = if (isScrolling) 1.15f else 1.0f,
+        animationSpec = spring(stiffness = Spring.StiffnessLow),
+        label = "AuraScrollRadius"
+    )
+
     var inputText by remember { mutableStateOf("") }
+
+    val recordAudioPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            viewModel.triggerHapticFeedback(context)
+            viewModel.toggleVoiceInput { recognizedText ->
+                inputText = recognizedText
+            }
+        }
+    }
+
+    val voiceModeProgress by animateFloatAsState(
+        targetValue = if (voiceState == VoiceState.LISTENING) 1f else 0f,
+        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        label = "VoiceModeProgress"
+    )
+
+    val smoothedAmplitude by animateFloatAsState(
+        targetValue = voiceAmplitude,
+        animationSpec = spring(
+            dampingRatio = 0.8f,
+            stiffness = Spring.StiffnessMediumLow
+        ),
+        label = "SmoothedAmplitude"
+    )
+
+    val wavePhase by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 2f * kotlin.math.PI.toFloat(),
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "WavePhase"
+    )
+
     var sidebarVisible by remember { mutableStateOf(false) }
     var selectorVisible by remember { mutableStateOf(false) }
     var backendMenuExpanded by remember { mutableStateOf(false) }
@@ -104,46 +281,11 @@ fun ExecutionScreen(
 
     LaunchedEffect(Unit) {
         viewModel.refreshUploadedFiles()
+        viewModel.refreshDownloadedModels()
     }
     var selectedModel by remember { mutableStateOf(ModelBank.generativeModels.first()) }
     
-    val listState = rememberLazyListState()
-    var autoScrollEnabled by remember { mutableStateOf(true) }
-
-    // Detect if user is near the bottom
-    val isAtBottom by remember {
-        derivedStateOf {
-            val layoutInfo = listState.layoutInfo
-            val visibleItemsInfo = layoutInfo.visibleItemsInfo
-            if (layoutInfo.totalItemsCount == 0) return@derivedStateOf true
-            val lastVisibleItem = visibleItemsInfo.lastOrNull() ?: return@derivedStateOf true
-            // If the last item is visible, we're at the bottom
-            lastVisibleItem.index >= layoutInfo.totalItemsCount - 1
-        }
-    }
-
-    // Monitor scroll gestures to disable auto-scroll on upward movement
-    LaunchedEffect(listState.isScrollInProgress) {
-        if (listState.isScrollInProgress) {
-            val startOffset = listState.firstVisibleItemScrollOffset
-            val startIndex = listState.firstVisibleItemIndex
-            
-            snapshotFlow { listState.firstVisibleItemIndex to listState.firstVisibleItemScrollOffset }
-                .collect { (index, offset) ->
-                    if (index < startIndex || (index == startIndex && offset < startOffset)) {
-                        // Scrolling UP
-                        autoScrollEnabled = false
-                    }
-                }
-        }
-    }
-    
-    // Re-enable auto-scroll when user reaches the bottom
-    LaunchedEffect(isAtBottom) {
-        if (isAtBottom) {
-            autoScrollEnabled = true
-        }
-    }
+    // Scroll tracking was moved to the top of the Composable
 
     val lastMessageContent = messages.lastOrNull()?.content ?: ""
 
@@ -186,129 +328,292 @@ fun ExecutionScreen(
         else -> DaexTheme.colors.warning
     }
 
+    val primaryColorVal = DaexTheme.colors.primary
+
     Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(DaexTheme.colors.background)
+                .drawBehind {
+                    if (isAuraEnabled) {
+                        // Calculate tilt shifts from accelerometer values
+                        val maxShiftX = 35.dp.toPx()
+                        val maxShiftY = 35.dp.toPx()
+                        val shiftX = (-tiltX * 4.5f.dp.toPx()).coerceIn(-maxShiftX, maxShiftX)
+                        val shiftY = (tiltY * 4.5f.dp.toPx()).coerceIn(-maxShiftY, maxShiftY)
+
+                        // Calculate scroll wave drift
+                        val scrollVal = listState.firstVisibleItemIndex * 200f + listState.firstVisibleItemScrollOffset
+                        val scrollSine = kotlin.math.sin(scrollVal * 0.002f)
+                        val scrollShiftY = scrollSine * 25.dp.toPx()
+
+                        // 1. Dominant Right Reactive Aura
+                        val rightCenter = Offset(
+                            x = size.width * 0.85f + shiftX, 
+                            y = size.height * 0.35f + shiftY + scrollShiftY
+                        )
+                        val rightBaseRadius = size.width * 0.8f
+                        val rightRadius = rightBaseRadius * auraScale * scrollRadiusMultiplier
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    auraColor.copy(alpha = centerAlpha * (1f - voiceModeProgress)),
+                                    auraColor.copy(alpha = centerAlpha * 0.4f * (1f - voiceModeProgress)),
+                                    Color.Transparent
+                                ),
+                                center = rightCenter,
+                                radius = rightRadius
+                            ),
+                            center = rightCenter,
+                            radius = rightRadius
+                        )
+
+                        // 2. Secondary Left Calm Ambient Aura
+                        val leftCenter = Offset(
+                            x = size.width * 0.15f + shiftX, 
+                            y = size.height * 0.75f + shiftY - scrollShiftY
+                        )
+                        val leftRadius = size.width * 0.6f
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    primaryColorVal.copy(alpha = 0.08f * (1f - voiceModeProgress)),
+                                    Color.Transparent
+                                ),
+                                center = leftCenter,
+                                radius = leftRadius
+                            ),
+                            center = leftCenter,
+                            radius = leftRadius
+                        )
+
+
+                    }
+                }
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 .windowInsetsPadding(WindowInsets.ime) // Root Column handles the IME
         ) {
             // Header
-            Row(
+            // Header
+            Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable { selectorVisible = true }
+                // Left Slot: Hamburger Menu
+                BasicText(
+                    text = "☰",
+                    style = DaexTheme.typography.h2.copy(color = DaexTheme.colors.primary),
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .clickable {
+                            viewModel.triggerHapticFeedback(context)
+                            sidebarVisible = true
+                        }
+                        .padding(8.dp)
+                )
+
+                // Center Slot: Brand + Engine Selector
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .clickable {
+                            if (!isGenerating && !isReflecting && !isVectorizing) {
+                                viewModel.triggerHapticFeedback(context)
+                                selectorVisible = true
+                            }
+                        }
                 ) {
                     BasicText(
-                        text = "☰",
-                        style = DaexTheme.typography.h2.copy(color = DaexTheme.colors.primary),
-                        modifier = Modifier
-                            .clickable { sidebarVisible = true }
-                            .padding(8.dp)
+                        text = "DAEX", 
+                        style = DaexTheme.typography.h1.copy(
+                            color = DaexTheme.colors.onBackground,
+                            fontSize = 16.sp,
+                            letterSpacing = 2.sp
+                        )
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    DaexLogo(size = 22.dp, ambient = true)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         BasicText(
-                            text = "DAEX", 
-                            style = DaexTheme.typography.h1.copy(
-                                color = DaexTheme.colors.onBackground,
-                                fontSize = 16.sp,
-                                letterSpacing = 2.sp
+                            text = (currentModel?.name ?: "SELECT ENGINE").uppercase(),
+                            style = DaexTheme.typography.mono.copy(
+                                color = DaexTheme.colors.primary.copy(alpha = if (currentModel != null) 0.6f else 0.4f),
+                                fontSize = 8.sp,
+                                letterSpacing = 1.sp
                             )
                         )
-                        if (isModelReady && currentModel != null) {
+                        val canChangeModel = !isGenerating && !isReflecting && !isVectorizing
+                        if (canChangeModel) {
+                            Spacer(modifier = Modifier.width(4.dp))
                             BasicText(
-                                text = currentModel!!.name.uppercase(),
+                                text = "▾",
                                 style = DaexTheme.typography.mono.copy(
-                                    color = DaexTheme.colors.primary.copy(alpha = 0.6f),
-                                    fontSize = 8.sp,
-                                    letterSpacing = 1.sp
+                                    color = DaexTheme.colors.primary.copy(alpha = if (currentModel != null) 0.6f else 0.4f),
+                                    fontSize = 8.sp
                                 )
                             )
                         }
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    // Status Badge
-                    Box {
-                        Row(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(4.dp))
-                                .background(DaexTheme.colors.primary.copy(alpha = 0.08f))
-                                .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
-                                .clickable { 
-                                    if (modelStatus == ModelStatus.READY) {
-                                        backendMenuExpanded = true 
-                                    }
+                // Right Slot: Status Badge
+                Box(
+                    modifier = Modifier.align(Alignment.CenterEnd)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(DaexTheme.colors.primary.copy(alpha = 0.08f))
+                            .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.2f), RoundedCornerShape(4.dp))
+                            .clickable { 
+                                if (modelStatus == ModelStatus.READY && !isGenerating && !isReflecting && !isVectorizing) {
+                                    backendMenuExpanded = true 
                                 }
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(6.dp)
+                                .clip(CircleShape)
+                                .background(statusColor)
+                        )
+                        val showBadgeDropdown = modelStatus == ModelStatus.READY && !isGenerating && !isReflecting && !isVectorizing
+                        BasicText(
+                            text = statusBadgeText + if (showBadgeDropdown) " ▾" else "",
+                            style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.onSurface, fontSize = 10.sp)
+                        )
+                    }
+
+                    if (backendMenuExpanded) {
+                        Popup(
+                            alignment = Alignment.TopEnd,
+                            offset = IntOffset(x = 0, y = 110),
+                            onDismissRequest = { backendMenuExpanded = false }
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(6.dp)
-                                    .clip(CircleShape)
-                                    .background(statusColor)
-                            )
-                            BasicText(
-                                text = statusBadgeText + if (modelStatus == ModelStatus.READY) " ▾" else "",
-                                style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.onSurface, fontSize = 10.sp)
-                            )
-                        }
+                                    .width(170.dp)
+                                    .height(IntrinsicSize.Min)
+                            ) {
+                                // Glassmorphic background
+                                Box(
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .clip(RoundedCornerShape(14.dp))
+                                        .graphicsLayer {
+                                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                                renderEffect = android.graphics.RenderEffect
+                                                    .createBlurEffect(15f, 15f, android.graphics.Shader.TileMode.DECAL)
+                                                    .asComposeRenderEffect()
+                                            }
+                                        }
+                                        .background(DaexTheme.colors.surface.copy(alpha = 0.85f))
+                                        .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.25f), RoundedCornerShape(14.dp))
+                                )
 
-                        DropdownMenu(
-                            expanded = backendMenuExpanded,
-                            onDismissRequest = { backendMenuExpanded = false }
-                        ) {
-                            if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.CPU)) {
-                                DropdownMenuItem(
-                                    text = { Text("CPU Backend", color = DaexTheme.colors.onBackground) },
-                                    onClick = {
-                                        backendMenuExpanded = false
-                                        viewModel.setBackend(BackendType.CPU)
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(6.dp)
+                                ) {
+                                    if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.CPU)) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    backendMenuExpanded = false
+                                                    viewModel.setBackend(BackendType.CPU)
+                                                }
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (selectedBackend == BackendType.CPU) DaexTheme.colors.primary else Color.Transparent)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            BasicText(
+                                                text = "CPU Backend",
+                                                style = DaexTheme.typography.body2.copy(
+                                                    color = if (selectedBackend == BackendType.CPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (selectedBackend == BackendType.CPU) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            )
+                                        }
                                     }
-                                )
-                            }
-                            if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.GPU)) {
-                                DropdownMenuItem(
-                                    text = { Text("GPU Offload", color = DaexTheme.colors.onBackground) },
-                                    onClick = {
-                                        backendMenuExpanded = false
-                                        viewModel.setBackend(BackendType.GPU)
+
+                                    if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.GPU)) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    backendMenuExpanded = false
+                                                    viewModel.setBackend(BackendType.GPU)
+                                                }
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (selectedBackend == BackendType.GPU) DaexTheme.colors.primary else Color.Transparent)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            BasicText(
+                                                text = "GPU Offload",
+                                                style = DaexTheme.typography.body2.copy(
+                                                    color = if (selectedBackend == BackendType.GPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (selectedBackend == BackendType.GPU) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            )
+                                        }
                                     }
-                                )
-                            }
-                            if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.NPU)) {
-                                DropdownMenuItem(
-                                    text = { Text("NPU Acceleration", color = DaexTheme.colors.onBackground) },
-                                    onClick = {
-                                        backendMenuExpanded = false
-                                        viewModel.setBackend(BackendType.NPU)
+
+                                    if (currentModel == null || currentModel!!.supportedBackends.contains(BackendType.NPU)) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    backendMenuExpanded = false
+                                                    viewModel.setBackend(BackendType.NPU)
+                                                }
+                                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (selectedBackend == BackendType.NPU) DaexTheme.colors.primary else Color.Transparent)
+                                            )
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            BasicText(
+                                                text = "NPU Acceleration",
+                                                style = DaexTheme.typography.body2.copy(
+                                                    color = if (selectedBackend == BackendType.NPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f),
+                                                    fontSize = 11.sp,
+                                                    fontWeight = if (selectedBackend == BackendType.NPU) FontWeight.Bold else FontWeight.Normal
+                                                )
+                                            )
+                                        }
                                     }
-                                )
+                                }
                             }
                         }
                     }
-
-                    BasicText(
-                        text = "+",
-                        style = DaexTheme.typography.h2.copy(color = DaexTheme.colors.primary),
-                        modifier = Modifier
-                            .clickable { viewModel.clearMessages() }
-                            .padding(8.dp)
-                    )
                 }
             }
             
@@ -397,13 +702,17 @@ fun ExecutionScreen(
             // Chat Area or Welcome
             Box(modifier = Modifier.weight(1f)) {
                 if (messages.isEmpty()) {
-                    SuggestedPrompts(onSelectPrompt = {
-                        if (isModelReady && !isGenerating) {
-                            viewModel.submitPrompt(it)
-                        } else if (!isModelReady) {
-                            (currentModel ?: selectedModel).let { model -> viewModel.loadModel(model) }
+                    SuggestedPrompts(
+                        prompts = suggestedPrompts,
+                        onSelectPrompt = {
+                            viewModel.triggerHapticFeedback(context)
+                            if (isModelReady && !isGenerating) {
+                                viewModel.submitPrompt(it)
+                            } else if (!isModelReady) {
+                                (currentModel ?: selectedModel).let { model -> viewModel.loadModel(model) }
+                            }
                         }
-                    })
+                    )
                 } else {
                     val visibleMessages = messages.filter { !it.content.startsWith("[CONTEXT COMPACTION]:") }
                     LazyColumn(
@@ -429,127 +738,217 @@ fun ExecutionScreen(
                     }
                 }
 
-                // --- LAYERED INPUT BAR (Overlay Style) ---
-                Box(
+                // --- LAYERED INPUT BAR (Floating Pill Style) ---
+                Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .fillMaxWidth()
+                        .padding(bottom = 16.dp, start = 16.dp, end = 16.dp)
                 ) {
-                    // 1. Blurred Background Layer (Matches size of foreground container)
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .graphicsLayer {
-                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                    renderEffect = android.graphics.RenderEffect
-                                        .createBlurEffect(20f, 20f, android.graphics.Shader.TileMode.DECAL)
-                                        .asComposeRenderEffect()
-                                }
-                            }
-                            .background(DaexTheme.colors.background.copy(alpha = 0.85f))
-                            .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f))
-                    )
-
-                    // 2. Foreground Content Layer (SHARP)
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = 16.dp, top = 8.dp, start = 16.dp, end = 16.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
+                        horizontalArrangement = Arrangement.End
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp),
-                            horizontalArrangement = Arrangement.End
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(16.dp))
+                                .background(if (isReasoningEnabled) DaexTheme.colors.primary.copy(alpha=0.15f) else DaexTheme.colors.onSurface.copy(alpha=0.1f))
+                                .border(0.5.dp, if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.2f), RoundedCornerShape(16.dp))
+                                .clickable {
+                                    viewModel.triggerHapticFeedback(context)
+                                    viewModel.toggleReasoning()
+                                }
+                                .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(16.dp))
-                                    .background(if (isReasoningEnabled) DaexTheme.colors.primary.copy(alpha=0.15f) else DaexTheme.colors.onSurface.copy(alpha=0.1f))
-                                    .border(0.5.dp, if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.2f), RoundedCornerShape(16.dp))
-                                    .clickable { viewModel.toggleReasoning() }
-                                    .padding(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(6.dp)
-                                            .clip(CircleShape)
-                                            .background(if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.4f))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.4f))
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                BasicText(
+                                    text = if (isReasoningEnabled) "REASONING" else "FAST",
+                                    style = DaexTheme.typography.mono.copy(
+                                        color = if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.6f),
+                                        fontSize = 10.sp,
+                                        letterSpacing = 1.sp
                                     )
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                )
+                            }
+                        }
+                    }
+
+                    // Uploaded file chips
+                    if (uploadedFiles.isNotEmpty()) {
+                        LazyRow(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            items(uploadedFiles.size) { index ->
+                                Box(
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(DaexTheme.colors.primary.copy(alpha = 0.12f))
+                                        .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp)
+                                ) {
                                     BasicText(
-                                        text = if (isReasoningEnabled) "REASONING" else "FAST",
-                                        style = DaexTheme.typography.mono.copy(
-                                            color = if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.6f),
-                                            fontSize = 10.sp,
-                                            letterSpacing = 1.sp
+                                        text = uploadedFiles[index],
+                                        style = DaexTheme.typography.caption.copy(
+                                            color = DaexTheme.colors.primary
                                         )
                                     )
                                 }
                             }
                         }
+                    }
+ 
+                    if (isVectorizing) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(14.dp),
+                                color = DaexTheme.colors.warning,
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            BasicText(
+                                text = "Vectorizing file...",
+                                style = DaexTheme.typography.caption.copy(
+                                    color = DaexTheme.colors.warning
+                                )
+                            )
+                        }
+                    }
+ 
+                    // Main Floating Pill
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(IntrinsicSize.Min)
+                    ) {
+                        // Blurred Background Pill Layer
+                        Box(
+                            modifier = Modifier
+                                .matchParentSize()
+                                .clip(RoundedCornerShape(28.dp))
+                                .graphicsLayer {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                        renderEffect = android.graphics.RenderEffect
+                                            .createBlurEffect(20f, 20f, android.graphics.Shader.TileMode.DECAL)
+                                            .asComposeRenderEffect()
+                                    }
+                                }
+                                .background(DaexTheme.colors.background.copy(alpha = 0.85f))
+                                .drawBehind {
+                                    if (voiceModeProgress > 0f) {
+                                        val waveAlpha = voiceModeProgress
+                                        val baseLineY = size.height * 0.5f
+                                        val widthF = size.width
+                                        val piF = kotlin.math.PI.toFloat()
 
-                        // Uploaded file chips
-                        if (uploadedFiles.isNotEmpty()) {
-                            LazyRow(
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                items(uploadedFiles.size) { index ->
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(16.dp))
-                                            .background(DaexTheme.colors.primary.copy(alpha = 0.12f))
-                                            .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(16.dp))
-                                            .padding(horizontal = 10.dp, vertical = 4.dp)
-                                    ) {
-                                        BasicText(
-                                            text = uploadedFiles[index],
-                                            style = DaexTheme.typography.caption.copy(
-                                                color = DaexTheme.colors.primary
+                                        // Wave 1 (Back, slow, dark)
+                                        val path1 = Path()
+                                        val amplitude1 = 4.dp.toPx() + (smoothedAmplitude * 10.dp.toPx())
+                                        path1.moveTo(0f, size.height)
+                                        for (x in 0..size.width.toInt() step 10) {
+                                            val xf = x.toFloat()
+                                            val envelope = kotlin.math.sin(xf / widthF * piF)
+                                            val sineVal = kotlin.math.sin(xf * 0.01f + wavePhase)
+                                            val y = baseLineY + sineVal * amplitude1 * 0.4f * envelope
+                                            path1.lineTo(xf, y)
+                                        }
+                                        path1.lineTo(size.width, size.height)
+                                        path1.close()
+                                        drawPath(
+                                            path = path1,
+                                            brush = Brush.verticalGradient(
+                                                colors = listOf(
+                                                    auraColor.copy(alpha = waveAlpha * 0.25f),
+                                                    Color.Transparent
+                                                ),
+                                                startY = baseLineY - amplitude1,
+                                                endY = size.height
+                                            )
+                                        )
+
+                                        // Wave 2 (Middle, medium speed)
+                                        val path2 = Path()
+                                        val amplitude2 = 6.dp.toPx() + (smoothedAmplitude * 14.dp.toPx())
+                                        path2.moveTo(0f, size.height)
+                                        for (x in 0..size.width.toInt() step 10) {
+                                            val xf = x.toFloat()
+                                            val envelope = kotlin.math.sin(xf / widthF * piF)
+                                            val sineVal = kotlin.math.sin(xf * 0.015f - wavePhase * 2.0f + 1.0f)
+                                            val y = baseLineY + sineVal * amplitude2 * 0.6f * envelope
+                                            path2.lineTo(xf, y)
+                                        }
+                                        path2.lineTo(size.width, size.height)
+                                        path2.close()
+                                        drawPath(
+                                            path = path2,
+                                            brush = Brush.verticalGradient(
+                                                colors = listOf(
+                                                    auraColor.copy(alpha = waveAlpha * 0.40f),
+                                                    Color.Transparent
+                                                ),
+                                                startY = baseLineY - amplitude2,
+                                                endY = size.height
+                                            )
+                                        )
+
+                                        // Wave 3 (Front, fast, dynamic)
+                                        val path3 = Path()
+                                        val amplitude3 = 8.dp.toPx() + (smoothedAmplitude * 18.dp.toPx())
+                                        path3.moveTo(0f, size.height)
+                                        for (x in 0..size.width.toInt() step 10) {
+                                            val xf = x.toFloat()
+                                            val envelope = kotlin.math.sin(xf / widthF * piF)
+                                            val sineVal = kotlin.math.sin(xf * 0.02f + wavePhase * 3.0f + 2.5f)
+                                            val y = baseLineY + sineVal * amplitude3 * 0.8f * envelope
+                                            path3.lineTo(xf, y)
+                                        }
+                                        path3.lineTo(size.width, size.height)
+                                        path3.close()
+                                        drawPath(
+                                            path = path3,
+                                            brush = Brush.verticalGradient(
+                                                colors = listOf(
+                                                    auraColor.copy(alpha = waveAlpha * 0.60f),
+                                                    Color.Transparent
+                                                ),
+                                                startY = baseLineY - amplitude3,
+                                                endY = size.height
                                             )
                                         )
                                     }
                                 }
-                            }
-                        }
-     
-                        if (isVectorizing) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(14.dp),
-                                    color = DaexTheme.colors.warning,
-                                    strokeWidth = 2.dp
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                BasicText(
-                                    text = "Vectorizing file...",
-                                    style = DaexTheme.typography.caption.copy(
-                                        color = DaexTheme.colors.warning
-                                    )
-                                )
-                            }
-                        }
-     
+                                .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.15f), RoundedCornerShape(28.dp))
+                        )
+
+                        // Foreground Input Row (Pill Style)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(DaexTheme.colors.onSurface.copy(alpha = 0.05f))
-                                .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(12.dp))
                                 .padding(4.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             // Attachment button
                             DaexButton(
-                                onClick = { filePickerLauncher.launch("*/*") },
+                                onClick = {
+                                    viewModel.triggerHapticFeedback(context)
+                                    filePickerLauncher.launch("*/*")
+                                },
                                 enabled = !isGenerating && !isVectorizing && isModelReady,
                                 modifier = Modifier.size(36.dp),
                                 backgroundColor = Color.Transparent,
-                                useDefaultPadding = false
+                                useDefaultPadding = false,
+                                shape = CircleShape
                             ) {
                                 BasicText(
                                     text = "+",
@@ -559,35 +958,77 @@ fun ExecutionScreen(
                                     )
                                 )
                             }
+                            val placeholderText = when {
+                                !isModelReady -> "Engine not loaded..."
+                                voiceState == VoiceState.LISTENING -> "Listening to speech..."
+                                voiceState == VoiceState.PROCESSING -> "Processing speech..."
+                                else -> "Initialize execution with Icarus..."
+                            }
                             DaexTextField(
                                 value = inputText,
                                 onValueChange = { inputText = it },
                                 modifier = Modifier.weight(1f),
-                                placeholder = if (isModelReady) "Initialize execution with Icarus..." else "Engine not loaded...",
-                                enabled = !isGenerating && isModelReady
+                                placeholder = placeholderText,
+                                enabled = !isGenerating && isModelReady && voiceState != VoiceState.LISTENING,
+                                backgroundColor = Color.Transparent
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                             DaexButton(
                                 onClick = {
-                                    if (inputText.isNotBlank()) {
+                                    if (isGenerating) {
+                                        viewModel.triggerHapticFeedback(context)
+                                        viewModel.cancelGeneration()
+                                        val lastUserMsg = messages.lastOrNull { it.role == "user" }
+                                        if (lastUserMsg != null) {
+                                            inputText = lastUserMsg.content
+                                        }
+                                    } else if (inputText.isNotEmpty()) {
+                                        viewModel.triggerHapticFeedback(context)
                                         viewModel.submitPrompt(inputText)
                                         inputText = ""
+                                    } else {
+                                        // Voice mode mic tap
+                                        val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(
+                                            context,
+                                            android.Manifest.permission.RECORD_AUDIO
+                                        )
+                                        if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                            viewModel.triggerHapticFeedback(context)
+                                            viewModel.toggleVoiceInput { recognizedText ->
+                                                inputText = recognizedText
+                                            }
+                                        } else {
+                                            recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                        }
                                     }
                                 },
-                                enabled = !isGenerating && isModelReady && inputText.isNotBlank(),
+                                enabled = (isGenerating || isModelReady) && (isGenerating || inputText.isNotEmpty() || voiceState != VoiceState.PROCESSING),
                                 modifier = Modifier.size(44.dp),
-                                backgroundColor = if (isGenerating || !isModelReady) DaexTheme.colors.primary.copy(alpha = 0.1f) else DaexTheme.colors.primary,
-                                useDefaultPadding = false
+                                backgroundColor = if (isGenerating) DaexTheme.colors.primary else if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.1f) else DaexTheme.colors.primary,
+                                useDefaultPadding = false,
+                                shape = CircleShape
                             ) {
                                 if (isGenerating) {
+                                    DaexStopIcon(
+                                        color = DaexTheme.colors.onPrimary,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                } else if (voiceState == VoiceState.PROCESSING) {
                                     DaexLoader(size = 28.dp)
                                 } else {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(14.dp)
-                                            .clip(CircleShape)
-                                            .background(if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary)
-                                    )
+                                    Crossfade(targetState = inputText.isEmpty(), label = "morph_button") { isEmpty ->
+                                        if (isEmpty) {
+                                            DaexMicIcon(
+                                                color = if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        } else {
+                                            DaexSendIcon(
+                                                color = if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary,
+                                                modifier = Modifier.size(16.dp)
+                                            )
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -596,14 +1037,13 @@ fun ExecutionScreen(
             }
         }
         
-        var settingsVisible by remember { mutableStateOf(false) }
         var memoryEditorVisible by remember { mutableStateOf(false) }
-        var changelogVisible by remember { mutableStateOf(false) }
 
         ModelSelectorModal(
             visible = selectorVisible,
             onClose = { selectorVisible = false },
             onSelect = { 
+                viewModel.triggerHapticFeedback(context)
                 selectedModel = it
                 selectorVisible = false
                 viewModel.loadModel(it)
@@ -612,7 +1052,8 @@ fun ExecutionScreen(
                 selectorVisible = false
                 onOpenGallery()
             },
-            modelManager = modelManager
+            downloadedModelIds = downloadedModelIds,
+            onDelete = { viewModel.deleteModel(it) }
         )
 
         Sidebar(
@@ -624,59 +1065,10 @@ fun ExecutionScreen(
             },
             onOpenSettings = {
                 sidebarVisible = false
-                settingsVisible = true
+                onOpenSettings()
             },
             onOpenGallery = onOpenGallery,
             viewModel = viewModel
-        )
-
-        SettingsModal(
-            visible = settingsVisible,
-            onClose = { settingsVisible = false },
-            modelStatus = modelStatus,
-            selectedModel = currentModel ?: selectedModel,
-            useGPU = viewModel.useGPU.collectAsState().value,
-            isDark = viewModel.isDarkMode.collectAsState().value,
-            primaryColor = viewModel.primaryColor.collectAsState().value,
-            onToggleGPU = { viewModel.toggleGPU() },
-            onToggleDark = { viewModel.setDarkMode(it) },
-            onSelectColor = { viewModel.setThemeColor(it) },
-            onDownloadModel = { 
-                currentModel?.let { viewModel.downloadModel(it) } ?: run { selectorVisible = true }
-            },
-            onChangeModel = {
-                settingsVisible = false
-                selectorVisible = true
-            },
-            onDeleteModel = { /* TODO */ },
-            onClearConversations = { 
-                viewModel.clearMessages()
-                settingsVisible = false
-            },
-            onEditMemory = {
-                settingsVisible = false
-                memoryEditorVisible = true
-                viewModel.loadCoreMemory()
-            },
-            onShareLogs = {
-                LogShareHelper.shareAppLogs(context)
-            },
-            deviceSpecs = viewModel.deviceSpecs,
-            isSpeculativeDecodingEnabled = viewModel.isSpeculativeDecodingEnabled.collectAsState().value,
-            onToggleSpeculativeDecoding = { viewModel.setSpeculativeDecodingEnabled(it) },
-            inferenceTemperature = viewModel.inferenceTemperature.collectAsState().value,
-            onTemperatureChange = { viewModel.setInferenceTemperature(it) },
-            inferenceTopK = viewModel.inferenceTopK.collectAsState().value,
-            onTopKChange = { viewModel.setInferenceTopK(it) },
-            inferenceTopP = viewModel.inferenceTopP.collectAsState().value,
-            onTopPChange = { viewModel.setInferenceTopP(it) },
-            customSystemPrompt = viewModel.customSystemPrompt.collectAsState().value,
-            onCustomSystemPromptChange = { viewModel.setCustomSystemPrompt(it) },
-            isToolCallingEnabled = viewModel.isToolCallingEnabled.collectAsState().value,
-            onToggleToolCalling = { viewModel.setToolCallingEnabled(it) },
-            uploadedFiles = uploadedFiles,
-            onDeleteFile = { viewModel.deleteUploadedFile(it) },
-            onViewChangelog = { changelogVisible = true }
         )
 
         MemoryEditorModal(
@@ -687,11 +1079,6 @@ fun ExecutionScreen(
                 viewModel.saveCoreMemory(it)
                 memoryEditorVisible = false
             }
-        )
-
-        ChangelogModal(
-            visible = changelogVisible,
-            onClose = { changelogVisible = false }
         )
     }
 }

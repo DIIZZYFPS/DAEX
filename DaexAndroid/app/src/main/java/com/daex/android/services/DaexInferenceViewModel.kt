@@ -15,9 +15,23 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.firstOrNull
+import android.os.VibrationEffect
 
 enum class ModelStatus {
     NOT_DOWNLOADED, DOWNLOADING, LOADING, READY, ERROR
+}
+
+enum class VoiceState {
+    IDLE, LISTENING, PROCESSING
+}
+
+enum class HapticType {
+    CLICK,
+    TICK,
+    DOUBLE_CLICK,
+    HEAVY_CLICK,
+    START_RESPONSE,
+    SUCCESS_COMPLETION
 }
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -29,7 +43,8 @@ class DaexInferenceViewModel(
     private val daexCoreMemory: DaexCoreMemory? = null,
     private val preferences: DaexPreferences? = null,
     private val daexRag: DaexRag? = null,
-    private val daexSkillManager: DaexSkillManager? = null
+    private val daexSkillManager: DaexSkillManager? = null,
+    private val context: android.content.Context? = null
 ) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -40,6 +55,12 @@ class DaexInferenceViewModel(
 
     private val _downloadProgress = MutableStateFlow(0)
     val downloadProgress: StateFlow<Int> = _downloadProgress.asStateFlow()
+
+    private val _downloadingModelId = MutableStateFlow<String?>(null)
+    val downloadingModelId: StateFlow<String?> = _downloadingModelId.asStateFlow()
+
+    private val _downloadedModelIds = MutableStateFlow<Set<String>>(emptySet())
+    val downloadedModelIds: StateFlow<Set<String>> = _downloadedModelIds.asStateFlow()
 
     private val _embeddingDownloadProgress = MutableStateFlow<Int?>(null)
     val embeddingDownloadProgress: StateFlow<Int?> = _embeddingDownloadProgress.asStateFlow()
@@ -115,6 +136,33 @@ class DaexInferenceViewModel(
     private val _isToolCallingEnabled = MutableStateFlow(false)
     val isToolCallingEnabled: StateFlow<Boolean> = _isToolCallingEnabled.asStateFlow()
 
+    private val _maxTokens = MutableStateFlow(1024)
+    val maxTokens: StateFlow<Int> = _maxTokens.asStateFlow()
+
+    private val _isHapticEnabled = MutableStateFlow(true)
+    val isHapticEnabled: StateFlow<Boolean> = _isHapticEnabled.asStateFlow()
+
+    private val _isAuraEnabled = MutableStateFlow(true)
+    val isAuraEnabled: StateFlow<Boolean> = _isAuraEnabled.asStateFlow()
+
+    private val _suggestedPrompts = MutableStateFlow<List<String>>(
+        listOf(
+            "Explain quantum entanglement simply",
+            "Write a haiku about midnight code",
+            "Plan a 3-day trip to Lisbon"
+        )
+    )
+    val suggestedPrompts: StateFlow<List<String>> = _suggestedPrompts.asStateFlow()
+
+    // Voice Mode State Flows
+    private val _voiceState = MutableStateFlow(VoiceState.IDLE)
+    val voiceState: StateFlow<VoiceState> = _voiceState.asStateFlow()
+
+    private val _voiceAmplitude = MutableStateFlow(0f)
+    val voiceAmplitude: StateFlow<Float> = _voiceAmplitude.asStateFlow()
+
+    private var speechManager: SpeechManager? = null
+
     val deviceSpecs: DeviceSpecs? = deviceService?.getDeviceSpecs()
 
     private var generationJob: Job? = null
@@ -172,6 +220,30 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             preferences?.isToolCallingEnabledFlow?.collectLatest { enabled ->
                 _isToolCallingEnabled.value = enabled
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.maxTokensFlow?.collectLatest { maxTokens ->
+                _maxTokens.value = maxTokens
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.isHapticEnabledFlow?.collectLatest { enabled ->
+                _isHapticEnabled.value = enabled
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.isAuraEnabledFlow?.collectLatest { enabled ->
+                _isAuraEnabled.value = enabled
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.suggestedPromptsFlow?.collectLatest { list ->
+                _suggestedPrompts.value = list
             }
         }
 
@@ -241,6 +313,18 @@ class DaexInferenceViewModel(
                 }
             }
         }
+        refreshDownloadedModels()
+    }
+
+    fun refreshDownloadedModels() {
+        viewModelScope.launch {
+            if (modelManager == null) return@launch
+            val downloaded = ModelBank.generativeModels
+                .filter { modelManager.isModelDownloaded(it) }
+                .map { it.id }
+                .toSet()
+            _downloadedModelIds.value = downloaded
+        }
     }
 
     fun setThemeColor(color: Color) {
@@ -262,6 +346,36 @@ class DaexInferenceViewModel(
         _isReasoningEnabled.value = newValue
         viewModelScope.launch {
             preferences?.setReasoningEnabled(newValue)
+        }
+    }
+
+    fun setVoiceState(state: VoiceState) {
+        _voiceState.value = state
+    }
+
+    fun setVoiceAmplitude(amplitude: Float) {
+        _voiceAmplitude.value = amplitude
+    }
+
+    fun toggleVoiceInput(onTextResult: (String) -> Unit) {
+        val ctx = context ?: return
+        if (speechManager == null) {
+            speechManager = SpeechManager(
+                context = ctx,
+                onAmplitudeChanged = { setVoiceAmplitude(it) },
+                onResult = { result ->
+                    onTextResult(result)
+                },
+                onStateChanged = { state ->
+                    setVoiceState(state)
+                }
+            )
+        }
+
+        if (_voiceState.value == VoiceState.LISTENING) {
+            speechManager?.stopListening()
+        } else {
+            speechManager?.startListening()
         }
     }
 
@@ -304,6 +418,87 @@ class DaexInferenceViewModel(
         _isToolCallingEnabled.value = enabled
         viewModelScope.launch {
             preferences?.setToolCallingEnabled(enabled)
+        }
+    }
+
+    fun setMaxTokens(maxTokens: Int) {
+        _maxTokens.value = maxTokens
+        viewModelScope.launch {
+            preferences?.setMaxTokens(maxTokens)
+        }
+    }
+
+    fun setHapticEnabled(enabled: Boolean) {
+        _isHapticEnabled.value = enabled
+        viewModelScope.launch {
+            preferences?.setHapticEnabled(enabled)
+        }
+    }
+
+    fun setAuraEnabled(enabled: Boolean) {
+        _isAuraEnabled.value = enabled
+        viewModelScope.launch {
+            preferences?.setAuraEnabled(enabled)
+        }
+    }
+
+    fun triggerHapticFeedback(context: android.content.Context? = null, force: Boolean = false, type: HapticType = HapticType.CLICK) {
+        if (_isHapticEnabled.value || force) {
+            val targetContext = context ?: this.context ?: return
+            try {
+                val vibrator = targetContext.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator
+                if (vibrator != null && vibrator.hasVibrator()) {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                        val effect = when (type) {
+                            HapticType.CLICK -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
+                            HapticType.TICK -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_TICK)
+                            HapticType.DOUBLE_CLICK -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK)
+                            HapticType.HEAVY_CLICK -> VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK)
+                            HapticType.START_RESPONSE -> {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                                    try {
+                                        VibrationEffect.startComposition()
+                                            .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.5f)
+                                            .addPrimitive(VibrationEffect.Composition.PRIMITIVE_TICK, 0.3f, 50)
+                                            .compose()
+                                    } catch (e: Exception) {
+                                        VibrationEffect.createPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK)
+                                    }
+                                } else {
+                                    VibrationEffect.createPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK)
+                                }
+                            }
+                            HapticType.SUCCESS_COMPLETION -> {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+                                    try {
+                                        VibrationEffect.startComposition()
+                                            .addPrimitive(VibrationEffect.Composition.PRIMITIVE_CLICK, 0.8f)
+                                            .addPrimitive(VibrationEffect.Composition.PRIMITIVE_THUD, 0.5f, 100)
+                                            .compose()
+                                    } catch (e: Exception) {
+                                        VibrationEffect.createPredefined(VibrationEffect.EFFECT_CLICK)
+                                    }
+                                } else {
+                                    VibrationEffect.createWaveform(longArrayOf(0, 30, 80, 40), intArrayOf(0, 200, 0, 100), -1)
+                                }
+                            }
+                        }
+                        vibrator.vibrate(effect)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        when (type) {
+                            HapticType.CLICK -> vibrator.vibrate(40)
+                            HapticType.TICK -> vibrator.vibrate(10)
+                            HapticType.DOUBLE_CLICK -> vibrator.vibrate(longArrayOf(0, 30, 60, 30), -1)
+                            HapticType.HEAVY_CLICK -> vibrator.vibrate(80)
+                            HapticType.START_RESPONSE -> vibrator.vibrate(longArrayOf(0, 30, 50, 30), -1)
+                            HapticType.SUCCESS_COMPLETION -> vibrator.vibrate(longArrayOf(0, 35, 80, 50), -1)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DaexInferenceViewModel", "Failed to trigger haptic feedback", e)
+            }
         }
     }
 
@@ -354,8 +549,9 @@ class DaexInferenceViewModel(
     }
 
     fun downloadModel(model: Model) {
-        if (_modelStatus.value == ModelStatus.DOWNLOADING || modelManager == null) return
+        if (_downloadingModelId.value != null || modelManager == null) return
 
+        _downloadingModelId.value = model.id
         _modelStatus.value = ModelStatus.DOWNLOADING
         _downloadProgress.value = 0
         _errorMessage.value = null
@@ -365,9 +561,12 @@ class DaexInferenceViewModel(
                 modelManager.downloadModel(model) { progress ->
                     _downloadProgress.value = progress.percent
                 }
+                _downloadingModelId.value = null
                 _modelStatus.value = ModelStatus.NOT_DOWNLOADED
                 _downloadProgress.value = 100
+                refreshDownloadedModels()
             } catch (e: Exception) {
+                _downloadingModelId.value = null
                 _modelStatus.value = ModelStatus.ERROR
                 _errorMessage.value = e.message ?: "Download failed"
             }
@@ -376,17 +575,23 @@ class DaexInferenceViewModel(
 
     fun cancelDownload() {
         modelManager?.cancelDownload()
+        _downloadingModelId.value = null
         _modelStatus.value = ModelStatus.NOT_DOWNLOADED
         _downloadProgress.value = 0
     }
 
     fun loadModel(model: Model) {
+        if (_isGenerating.value || _isReflecting.value || _isVectorizing.value) {
+            _errorMessage.value = "Cannot change models while the engine is busy."
+            return
+        }
         _currentModel.value = model
         viewModelScope.launch {
             if (modelManager == null) return@launch
             
             val isDownloaded = modelManager.isModelDownloaded(model)
             if (!isDownloaded) {
+                _downloadingModelId.value = model.id
                 _modelStatus.value = ModelStatus.DOWNLOADING
                 _downloadProgress.value = 0
                 _errorMessage.value = null
@@ -395,11 +600,14 @@ class DaexInferenceViewModel(
                     modelManager.downloadModel(model) { progress ->
                         _downloadProgress.value = progress.percent
                     }
+                    refreshDownloadedModels()
                 } catch (e: Exception) {
+                    _downloadingModelId.value = null
                     _modelStatus.value = ModelStatus.ERROR
                     _errorMessage.value = e.message ?: "Download failed"
                     return@launch
                 }
+                _downloadingModelId.value = null
             }
 
             _modelStatus.value = ModelStatus.LOADING
@@ -429,6 +637,17 @@ class DaexInferenceViewModel(
                 _modelStatus.value = ModelStatus.READY
                 android.util.Log.d("DaexAutoload", "Model loaded successfully. Saving configuration to preferences: id=${model.id}, backend=${actualBackend.name}")
                 preferences?.setLastUsedModel(model.id, actualBackend.name)
+
+                // If suggestions are still the default, try generating personalized ones once model is ready
+                val currentSuggestions = _suggestedPrompts.value
+                val defaultList = listOf(
+                    "Explain quantum entanglement simply",
+                    "Write a haiku about midnight code",
+                    "Plan a 3-day trip to Lisbon"
+                )
+                if (currentSuggestions == defaultList) {
+                    generateSuggestedPrompts()
+                }
             } catch (e: Exception) {
                 _modelStatus.value = ModelStatus.ERROR
                 _errorMessage.value = e.message ?: "Failed to load model"
@@ -444,12 +663,42 @@ class DaexInferenceViewModel(
         }
     }
 
+    fun deleteModel(model: Model) {
+        if (_isGenerating.value || _isReflecting.value || _isVectorizing.value) {
+            _errorMessage.value = "Cannot delete models while the engine is busy."
+            return
+        }
+        viewModelScope.launch {
+            if (modelManager == null) return@launch
+            try {
+                if (_currentModel.value?.id == model.id) {
+                    daexService.releaseContext()
+                    _currentModel.value = null
+                    _tokenSpeed.value = 0.0
+                    _modelStatus.value = ModelStatus.NOT_DOWNLOADED
+                }
+                modelManager.deleteModel(model)
+                refreshDownloadedModels()
+            } catch (e: Exception) {
+                android.util.Log.e("DaexInferenceViewModel", "Failed to delete model: ${model.name}", e)
+            }
+        }
+    }
+
     fun toggleGPU(model: Model? = null) {
+        if (_isGenerating.value || _isReflecting.value || _isVectorizing.value) {
+            _errorMessage.value = "Cannot change backend while the engine is busy."
+            return
+        }
         val nextBackend = if (_selectedBackend.value == BackendType.CPU) BackendType.GPU else BackendType.CPU
         setBackend(nextBackend, model)
     }
 
     fun setBackend(backend: BackendType, model: Model? = null) {
+        if (_isGenerating.value || _isReflecting.value || _isVectorizing.value) {
+            _errorMessage.value = "Cannot change backend while the engine is busy."
+            return
+        }
         val targetModel = model ?: _currentModel.value
         if (targetModel != null && !targetModel.supportedBackends.contains(backend)) {
             _errorMessage.value = "${targetModel.name} does not support ${backend.name} execution."
@@ -473,6 +722,7 @@ class DaexInferenceViewModel(
                     _selectedBackend.value = actualBackend
                     _hardwareState.value = actualBackend.name
                     _modelStatus.value = ModelStatus.READY
+                    preferences?.setLastUsedModel(targetModel.id, actualBackend.name)
                 } catch (e: Exception) {
                     _modelStatus.value = ModelStatus.ERROR
                     _errorMessage.value = e.message ?: "Failed to reload model"
@@ -480,6 +730,11 @@ class DaexInferenceViewModel(
             }
         } else {
             _hardwareState.value = backend.name
+            targetModel?.let {
+                viewModelScope.launch {
+                    preferences?.setLastUsedModel(it.id, backend.name)
+                }
+            }
         }
     }
 
@@ -501,20 +756,52 @@ class DaexInferenceViewModel(
 
             if (convId == null) return@launch
 
-            val userMsgId = System.currentTimeMillis().toString()
-            val modelMsgId = (System.currentTimeMillis() + 1).toString()
+            val userMsgId: String
+            val modelMsgId: String
+            val userMsg: Message
+            val modelMsg: Message
 
-            // Create messages: userMsg is CLEAN for UI and DB.
-            val userMsg = Message(id = userMsgId, role = "user", content = prompt)
-            val modelMsg = Message(id = modelMsgId, role = "model", content = "")
+            val currentMsgs = _messages.value
+            val lastUserIdx = currentMsgs.indexOfLast { it.role == "user" }
+            val lastModelIdx = currentMsgs.indexOfLast { it.role == "model" }
+            val lastMsgIsStopped = lastModelIdx != -1 && 
+                    currentMsgs[lastModelIdx].content.contains("[Generation stopped by user]")
 
-            _messages.value = _messages.value + listOf(userMsg, modelMsg)
-
-            daexMemory?.saveMessage(convId, userMsg)
-            daexMemory?.saveMessage(convId, modelMsg)
+            if (lastMsgIsStopped && lastUserIdx != -1 && lastModelIdx > lastUserIdx) {
+                // Edit last turn in-place in DB and memory
+                val oldUserMsg = currentMsgs[lastUserIdx]
+                val oldModelMsg = currentMsgs[lastModelIdx]
+                
+                userMsgId = oldUserMsg.id
+                modelMsgId = oldModelMsg.id
+                
+                userMsg = oldUserMsg.copy(content = prompt, timestamp = System.currentTimeMillis())
+                modelMsg = oldModelMsg.copy(content = "", thoughtContent = null, tokensPerSecond = 0.0, timestamp = System.currentTimeMillis() + 1)
+                
+                val updated = currentMsgs.toMutableList()
+                updated[lastUserIdx] = userMsg
+                updated[lastModelIdx] = modelMsg
+                _messages.value = updated
+                
+                daexMemory?.saveMessage(convId, userMsg)
+                daexMemory?.saveMessage(convId, modelMsg)
+            } else {
+                // Create new message turn
+                userMsgId = System.currentTimeMillis().toString()
+                modelMsgId = (System.currentTimeMillis() + 1).toString()
+                
+                userMsg = Message(id = userMsgId, role = "user", content = prompt)
+                modelMsg = Message(id = modelMsgId, role = "model", content = "")
+                
+                _messages.value = _messages.value + listOf(userMsg, modelMsg)
+                
+                daexMemory?.saveMessage(convId, userMsg)
+                daexMemory?.saveMessage(convId, modelMsg)
+            }
             
             _isGenerating.value = true
             _tokenSpeed.value = 0.0
+            triggerHapticFeedback(type = HapticType.START_RESPONSE)
 
             generationJob = viewModelScope.launch {
                 try {
@@ -615,8 +902,27 @@ class DaexInferenceViewModel(
                                         daexMemory?.saveMessage(convId, logMsg)
                                     }
                                 }
+                            } else {
+                                val convId = _currentConversationId.value
+                                if (convId != null) {
+                                    val messagesCopy = _messages.value.toMutableList()
+                                    val logIdx = messagesCopy.indexOfLast { 
+                                        it.role == "system" && it.content.startsWith("[SYSTEM_LOG]:") && it.content.endsWith("...")
+                                    }
+                                    if (logIdx != -1) {
+                                        val oldMsg = messagesCopy[logIdx]
+                                        val cleanContent = oldMsg.content.removeSuffix("...")
+                                        val updatedMsg = oldMsg.copy(content = cleanContent)
+                                        messagesCopy[logIdx] = updatedMsg
+                                        _messages.value = messagesCopy
+                                        viewModelScope.launch {
+                                            daexMemory?.saveMessage(convId, updatedMsg)
+                                        }
+                                    }
+                                }
                             }
-                        }
+                        },
+                        maxTokens = _maxTokens.value
                     ) { token ->
                         if (!isActive) return@generateResponse
                         rawText += token
@@ -654,6 +960,7 @@ class DaexInferenceViewModel(
                         }
                     }
                     _tokenSpeed.value = result.tokensPerSecond
+                    triggerHapticFeedback(type = HapticType.SUCCESS_COMPLETION)
                     
                     // Save final result to DB
                     val updatedList = _messages.value
@@ -682,6 +989,7 @@ class DaexInferenceViewModel(
                                 val recentMsgs = daexMemory?.getRecentHistory(convId, limit = 20) ?: emptyList()
                                 daexCoreMemory.compactMemory(recentMsgs, daexService)
                                 logMsg = logMsg.copy(content = "[SYSTEM_LOG]: GLOBAL MEMORY CURATED")
+                                generateSuggestedPrompts()
                             } catch (e: Exception) {
                                 android.util.Log.e("DaexInference", "Memory curation failed", e)
                                 logMsg = logMsg.copy(content = "[SYSTEM_LOG]: GLOBAL MEMORY CURATION FAILED")
@@ -699,10 +1007,19 @@ class DaexInferenceViewModel(
                     }
 
                 } catch (e: Exception) {
+                    val isCancellation = e is kotlinx.coroutines.CancellationException ||
+                                         e is java.util.concurrent.CancellationException ||
+                                         e.message?.contains("cancel", ignoreCase = true) == true
+                    
                     val updated = _messages.value.toMutableList()
                     val idx = updated.indexOfFirst { it.id == modelMsgId }
                     if (idx != -1) {
-                        val errorContent = updated[idx].content + "\n[Error: ${e.message ?: "Generation failed"}]"
+                        val messageToAppend = if (isCancellation) {
+                            "\n\n[Generation stopped by user]"
+                        } else {
+                            "\n[Error: ${e.message ?: "Generation failed"}]"
+                        }
+                        val errorContent = updated[idx].content + messageToAppend
                         updated[idx] = updated[idx].copy(content = errorContent)
                         _messages.value = updated
                         daexMemory?.saveMessage(convId, updated[idx])
@@ -724,6 +1041,13 @@ class DaexInferenceViewModel(
         _currentConversationId.value = null
         _messages.value = emptyList()
         _tokenSpeed.value = 0.0
+    }
+
+    fun deleteAllConversations() {
+        viewModelScope.launch {
+            daexMemory?.deleteAllConversations()
+            clearMessages()
+        }
     }
 
     fun deleteConversation(id: String) {
@@ -898,5 +1222,67 @@ class DaexInferenceViewModel(
             daexMemory?.saveMessage(convId, updatedMsg)
         }
         android.util.Log.d("DaexCompaction", "Compaction complete. Persisted summary.")
+    }
+
+    fun generateSuggestedPrompts() {
+        if (daexMemory == null || preferences == null) return
+        viewModelScope.launch {
+            if (!daexService.isLoaded() || _isGenerating.value) return@launch
+            
+            try {
+                android.util.Log.d("DaexSuggestions", "Generating personalized suggestions...")
+                
+                val convId = _currentConversationId.value ?: _conversations.value.firstOrNull()?.id
+                val recentHistory = if (convId != null) {
+                    daexMemory.getRecentHistory(convId, limit = 15)
+                        .filter { (it.role == "user" || it.role == "model") && !it.content.startsWith("[CONTEXT COMPACTION]:") }
+                } else {
+                    emptyList()
+                }
+                
+                val historyBlock = if (recentHistory.isNotEmpty()) {
+                    recentHistory.joinToString("\n") { "${it.role}: ${it.content}" }
+                } else {
+                    "(No recent conversation history)"
+                }
+
+                val systemPrompt = """
+                    You are a helpful assistant. Based on the following recent conversation history, suggest 3 short, personalized starter prompts (under 10 words each) the user is likely to ask next to continue or start a related topic.
+                    The suggestions must be actual chat messages, questions, or commands that a user would type, NOT task categories (e.g., say "Write a Python script for..." instead of "Python coding").
+                    
+                    RECENT CONVERSATION HISTORY:
+                    $historyBlock
+                    
+                    Output exactly three suggestions in the following format and nothing else. Do not add any preamble, conversational text, or explanation.
+                    
+                    PROMPT 1: <suggested prompt 1>
+                    PROMPT 2: <suggested prompt 2>
+                    PROMPT 3: <suggested prompt 3>
+                """.trimIndent()
+
+                val result = daexService.generateSilent(systemPrompt, maxTokens = 256).trim()
+                android.util.Log.d("DaexSuggestions", "Generated suggestions output: $result")
+                
+                val parsed = result.lines()
+                    .filter { it.contains("PROMPT ") && it.contains(":") }
+                    .map { it.substringAfter(":").trim().removeSurrounding("\"").removeSurrounding("'") }
+                    .filter { it.isNotBlank() }
+                    .take(3)
+                
+                if (parsed.size == 3) {
+                    preferences.setSuggestedPrompts(parsed)
+                    android.util.Log.d("DaexSuggestions", "Successfully saved 3 dynamic suggestions: $parsed")
+                } else {
+                    android.util.Log.w("DaexSuggestions", "Failed to parse 3 suggestions. Parsed: $parsed")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DaexSuggestions", "Failed to generate suggestions", e)
+            }
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        speechManager?.destroy()
     }
 }

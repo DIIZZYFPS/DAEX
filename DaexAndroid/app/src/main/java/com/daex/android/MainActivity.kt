@@ -15,6 +15,7 @@ import com.daex.android.services.DaexRagImpl
 import com.daex.android.ui.theme.DaexAppTheme
 import com.daex.android.ui.ExecutionScreen
 import com.daex.android.ui.GalleryScreen
+import com.daex.android.ui.SettingsScreen
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,13 +32,16 @@ import com.daex.android.ui.LandingScreen
 import com.daex.android.services.DaexPreferences
 
 enum class Screen {
-    LANDING, EXECUTION, GALLERY
+    LANDING, EXECUTION, GALLERY, SETTINGS
 }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
 
         val boxStore = MyObjectBox.builder().androidContext(this.applicationContext).build()
         val daexMemory = DaexMemory(boxStore)
@@ -60,7 +64,8 @@ class MainActivity : ComponentActivity() {
                     daexCoreMemory = daexCoreMemory,
                     preferences = daexPreferences,
                     daexRag = daexRag,
-                    daexSkillManager = daexSkillManager
+                    daexSkillManager = daexSkillManager,
+                    context = applicationContext
                 ) 
             }
             var currentScreen by remember { mutableStateOf<Screen?>(null) }
@@ -102,14 +107,29 @@ class MainActivity : ComponentActivity() {
                                 viewModel.disconnect()
                                 currentScreen = Screen.LANDING 
                             },
-                            onOpenGallery = { currentScreen = Screen.GALLERY }
+                            onOpenGallery = { currentScreen = Screen.GALLERY },
+                            onOpenSettings = { currentScreen = Screen.SETTINGS }
                         )
                     }
                     Screen.GALLERY -> {
+                        androidx.activity.compose.BackHandler {
+                            currentScreen = Screen.EXECUTION
+                        }
                         GalleryScreen(
                             viewModel = viewModel,
                             modelManager = modelManager,
                             onBack = { currentScreen = Screen.EXECUTION }
+                        )
+                    }
+                    Screen.SETTINGS -> {
+                        androidx.activity.compose.BackHandler {
+                            currentScreen = Screen.EXECUTION
+                        }
+                        SettingsScreen(
+                            viewModel = viewModel,
+                            modelManager = modelManager,
+                            onBack = { currentScreen = Screen.EXECUTION },
+                            onOpenGallery = { currentScreen = Screen.GALLERY }
                         )
                     }
                 }

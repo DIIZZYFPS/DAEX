@@ -19,13 +19,9 @@ import com.daex.android.ui.theme.DaexTheme
 
 @Composable
 fun SuggestedPrompts(
+    prompts: List<String>,
     onSelectPrompt: (String) -> Unit
 ) {
-    val prompts = listOf(
-        "Explain quantum entanglement simply",
-        "Write a haiku about midnight code",
-        "Plan a 3-day trip to Lisbon"
-    )
 
     Column(
         modifier = Modifier
