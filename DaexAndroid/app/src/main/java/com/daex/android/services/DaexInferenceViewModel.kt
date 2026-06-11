@@ -118,7 +118,7 @@ class DaexInferenceViewModel(
     val isReasoningEnabled: StateFlow<Boolean> = _isReasoningEnabled.asStateFlow()
 
     // Developer Settings StateFlows
-    private val _isSpeculativeDecodingEnabled = MutableStateFlow(true)
+    private val _isSpeculativeDecodingEnabled = MutableStateFlow(false)
     val isSpeculativeDecodingEnabled: StateFlow<Boolean> = _isSpeculativeDecodingEnabled.asStateFlow()
 
     private val _inferenceTemperature = MutableStateFlow(0.7f)

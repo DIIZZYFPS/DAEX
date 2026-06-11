@@ -23,7 +23,8 @@
         android:label="Daex"
         android:roundIcon="@drawable/daex_logo_static"
         android:supportsRtl="true"
-        android:theme="@android:style/Theme.NoTitleBar">
+        android:theme="@android:style/Theme.NoTitleBar"
+        android:extractNativeLibs="true">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -37,6 +38,10 @@
 
         <uses-native-library android:name="libvndksupport.so" android:required="false" />
         <uses-native-library android:name="libOpenCL.so" android:required="false" />
+        <uses-native-library android:name="libedgetpu_litert.so" android:required="false" />
+        <uses-native-library android:name="libedgetpu_client.google.so" android:required="false" />
+        <uses-native-library android:name="libedgetpu_util.so" android:required="false" />
+        <uses-native-library android:name="libedgetpu_tachyon.google.so" android:required="false" />
 
         <provider
             android:name="androidx.core.content.FileProvider"

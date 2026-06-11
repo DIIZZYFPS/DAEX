@@ -60,7 +60,7 @@ class DaexPreferences(private val context: Context) {
 
     // Developer Settings Flows
     val isSpeculativeDecodingFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[IS_SPECULATIVE_DECODING_ENABLED] ?: true
+        preferences[IS_SPECULATIVE_DECODING_ENABLED] ?: false
     }
 
     val inferenceTemperatureFlow: Flow<Float> = context.dataStore.data.map { preferences ->
