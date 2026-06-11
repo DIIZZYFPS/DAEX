@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.3.1...DaexAndroid-v0.3.2) (2026-06-11)
+
+
+### Bug Fixes
+
+* Google Tensor G5 TPU model loading and prompt inference hangs ([#19](https://github.com/DIIZZYFPS/DAEX/issues/19)) ([505f8a8](https://github.com/DIIZZYFPS/DAEX/commit/505f8a8f2811a3f27fcd55f83e0ab05aeef6f0ab))
+
 ## [0.3.1](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.3.0...DaexAndroid-v0.3.1) (2026-06-11)
 
 
