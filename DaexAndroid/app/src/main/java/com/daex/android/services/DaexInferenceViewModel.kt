@@ -114,7 +114,7 @@ class DaexInferenceViewModel(
     private val _isDarkMode = MutableStateFlow(true)
     val isDarkMode: StateFlow<Boolean> = _isDarkMode.asStateFlow()
 
-    private val _isReasoningEnabled = MutableStateFlow(false)
+    private val _isReasoningEnabled = MutableStateFlow(true)
     val isReasoningEnabled: StateFlow<Boolean> = _isReasoningEnabled.asStateFlow()
 
     // Developer Settings StateFlows
@@ -267,8 +267,8 @@ class DaexInferenceViewModel(
 
         // Autoload last used model if already downloaded
         viewModelScope.launch {
-            val modelId = "gemma-4-E2B-it-google-tensor-g5"
-            val backendStr = "NPU"
+            val modelId = preferences?.lastUsedModelIdFlow?.firstOrNull()
+            val backendStr = preferences?.lastUsedBackendFlow?.firstOrNull() ?: "CPU"
             android.util.Log.d("DaexAutoload", "Autoload check: modelId=$modelId, backend=$backendStr")
             if (modelId != null) {
                 val model = ModelBank.generativeModels.find { it.id == modelId }

@@ -43,7 +43,7 @@ class DaexPreferences(private val context: Context) {
     }
 
     val isReasoningEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
-        preferences[IS_REASONING_ENABLED] ?: false
+        preferences[IS_REASONING_ENABLED] ?: true
     }
 
     val isDarkModeFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
