@@ -21,46 +21,50 @@ class SpeechManager(
     fun startListening() {
         mainHandler.post {
             try {
-                if (speechRecognizer == null) {
-                    speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
-                        setRecognitionListener(object : RecognitionListener {
-                            override fun onReadyForSpeech(params: Bundle?) {
-                                onStateChanged(VoiceState.LISTENING)
+                // Pre-emptively clean up any stuck instances
+                cleanupRecognizer()
+
+                speechRecognizer = SpeechRecognizer.createSpeechRecognizer(context).apply {
+                    setRecognitionListener(object : RecognitionListener {
+                        override fun onReadyForSpeech(params: Bundle?) {
+                            onStateChanged(VoiceState.LISTENING)
+                        }
+
+                        override fun onBeginningOfSpeech() {}
+
+                        override fun onRmsChanged(rmsdB: Float) {
+                            // rmsdB usually ranges from -2f to 10f+ depending on volume
+                            val normalized = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
+                            onAmplitudeChanged(normalized)
+                        }
+
+                        override fun onBufferReceived(buffer: ByteArray?) {}
+
+                        override fun onEndOfSpeech() {
+                            onStateChanged(VoiceState.PROCESSING)
+                        }
+
+                        override fun onError(error: Int) {
+                            android.util.Log.e("SpeechManager", "Speech recognition error code: $error")
+                            onAmplitudeChanged(0f)
+                            onStateChanged(VoiceState.IDLE)
+                            cleanupRecognizer()
+                        }
+
+                        override fun onResults(results: Bundle?) {
+                            val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                            if (!matches.isNullOrEmpty()) {
+                                onResult(matches[0])
                             }
+                            onAmplitudeChanged(0f)
+                            onStateChanged(VoiceState.IDLE)
+                            cleanupRecognizer()
+                        }
 
-                            override fun onBeginningOfSpeech() {}
+                        override fun onPartialResults(partialResults: Bundle?) {}
 
-                            override fun onRmsChanged(rmsdB: Float) {
-                                // rmsdB usually ranges from -2f to 10f+ depending on volume
-                                val normalized = ((rmsdB + 2f) / 12f).coerceIn(0f, 1f)
-                                onAmplitudeChanged(normalized)
-                            }
-
-                            override fun onBufferReceived(buffer: ByteArray?) {}
-
-                            override fun onEndOfSpeech() {
-                                onStateChanged(VoiceState.PROCESSING)
-                            }
-
-                            override fun onError(error: Int) {
-                                onAmplitudeChanged(0f)
-                                onStateChanged(VoiceState.IDLE)
-                            }
-
-                            override fun onResults(results: Bundle?) {
-                                val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                                if (!matches.isNullOrEmpty()) {
-                                    onResult(matches[0])
-                                }
-                                onAmplitudeChanged(0f)
-                                onStateChanged(VoiceState.IDLE)
-                            }
-
-                            override fun onPartialResults(partialResults: Bundle?) {}
-
-                            override fun onEvent(eventType: Int, params: Bundle?) {}
-                        })
-                    }
+                        override fun onEvent(eventType: Int, params: Bundle?) {}
+                    })
                 }
 
                 val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
@@ -73,8 +77,18 @@ class SpeechManager(
             } catch (e: Exception) {
                 android.util.Log.e("SpeechManager", "Failed to start speech recognition", e)
                 onStateChanged(VoiceState.IDLE)
+                cleanupRecognizer()
             }
         }
+    }
+
+    private fun cleanupRecognizer() {
+        try {
+            speechRecognizer?.destroy()
+        } catch (e: Exception) {
+            android.util.Log.e("SpeechManager", "Failed to destroy speech recognizer", e)
+        }
+        speechRecognizer = null
     }
 
     fun stopListening() {
@@ -89,12 +103,7 @@ class SpeechManager(
 
     fun destroy() {
         mainHandler.post {
-            try {
-                speechRecognizer?.destroy()
-                speechRecognizer = null
-            } catch (e: Exception) {
-                android.util.Log.e("SpeechManager", "Failed to destroy speech recognizer", e)
-            }
+            cleanupRecognizer()
         }
     }
 }
