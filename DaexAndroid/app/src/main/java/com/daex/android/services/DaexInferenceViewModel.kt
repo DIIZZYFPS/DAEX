@@ -805,9 +805,9 @@ class DaexInferenceViewModel(
 
             generationJob = viewModelScope.launch {
                 try {
-                    // Filter out the placeholder model message from history sent to model
+                    // Filter out the placeholder model message and system logs from history sent to model
                     val fullHistory = (daexMemory?.getRecentHistory(convId) ?: emptyList())
-                        .filter { it.id != modelMsgId }
+                        .filter { it.id != modelMsgId && it.role != "system" }
                     
                     // TOKEN-BASED COMPACTION & PRESSURE TRACKING
                     var activeHistory = fullHistory.filter { !it.isCompacted }
