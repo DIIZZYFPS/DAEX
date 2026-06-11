@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.3.0...DaexAndroid-v0.3.1) (2026-06-11)
+
+
+### Bug Fixes
+
+* UI fixes ([#17](https://github.com/DIIZZYFPS/DAEX/issues/17)) ([b8debad](https://github.com/DIIZZYFPS/DAEX/commit/b8debad54b15d7e474e45e9482eff4c8414e17ae))
+
 ## [0.3.0](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.2.1...DaexAndroid-v0.3.0) (2026-06-09)
 
 
