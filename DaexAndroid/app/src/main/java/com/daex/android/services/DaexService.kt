@@ -78,41 +78,24 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 Log.d("DaexService", "Initializing LiteRT-LM Engine with model: $modelPath (backend=$backendType, speculative=$isSpeculativeDecodingEnabled)")
                 
                 // Set native log severity to FATAL to suppress noisy NPU dispatch warning logs
-                try {
-                    com.google.ai.edge.litertlm.Engine.setNativeMinLogSeverity(com.google.ai.edge.litertlm.LogSeverity.FATAL)
-                } catch (e: Throwable) {
-                    Log.w("DaexService", "Failed to set native log severity", e)
-                }
+                // try {
+                //     com.google.ai.edge.litertlm.Engine.setNativeMinLogSeverity(com.google.ai.edge.litertlm.LogSeverity.FATAL)
+                // } catch (e: Throwable) {
+                //     Log.w("DaexService", "Failed to set native log severity", e)
+                // }
 
                 // Enable Speculative Decoding / MTP drafters for high-performance inference
                 try {
                     @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
-                    com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = isSpeculativeDecodingEnabled
+                    com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = false
                 } catch (e: Throwable) {
                     Log.w("DaexService", "Failed to set speculative decoding flag", e)
                 }
 
                 val backend = when (backendType) {
                     BackendType.NPU -> {
-                        val libDir = context.applicationInfo.nativeLibraryDir
-                        
-                        // Check if a dispatch library is present in either nativeLibraryDir or filesDir
-                        val hasDispatchLibInNative = java.io.File(libDir).listFiles()?.any {
-                            it.name.startsWith("libLiteRtDispatch") && it.name.endsWith(".so")
-                        } == true
-                        val hasDispatchLibInFiles = context.filesDir.listFiles()?.any {
-                            it.name.startsWith("libLiteRtDispatch") && it.name.endsWith(".so")
-                        } == true
-                        
-                        if (!hasDispatchLibInNative && !hasDispatchLibInFiles) {
-                            throw Exception("NPU Backend requested, but no LiteRT Dispatch library (libLiteRtDispatch_*.so) was found in $libDir or ${context.filesDir.absolutePath}.")
-                        }
-                        
-                        val targetLibDir = if (hasDispatchLibInFiles) {
-                            context.filesDir.absolutePath
-                        } else {
-                            libDir
-                        }
+                        val targetLibDir = prepareDispatchLibrary()
+                        Log.i(TAG, "Using dispatch library dir for NPU backend: $targetLibDir")
                         Backend.NPU(targetLibDir)
                     }
                     BackendType.GPU -> Backend.GPU()
@@ -419,5 +402,77 @@ class DaexServiceImpl(private val context: Context) : DaexService {
             } catch (e: Exception) {}
         }
         return responseText.toString()
+    }
+
+    private fun getBestDispatchLibraryName(): String {
+        val socModel = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+            android.os.Build.SOC_MODEL.lowercase()
+        } else {
+            ""
+        }
+        val hardware = android.os.Build.HARDWARE.lowercase()
+        val board = android.os.Build.BOARD.lowercase()
+
+        Log.d(TAG, "Detecting SoC - SOC_MODEL: $socModel, HARDWARE: $hardware, BOARD: $board")
+
+        return when {
+            socModel.contains("tensor") || socModel.contains("google") ||
+            hardware.contains("gs") || hardware.contains("g5") || hardware.contains("tensor") ||
+            board.contains("gs") || board.contains("rango") || board.contains("comet") || board.contains("caiman") || board.contains("tokay") || board.contains("komodo") -> {
+                "libLiteRtDispatch_GoogleTensor.so"
+            }
+            socModel.contains("mediatek") || socModel.contains("dimensity") || socModel.startsWith("mt") ||
+            hardware.contains("mt") || hardware.contains("mediatek") ||
+            board.contains("mt") -> {
+                "libLiteRtDispatch_MediaTek.so"
+            }
+            else -> {
+                "libLiteRtDispatch_Qualcomm.so"
+            }
+        }
+    }
+
+    private fun prepareDispatchLibrary(): String {
+        val libName = getBestDispatchLibraryName()
+        Log.i(TAG, "Selected dispatch library for this device: $libName")
+        
+        val dispatchDir = java.io.File(context.filesDir, "dispatch")
+        if (!dispatchDir.exists()) {
+            dispatchDir.mkdirs()
+        }
+        
+        // Clean up all files in the dispatch directory to ensure only one library is present
+        dispatchDir.listFiles()?.forEach { file ->
+            try {
+                file.delete()
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to delete old dispatch file: ${file.name}", e)
+            }
+        }
+        
+        val sourcePath = "${context.applicationInfo.nativeLibraryDir}/$libName"
+        val targetFile = java.io.File(dispatchDir, libName)
+        
+        try {
+            Log.i(TAG, "Creating symlink from ${targetFile.absolutePath} pointing to $sourcePath")
+            android.system.Os.symlink(sourcePath, targetFile.absolutePath)
+            Log.i(TAG, "Successfully created symlink for NPU dispatch library.")
+        } catch (symEx: Exception) {
+            Log.w(TAG, "Failed to create symlink, falling back to copying file", symEx)
+            try {
+                java.io.File(sourcePath).inputStream().use { input ->
+                    java.io.FileOutputStream(targetFile).use { output ->
+                        input.copyTo(output)
+                    }
+                }
+                Log.i(TAG, "Successfully copied NPU dispatch library as fallback.")
+            } catch (copyEx: Exception) {
+                Log.e(TAG, "Failed to copy NPU dispatch library", copyEx)
+                // Return nativeLibraryDir directly as a last resort
+                return context.applicationInfo.nativeLibraryDir
+            }
+        }
+        
+        return dispatchDir.absolutePath
     }
 }

@@ -9,6 +9,7 @@ plugins {
 android {
     namespace = "com.daex.android"
     compileSdk = 36
+    ndkVersion = "30.0.14904198"
 
     defaultConfig {
         applicationId = "com.daex.android"
@@ -20,6 +21,15 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
             useSupportLibrary = true
+        }
+        ndk {
+            abiFilters.add("arm64-v8a")
+        }
+    }
+
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDirs("src/main/jniLibs")
         }
     }
 
@@ -44,6 +54,9 @@ android {
         compose = true
     }
     packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
@@ -79,7 +92,7 @@ dependencies {
     implementation("com.mikepenz:multiplatform-markdown-renderer-m3:0.25.0")
 
     // LiteRT-LM Inference Engine
-    implementation("com.google.ai.edge.litertlm:litertlm-android:0.12.0")
+    implementation("com.google.ai.edge.litertlm:litertlm-android:0.13.1")
     
     // Kotlin reflection (needed for LiteRT tool reflection)
     implementation("org.jetbrains.kotlin:kotlin-reflect:2.0.21")
