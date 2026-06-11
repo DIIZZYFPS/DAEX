@@ -78,6 +78,7 @@ fun ExecutionScreen(
     val voiceState by viewModel.voiceState.collectAsState()
     val voiceAmplitude by viewModel.voiceAmplitude.collectAsState()
     val selectedBackend by viewModel.selectedBackend.collectAsState()
+    val suggestedPrompts by viewModel.suggestedPrompts.collectAsState()
     
     val context = LocalContext.current
 
@@ -701,14 +702,17 @@ fun ExecutionScreen(
             // Chat Area or Welcome
             Box(modifier = Modifier.weight(1f)) {
                 if (messages.isEmpty()) {
-                    SuggestedPrompts(onSelectPrompt = {
-                        viewModel.triggerHapticFeedback(context)
-                        if (isModelReady && !isGenerating) {
-                            viewModel.submitPrompt(it)
-                        } else if (!isModelReady) {
-                            (currentModel ?: selectedModel).let { model -> viewModel.loadModel(model) }
+                    SuggestedPrompts(
+                        prompts = suggestedPrompts,
+                        onSelectPrompt = {
+                            viewModel.triggerHapticFeedback(context)
+                            if (isModelReady && !isGenerating) {
+                                viewModel.submitPrompt(it)
+                            } else if (!isModelReady) {
+                                (currentModel ?: selectedModel).let { model -> viewModel.loadModel(model) }
+                            }
                         }
-                    })
+                    )
                 } else {
                     val visibleMessages = messages.filter { !it.content.startsWith("[CONTEXT COMPACTION]:") }
                     LazyColumn(

@@ -31,6 +31,7 @@ class DaexPreferences(private val context: Context) {
         val MAX_TOKENS = intPreferencesKey("max_tokens")
         val IS_HAPTIC_ENABLED = booleanPreferencesKey("is_haptic_enabled")
         val IS_AURA_ENABLED = booleanPreferencesKey("is_aura_enabled")
+        val SUGGESTED_PROMPTS = stringPreferencesKey("suggested_prompts")
     }
 
     val lastUsedModelIdFlow: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -92,6 +93,19 @@ class DaexPreferences(private val context: Context) {
 
     val isAuraEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[IS_AURA_ENABLED] ?: true
+    }
+
+    val suggestedPromptsFlow: Flow<List<String>> = context.dataStore.data.map { preferences ->
+        val saved = preferences[SUGGESTED_PROMPTS]
+        if (!saved.isNullOrBlank()) {
+            saved.split("\n").filter { it.isNotBlank() }
+        } else {
+            listOf(
+                "Explain quantum entanglement simply",
+                "Write a haiku about midnight code",
+                "Plan a 3-day trip to Lisbon"
+            )
+        }
     }
 
     suspend fun setDarkMode(isDark: Boolean) {
@@ -177,6 +191,12 @@ class DaexPreferences(private val context: Context) {
     suspend fun setAuraEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[IS_AURA_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setSuggestedPrompts(prompts: List<String>) {
+        context.dataStore.edit { preferences ->
+            preferences[SUGGESTED_PROMPTS] = prompts.joinToString("\n")
         }
     }
 }

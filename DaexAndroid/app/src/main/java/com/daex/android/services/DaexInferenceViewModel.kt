@@ -145,6 +145,15 @@ class DaexInferenceViewModel(
     private val _isAuraEnabled = MutableStateFlow(true)
     val isAuraEnabled: StateFlow<Boolean> = _isAuraEnabled.asStateFlow()
 
+    private val _suggestedPrompts = MutableStateFlow<List<String>>(
+        listOf(
+            "Explain quantum entanglement simply",
+            "Write a haiku about midnight code",
+            "Plan a 3-day trip to Lisbon"
+        )
+    )
+    val suggestedPrompts: StateFlow<List<String>> = _suggestedPrompts.asStateFlow()
+
     // Voice Mode State Flows
     private val _voiceState = MutableStateFlow(VoiceState.IDLE)
     val voiceState: StateFlow<VoiceState> = _voiceState.asStateFlow()
@@ -229,6 +238,12 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             preferences?.isAuraEnabledFlow?.collectLatest { enabled ->
                 _isAuraEnabled.value = enabled
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.suggestedPromptsFlow?.collectLatest { list ->
+                _suggestedPrompts.value = list
             }
         }
 
@@ -622,6 +637,17 @@ class DaexInferenceViewModel(
                 _modelStatus.value = ModelStatus.READY
                 android.util.Log.d("DaexAutoload", "Model loaded successfully. Saving configuration to preferences: id=${model.id}, backend=${actualBackend.name}")
                 preferences?.setLastUsedModel(model.id, actualBackend.name)
+
+                // If suggestions are still the default, try generating personalized ones once model is ready
+                val currentSuggestions = _suggestedPrompts.value
+                val defaultList = listOf(
+                    "Explain quantum entanglement simply",
+                    "Write a haiku about midnight code",
+                    "Plan a 3-day trip to Lisbon"
+                )
+                if (currentSuggestions == defaultList) {
+                    generateSuggestedPrompts()
+                }
             } catch (e: Exception) {
                 _modelStatus.value = ModelStatus.ERROR
                 _errorMessage.value = e.message ?: "Failed to load model"
@@ -963,6 +989,7 @@ class DaexInferenceViewModel(
                                 val recentMsgs = daexMemory?.getRecentHistory(convId, limit = 20) ?: emptyList()
                                 daexCoreMemory.compactMemory(recentMsgs, daexService)
                                 logMsg = logMsg.copy(content = "[SYSTEM_LOG]: GLOBAL MEMORY CURATED")
+                                generateSuggestedPrompts()
                             } catch (e: Exception) {
                                 android.util.Log.e("DaexInference", "Memory curation failed", e)
                                 logMsg = logMsg.copy(content = "[SYSTEM_LOG]: GLOBAL MEMORY CURATION FAILED")
@@ -1195,6 +1222,63 @@ class DaexInferenceViewModel(
             daexMemory?.saveMessage(convId, updatedMsg)
         }
         android.util.Log.d("DaexCompaction", "Compaction complete. Persisted summary.")
+    }
+
+    fun generateSuggestedPrompts() {
+        if (daexMemory == null || preferences == null) return
+        viewModelScope.launch {
+            if (!daexService.isLoaded() || _isGenerating.value) return@launch
+            
+            try {
+                android.util.Log.d("DaexSuggestions", "Generating personalized suggestions...")
+                
+                val convId = _currentConversationId.value ?: _conversations.value.firstOrNull()?.id
+                val recentHistory = if (convId != null) {
+                    daexMemory.getRecentHistory(convId, limit = 15)
+                        .filter { (it.role == "user" || it.role == "model") && !it.content.startsWith("[CONTEXT COMPACTION]:") }
+                } else {
+                    emptyList()
+                }
+                
+                val historyBlock = if (recentHistory.isNotEmpty()) {
+                    recentHistory.joinToString("\n") { "${it.role}: ${it.content}" }
+                } else {
+                    "(No recent conversation history)"
+                }
+
+                val systemPrompt = """
+                    You are a helpful assistant. Based on the following recent conversation history, suggest 3 short, personalized starter prompts (under 10 words each) the user is likely to ask next to continue or start a related topic.
+                    The suggestions must be actual chat messages, questions, or commands that a user would type, NOT task categories (e.g., say "Write a Python script for..." instead of "Python coding").
+                    
+                    RECENT CONVERSATION HISTORY:
+                    $historyBlock
+                    
+                    Output exactly three suggestions in the following format and nothing else. Do not add any preamble, conversational text, or explanation.
+                    
+                    PROMPT 1: <suggested prompt 1>
+                    PROMPT 2: <suggested prompt 2>
+                    PROMPT 3: <suggested prompt 3>
+                """.trimIndent()
+
+                val result = daexService.generateSilent(systemPrompt, maxTokens = 256).trim()
+                android.util.Log.d("DaexSuggestions", "Generated suggestions output: $result")
+                
+                val parsed = result.lines()
+                    .filter { it.contains("PROMPT ") && it.contains(":") }
+                    .map { it.substringAfter(":").trim().removeSurrounding("\"").removeSurrounding("'") }
+                    .filter { it.isNotBlank() }
+                    .take(3)
+                
+                if (parsed.size == 3) {
+                    preferences.setSuggestedPrompts(parsed)
+                    android.util.Log.d("DaexSuggestions", "Successfully saved 3 dynamic suggestions: $parsed")
+                } else {
+                    android.util.Log.w("DaexSuggestions", "Failed to parse 3 suggestions. Parsed: $parsed")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DaexSuggestions", "Failed to generate suggestions", e)
+            }
+        }
     }
 
     override fun onCleared() {
