@@ -11,6 +11,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import java.util.UUID
 
 data class Conversation(
@@ -24,6 +26,7 @@ data class Conversation(
 class DaexMemory(private val boxStore: BoxStore) {
     private val conversationBox = boxStore.boxFor(ConversationEntity::class.java)
     private val messageBox = boxStore.boxFor(MessageEntity::class.java)
+    private val saveMutex = Mutex()
 
     fun getAllConversations(): Flow<List<Conversation>> {
         return conversationBox.query {
@@ -58,35 +61,37 @@ class DaexMemory(private val boxStore: BoxStore) {
     }
 
     suspend fun saveMessage(conversationId: String, message: Message, embedding: FloatArray? = null) = withContext(Dispatchers.IO) {
-        var entity = messageBox.query {
-            equal(MessageEntity_.uuid, message.id, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
-        }.findFirst()
+        saveMutex.withLock {
+            var entity = messageBox.query {
+                equal(MessageEntity_.uuid, message.id, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+            }.findFirst()
 
-        if (entity == null) {
-            entity = MessageEntity(
-                uuid = message.id,
-                conversationId = conversationId,
-                role = message.role,
-                content = message.content,
-                timestamp = message.timestamp,
-                tokensPerSecond = message.tokensPerSecond,
-                thoughtContent = message.thoughtContent,
-                isPinned = message.isPinned,
-                isCompacted = message.isCompacted,
-                embedding = embedding
-            )
-        } else {
-            entity.content = message.content
-            entity.timestamp = message.timestamp
-            entity.tokensPerSecond = message.tokensPerSecond
-            entity.thoughtContent = message.thoughtContent
-            entity.isPinned = message.isPinned
-            entity.isCompacted = message.isCompacted
-            if (embedding != null) {
-                entity.embedding = embedding
+            if (entity == null) {
+                entity = MessageEntity(
+                    uuid = message.id,
+                    conversationId = conversationId,
+                    role = message.role,
+                    content = message.content,
+                    timestamp = message.timestamp,
+                    tokensPerSecond = message.tokensPerSecond,
+                    thoughtContent = message.thoughtContent,
+                    isPinned = message.isPinned,
+                    isCompacted = message.isCompacted,
+                    embedding = embedding
+                )
+            } else {
+                entity.content = message.content
+                entity.timestamp = message.timestamp
+                entity.tokensPerSecond = message.tokensPerSecond
+                entity.thoughtContent = message.thoughtContent
+                entity.isPinned = message.isPinned
+                entity.isCompacted = message.isCompacted
+                if (embedding != null) {
+                    entity.embedding = embedding
+                }
             }
+            messageBox.put(entity)
         }
-        messageBox.put(entity)
     }
 
     suspend fun deleteConversation(conversationId: String) = withContext(Dispatchers.IO) {
