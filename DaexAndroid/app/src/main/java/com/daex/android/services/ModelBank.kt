@@ -21,22 +21,22 @@ data class Model(
 
 object ModelBank {
     val embeddingModel = Model(
-        id = "nomic-embed-text-v1.5-q4_k_m",
-        name = "Nomic Embed Text v1.5",
-        size = 85_000_000L,
-        description = "High-performance embedding model for vector search and RAG.",
-        requiredRAM = 500_000_000L,
-        downloadUrl = "https://huggingface.co/nomic-ai/nomic-embed-text-v1.5-GGUF/resolve/main/nomic-embed-text-v1.5.Q4_K_M.gguf",
+        id = "bert-embedder-litert",
+        name = "BERT Text Embedder (LiteRT)",
+        size = 102_284_792L,
+        description = "Optimized LiteRT text embedding model for on-device vector search and hybrid RAG.",
+        requiredRAM = 256_000_000L,
+        downloadUrl = "https://storage.googleapis.com/mediapipe-models/text_embedder/bert_embedder/float32/1/bert_embedder.tflite",
         extension = "tflite",
         isEmbedding = true,
         supportedBackends = listOf(BackendType.CPU),
-        provider = "Nomic",
-        familyId = "nomic-embed",
-        familyName = "Nomic Embed",
-        sizeName = "v1.5",
+        provider = "Google",
+        familyId = "bert-embedder",
+        familyName = "BERT Embedder",
+        sizeName = "1.0",
         variantName = "CPU",
         targetHardware = null,
-        maxContextTokens = 4096
+        maxContextTokens = 512
     )
 
     val generativeModels: List<Model>

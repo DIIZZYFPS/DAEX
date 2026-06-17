@@ -5,7 +5,7 @@
   "entities": [
     {
       "id": "1:4095657031921874799",
-      "lastPropertyId": "6:3951602212242598787",
+      "lastPropertyId": "7:4043227628750667164",
       "name": "ConversationEntity",
       "properties": [
         {
@@ -35,6 +35,11 @@
           "id": "5:4614395859049049603",
           "name": "createdAt",
           "type": 6
+        },
+        {
+          "id": "7:4043227628750667164",
+          "name": "attachedFileNames",
+          "type": 9
         }
       ],
       "relations": []

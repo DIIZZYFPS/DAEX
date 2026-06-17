@@ -6,7 +6,7 @@ import com.daex.android.database.MessageEntity
 import com.daex.android.database.MessageEntity_
 import io.objectbox.BoxStore
 import io.objectbox.kotlin.query
-import io.objectbox.kotlin.flow
+import io.objectbox.kotlin.toFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +19,8 @@ data class Conversation(
     val id: String,
     val title: String,
     val modelId: String,
-    val createdAt: Long
+    val createdAt: Long,
+    val attachedFileNames: List<String> = emptyList()
 )
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
@@ -28,20 +29,31 @@ class DaexMemory(private val boxStore: BoxStore) {
     private val messageBox = boxStore.boxFor(MessageEntity::class.java)
     private val saveMutex = Mutex()
 
-    fun getAllConversations(): Flow<List<Conversation>> {
-        return conversationBox.query {
-            orderDesc(ConversationEntity_.createdAt)
-        }.flow().map { entities -> 
-            entities.map { it.toDomain() } 
+    suspend fun getAllConversationsList(): List<Conversation> = withContext(Dispatchers.IO) {
+        android.util.Log.d("DaexMemory", "getAllConversationsList called")
+        try {
+            val entities = conversationBox.query {
+                orderDesc(ConversationEntity_.createdAt)
+            }.find()
+            android.util.Log.d("DaexMemory", "Found ${entities.size} conversations")
+            entities.map { it.toDomain() }
+        } catch (e: Exception) {
+            android.util.Log.e("DaexMemory", "Error in getAllConversationsList", e)
+            emptyList()
         }
     }
 
-    fun getMessagesForConversation(conversationId: String): Flow<List<Message>> {
-        return messageBox.query {
-            equal(MessageEntity_.conversationId, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
-            order(MessageEntity_.timestamp)
-        }.flow().map { entities -> 
-            entities.map { it.toDomain() } 
+    suspend fun getMessagesForConversationList(conversationId: String): List<Message> = withContext(Dispatchers.IO) {
+        android.util.Log.d("DaexMemory", "getMessagesForConversationList called for $conversationId")
+        try {
+            val entities = messageBox.query {
+                equal(MessageEntity_.conversationId, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+                order(MessageEntity_.timestamp)
+            }.find()
+            entities.map { it.toDomain() }
+        } catch (e: Exception) {
+            android.util.Log.e("DaexMemory", "Error in getMessagesForConversationList", e)
+            emptyList()
         }
     }
 
@@ -55,12 +67,20 @@ class DaexMemory(private val boxStore: BoxStore) {
 
     suspend fun createConversation(modelId: String, title: String = "New Execution"): String = withContext(Dispatchers.IO) {
         val id = UUID.randomUUID().toString()
-        val conversation = ConversationEntity(uuid = id, title = title, modelId = modelId)
-        conversationBox.put(conversation)
+        android.util.Log.d("DaexMemory", "createConversation uuid=$id, title=$title, modelId=$modelId")
+        try {
+            val conversation = ConversationEntity(uuid = id, title = title, modelId = modelId)
+            conversationBox.put(conversation)
+            android.util.Log.d("DaexMemory", "Successfully created and put conversation uuid=$id")
+        } catch (e: Exception) {
+            android.util.Log.e("DaexMemory", "Failed to put conversation uuid=$id", e)
+            throw e
+        }
         id
     }
 
     suspend fun saveMessage(conversationId: String, message: Message, embedding: FloatArray? = null) = withContext(Dispatchers.IO) {
+        android.util.Log.d("DaexMemory", "saveMessage convId=$conversationId, messageId=${message.id}, role=${message.role}")
         saveMutex.withLock {
             var entity = messageBox.query {
                 equal(MessageEntity_.uuid, message.id, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
@@ -91,6 +111,16 @@ class DaexMemory(private val boxStore: BoxStore) {
                 }
             }
             messageBox.put(entity)
+        }
+    }
+
+    suspend fun updateAttachedFiles(conversationId: String, files: List<String>) = withContext(Dispatchers.IO) {
+        val entity = conversationBox.query {
+            equal(ConversationEntity_.uuid, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+        }.findFirst()
+        if (entity != null) {
+            entity.attachedFileNames = files.joinToString("|")
+            conversationBox.put(entity)
         }
     }
 
@@ -154,12 +184,16 @@ class DaexMemory(private val boxStore: BoxStore) {
         contextMessages.map { it.toDomain() }
     }
 
-    private fun ConversationEntity.toDomain() = Conversation(
-        id = this.uuid,
-        title = this.title,
-        modelId = this.modelId,
-        createdAt = this.createdAt
-    )
+    private fun ConversationEntity.toDomain(): Conversation {
+        android.util.Log.d("DaexMemory", "toDomain for conversation uuid=${this.uuid}, title=${this.title}")
+        return Conversation(
+            id = this.uuid,
+            title = this.title,
+            modelId = this.modelId,
+            createdAt = this.createdAt,
+            attachedFileNames = (this.attachedFileNames ?: "").split("|").filter { it.isNotBlank() }
+        )
+    }
 
     private fun MessageEntity.toDomain() = Message(
         id = this.uuid,

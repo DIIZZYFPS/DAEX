@@ -73,7 +73,9 @@ fun ExecutionScreen(
     val isReasoningEnabled by viewModel.isReasoningEnabled.collectAsState()
     val isVectorizing by viewModel.isVectorizing.collectAsState()
     val uploadedFiles by viewModel.uploadedFiles.collectAsState()
+    val attachedFiles by viewModel.attachedFiles.collectAsState()
     val downloadedModelIds by viewModel.downloadedModelIds.collectAsState()
+    var documentLibraryVisible by remember { mutableStateOf(false) }
     val isAuraEnabled by viewModel.isAuraEnabled.collectAsState()
     val voiceState by viewModel.voiceState.collectAsState()
     val voiceAmplitude by viewModel.voiceAmplitude.collectAsState()
@@ -247,7 +249,23 @@ fun ExecutionScreen(
     ) { uri ->
         uri?.let {
             try {
-                val fileName = uri.lastPathSegment?.substringAfterLast('/') ?: "uploaded_file"
+                var fileName: String? = null
+                if (uri.scheme == "content") {
+                    val cursor = context.contentResolver.query(uri, null, null, null, null)
+                    cursor?.use { c ->
+                        if (c.moveToFirst()) {
+                            val displayNameIndex = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                            if (displayNameIndex != -1) {
+                                fileName = c.getString(displayNameIndex)
+                            }
+                        }
+                    }
+                }
+                if (fileName == null) {
+                    fileName = uri.path?.substringAfterLast('/')
+                }
+                val finalFileName = fileName ?: "uploaded_file"
+                
                 val mimeType = context.contentResolver.getType(uri) ?: ""
                 
                 val textContent = if (mimeType == "application/pdf") {
@@ -271,7 +289,7 @@ fun ExecutionScreen(
                 }
 
                 if (textContent.isNotBlank()) {
-                    viewModel.uploadFile(fileName, textContent)
+                    viewModel.uploadFile(finalFileName, textContent)
                 }
             } catch (e: Exception) {
                 android.util.Log.e("ExecutionScreen", "Failed to read file", e)
@@ -781,12 +799,12 @@ fun ExecutionScreen(
                     }
 
                     // Uploaded file chips
-                    if (uploadedFiles.isNotEmpty()) {
+                    if (attachedFiles.isNotEmpty()) {
                         LazyRow(
                             modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            items(uploadedFiles.size) { index ->
+                            items(attachedFiles.size) { index ->
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(16.dp))
@@ -795,7 +813,7 @@ fun ExecutionScreen(
                                         .padding(horizontal = 10.dp, vertical = 4.dp)
                                 ) {
                                     BasicText(
-                                        text = uploadedFiles[index],
+                                        text = attachedFiles[index],
                                         style = DaexTheme.typography.caption.copy(
                                             color = DaexTheme.colors.primary
                                         )
@@ -942,7 +960,7 @@ fun ExecutionScreen(
                             DaexButton(
                                 onClick = {
                                     viewModel.triggerHapticFeedback(context)
-                                    filePickerLauncher.launch("*/*")
+                                    documentLibraryVisible = true
                                 },
                                 enabled = !isGenerating && !isVectorizing && isModelReady,
                                 modifier = Modifier.size(36.dp),
@@ -1078,6 +1096,18 @@ fun ExecutionScreen(
             onSave = { 
                 viewModel.saveCoreMemory(it)
                 memoryEditorVisible = false
+            }
+        )
+
+        DocumentLibraryModal(
+            visible = documentLibraryVisible,
+            onClose = { documentLibraryVisible = false },
+            uploadedFiles = uploadedFiles,
+            attachedFiles = attachedFiles,
+            onToggleAttachment = { viewModel.toggleAttachedFile(it) },
+            onDeleteFromLibrary = { viewModel.deleteUploadedFile(it) },
+            onUploadNew = {
+                filePickerLauncher.launch("*/*")
             }
         )
     }
