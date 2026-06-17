@@ -87,7 +87,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 // Enable Speculative Decoding / MTP drafters for high-performance inference
                 try {
                     @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
-                    com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = false
+                    com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = isSpeculativeDecodingEnabled
                 } catch (e: Throwable) {
                     Log.w("DaexService", "Failed to set speculative decoding flag", e)
                 }
@@ -113,6 +113,10 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 try {
                     newEngine = Engine(config)
                     newEngine.initialize()
+                    try {
+                        @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
+                        com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = false
+                    } catch (e: Throwable) {}
                 } catch (specEx: Exception) {
                     // If speculative decoding initialization failed, retry without it
                     Log.w("DaexService", "Failed to initialize with speculative decoding, retrying with it disabled", specEx)

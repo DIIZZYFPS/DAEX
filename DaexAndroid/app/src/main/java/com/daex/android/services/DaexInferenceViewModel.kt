@@ -373,9 +373,31 @@ class DaexInferenceViewModel(
     }
 
     fun setSpeculativeDecodingEnabled(enabled: Boolean) {
+        if (_isGenerating.value || _isReflecting.value || _isVectorizing.value) {
+            _errorMessage.value = "Cannot change settings while the engine is busy."
+            return
+        }
         _isSpeculativeDecodingEnabled.value = enabled
         viewModelScope.launch {
             preferences?.setSpeculativeDecodingEnabled(enabled)
+        }
+
+        val targetModel = _currentModel.value
+        if (targetModel != null && daexService.isLoaded()) {
+            _modelStatus.value = ModelStatus.LOADING
+            viewModelScope.launch {
+                try {
+                    daexService.releaseContext()
+                    val modelPath = modelManager?.getModelPath(targetModel) ?: ""
+                    val actualBackend = daexService.initContext(modelPath, _selectedBackend.value, enabled)
+                    _selectedBackend.value = actualBackend
+                    _hardwareState.value = actualBackend.name
+                    _modelStatus.value = ModelStatus.READY
+                } catch (e: Exception) {
+                    _modelStatus.value = ModelStatus.ERROR
+                    _errorMessage.value = e.message ?: "Failed to reload model with speculative decoding"
+                }
+            }
         }
     }
 
