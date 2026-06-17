@@ -94,6 +94,9 @@ dependencies {
     // LiteRT-LM Inference Engine
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.13.1")
     
+    // MediaPipe Tasks Text for LiteRT embedding inference
+    implementation("com.google.mediapipe:tasks-text:0.10.14")
+    
     // Kotlin reflection (needed for LiteRT tool reflection)
     implementation("org.jetbrains.kotlin:kotlin-reflect:2.0.21")
 

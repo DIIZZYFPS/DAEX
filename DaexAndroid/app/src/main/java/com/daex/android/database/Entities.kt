@@ -11,7 +11,8 @@ data class ConversationEntity(
     @Unique var uuid: String = "",
     var title: String = "",
     var modelId: String = "",
-    var createdAt: Long = System.currentTimeMillis()
+    var createdAt: Long = System.currentTimeMillis(),
+    var attachedFileNames: String? = ""
 )
 
 @Entity
@@ -27,7 +28,7 @@ data class MessageEntity(
     var isPinned: Boolean = false,
     var isCompacted: Boolean = false,
     
-    @HnswIndex(dimensions = 768)
+    @HnswIndex(dimensions = 384)
     var embedding: FloatArray? = null
 )
 
@@ -40,6 +41,6 @@ data class DocumentChunkEntity(
     var content: String = "",
     var createdAt: Long = System.currentTimeMillis(),
 
-    @HnswIndex(dimensions = 768)
+    @HnswIndex(dimensions = 384)
     var embedding: FloatArray? = null
 )

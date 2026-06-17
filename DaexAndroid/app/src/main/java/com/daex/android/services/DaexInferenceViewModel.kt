@@ -77,6 +77,9 @@ class DaexInferenceViewModel(
     private val _uploadedFiles = MutableStateFlow<List<String>>(emptyList())
     val uploadedFiles: StateFlow<List<String>> = _uploadedFiles.asStateFlow()
 
+    private val _attachedFiles = MutableStateFlow<List<String>>(emptyList())
+    val attachedFiles: StateFlow<List<String>> = _attachedFiles.asStateFlow()
+
     private val _tokenSpeed = MutableStateFlow(0.0)
     val tokenSpeed: StateFlow<Double> = _tokenSpeed.asStateFlow()
 
@@ -247,23 +250,7 @@ class DaexInferenceViewModel(
             }
         }
 
-        viewModelScope.launch {
-            daexMemory?.getAllConversations()?.collect {
-                _conversations.value = it
-            }
-        }
-
-        viewModelScope.launch {
-            _currentConversationId.flatMapLatest { id ->
-                if (id != null) {
-                    daexMemory?.getMessagesForConversation(id) ?: flowOf(emptyList())
-                } else {
-                    flowOf(emptyList())
-                }
-            }.collectLatest {
-                _messages.value = it
-            }
-        }
+        refreshConversations()
 
         // Autoload last used model if already downloaded
         viewModelScope.launch {
@@ -327,6 +314,12 @@ class DaexInferenceViewModel(
         }
     }
 
+    fun refreshConversations() {
+        viewModelScope.launch {
+            _conversations.value = daexMemory?.getAllConversationsList() ?: emptyList()
+        }
+    }
+
     fun setThemeColor(color: Color) {
         _primaryColor.value = color
         viewModelScope.launch {
@@ -380,9 +373,31 @@ class DaexInferenceViewModel(
     }
 
     fun setSpeculativeDecodingEnabled(enabled: Boolean) {
+        if (_isGenerating.value || _isReflecting.value || _isVectorizing.value) {
+            _errorMessage.value = "Cannot change settings while the engine is busy."
+            return
+        }
         _isSpeculativeDecodingEnabled.value = enabled
         viewModelScope.launch {
             preferences?.setSpeculativeDecodingEnabled(enabled)
+        }
+
+        val targetModel = _currentModel.value
+        if (targetModel != null && daexService.isLoaded()) {
+            _modelStatus.value = ModelStatus.LOADING
+            viewModelScope.launch {
+                try {
+                    daexService.releaseContext()
+                    val modelPath = modelManager?.getModelPath(targetModel) ?: ""
+                    val actualBackend = daexService.initContext(modelPath, _selectedBackend.value, enabled)
+                    _selectedBackend.value = actualBackend
+                    _hardwareState.value = actualBackend.name
+                    _modelStatus.value = ModelStatus.READY
+                } catch (e: Exception) {
+                    _modelStatus.value = ModelStatus.ERROR
+                    _errorMessage.value = e.message ?: "Failed to reload model with speculative decoding"
+                }
+            }
         }
     }
 
@@ -508,11 +523,15 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             val conv = _conversations.value.find { it.id == id }
             if (conv != null) {
+                _attachedFiles.value = conv.attachedFileNames
                 val model = ModelBank.generativeModels.find { it.id == conv.modelId }
                 if (model != null && _currentModel.value?.id != model.id) {
                     loadModel(model)
                 }
+            } else {
+                _attachedFiles.value = emptyList()
             }
+            _messages.value = daexMemory?.getMessagesForConversationList(id) ?: emptyList()
         }
     }
 
@@ -526,7 +545,7 @@ class DaexInferenceViewModel(
         }
     }
     
-    // ... rest of class unchanged
+    
 
     fun checkModelStatus(model: Model) {
         viewModelScope.launch {
@@ -752,6 +771,10 @@ class DaexInferenceViewModel(
                 val modelId = _currentModel.value?.id ?: ModelBank.generativeModels.first().id
                 convId = daexMemory?.createConversation(modelId, prompt.take(20) + "...")
                 _currentConversationId.value = convId
+                if (convId != null && _attachedFiles.value.isNotEmpty()) {
+                    daexMemory?.updateAttachedFiles(convId, _attachedFiles.value)
+                }
+                refreshConversations()
             }
 
             if (convId == null) return@launch
@@ -852,9 +875,12 @@ class DaexInferenceViewModel(
 
                     // --- FILE RAG CONTEXT INJECTION ---
                     var systemContext = coreMemoryContent
-                    if (daexRag != null && daexRag.hasDocuments()) {
+                    if (daexRag != null && daexRag.hasDocuments() && _attachedFiles.value.isNotEmpty()) {
                         try {
-                            val relevantChunks = daexRag.queryDocuments(prompt)
+                            val relevantChunks = daexRag.queryDocuments(
+                                query = prompt,
+                                activeFileNames = _attachedFiles.value
+                            )
                             if (relevantChunks.isNotEmpty()) {
                                 val contextBlock = relevantChunks.joinToString("\n---\n")
                                 systemContext += "\n\n<uploaded_documents>\n$contextBlock\n</uploaded_documents>\n"
@@ -1066,12 +1092,14 @@ class DaexInferenceViewModel(
         _currentConversationId.value = null
         _messages.value = emptyList()
         _tokenSpeed.value = 0.0
+        _attachedFiles.value = emptyList()
     }
 
     fun deleteAllConversations() {
         viewModelScope.launch {
             daexMemory?.deleteAllConversations()
             clearMessages()
+            refreshConversations()
         }
     }
 
@@ -1081,6 +1109,7 @@ class DaexInferenceViewModel(
             if (_currentConversationId.value == id) {
                 clearMessages()
             }
+            refreshConversations()
         }
     }
 
@@ -1110,6 +1139,17 @@ class DaexInferenceViewModel(
             try {
                 daexRag?.ingestFile(fileName, content)
                 refreshUploadedFiles()
+                
+                // Auto-attach to the current session
+                val currentAttached = _attachedFiles.value.toMutableList()
+                if (!currentAttached.contains(fileName)) {
+                    currentAttached.add(fileName)
+                    _attachedFiles.value = currentAttached
+                    val convId = _currentConversationId.value
+                    if (convId != null) {
+                        daexMemory?.updateAttachedFiles(convId, currentAttached)
+                    }
+                }
             } catch (e: Exception) {
                 android.util.Log.e("DaexInference", "File upload failed", e)
                 _errorMessage.value = "Failed to process file: ${e.message}"
@@ -1124,8 +1164,34 @@ class DaexInferenceViewModel(
             try {
                 daexRag?.deleteFileByName(fileName)
                 refreshUploadedFiles()
+                
+                // Remove from active session attachments
+                val currentAttached = _attachedFiles.value.toMutableList()
+                if (currentAttached.remove(fileName)) {
+                    _attachedFiles.value = currentAttached
+                    val convId = _currentConversationId.value
+                    if (convId != null) {
+                        daexMemory?.updateAttachedFiles(convId, currentAttached)
+                    }
+                }
             } catch (e: Exception) {
                 android.util.Log.e("DaexInference", "File deletion failed", e)
+            }
+        }
+    }
+
+    fun toggleAttachedFile(fileName: String) {
+        viewModelScope.launch {
+            val currentAttached = _attachedFiles.value.toMutableList()
+            if (currentAttached.contains(fileName)) {
+                currentAttached.remove(fileName)
+            } else {
+                currentAttached.add(fileName)
+            }
+            _attachedFiles.value = currentAttached
+            val convId = _currentConversationId.value
+            if (convId != null) {
+                daexMemory?.updateAttachedFiles(convId, currentAttached)
             }
         }
     }

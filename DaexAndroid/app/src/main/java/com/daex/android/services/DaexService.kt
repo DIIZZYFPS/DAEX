@@ -87,7 +87,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 // Enable Speculative Decoding / MTP drafters for high-performance inference
                 try {
                     @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
-                    com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = false
+                    com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = isSpeculativeDecodingEnabled
                 } catch (e: Throwable) {
                     Log.w("DaexService", "Failed to set speculative decoding flag", e)
                 }
@@ -113,6 +113,10 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 try {
                     newEngine = Engine(config)
                     newEngine.initialize()
+                    try {
+                        @OptIn(com.google.ai.edge.litertlm.ExperimentalApi::class)
+                        com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = false
+                    } catch (e: Throwable) {}
                 } catch (specEx: Exception) {
                     // If speculative decoding initialization failed, retry without it
                     Log.w("DaexService", "Failed to initialize with speculative decoding, retrying with it disabled", specEx)
@@ -285,10 +289,10 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         conversation = activeConversation
 
         var decodeStartTime = 0L
-        var tokenCount = 0
         var responseTokenCount = 0
         var isLimitReached = false
         val fullText = StringBuilder()
+        val allGeneratedText = StringBuilder()
 
         var hasStartedThinking = false
         var hasEndedThinking = false
@@ -314,19 +318,21 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                         if (!hasStartedThinking) {
                             onToken("<|think|>")
                             hasStartedThinking = true
+                            allGeneratedText.append("<|think|>")
                         }
-                        tokenCount++
                         onToken(thinkingChunk!!)
+                        allGeneratedText.append(thinkingChunk)
                     }
 
                     if (hasNormal) {
                         if (hasStartedThinking && !hasEndedThinking) {
                             onToken("</think|>")
                             hasEndedThinking = true
+                            allGeneratedText.append("</think|>")
                         }
-                        tokenCount++
                         responseTokenCount++
                         fullText.append(chunk)
+                        allGeneratedText.append(chunk)
                         onToken(chunk)
 
                         if (responseTokenCount >= maxTokens) {
@@ -349,6 +355,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
 
         if (hasStartedThinking && !hasEndedThinking) {
             onToken("</think|>")
+            allGeneratedText.append("</think|>")
         }
 
         val elapsedSeconds = if (decodeStartTime > 0L) {
@@ -356,12 +363,20 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         } else {
             0.0
         }
-        val tps = if (elapsedSeconds > 0.0) tokenCount / elapsedSeconds else 0.0
+        val estimatedTokens = estimateTokenCount(allGeneratedText.toString())
+        val tps = if (elapsedSeconds > 0.0) estimatedTokens / elapsedSeconds else 0.0
 
         return GenerationResult(
             text = fullText.toString(),
             tokensPerSecond = Math.round(tps * 10.0) / 10.0
         )
+    }
+
+    private fun estimateTokenCount(text: String): Double {
+        val wordCount = text.split(Regex("\\s+")).filter { it.isNotEmpty() }.size
+        val wordEstimator = wordCount * 1.3
+        val charEstimator = text.length / 4.0
+        return maxOf(wordEstimator, charEstimator)
     }
 
     override fun isLoaded(): Boolean = isLoaded

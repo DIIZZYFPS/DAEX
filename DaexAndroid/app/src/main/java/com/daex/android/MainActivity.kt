@@ -50,7 +50,7 @@ class MainActivity : ComponentActivity() {
         val modelManager = ModelManager(this)
         val daexEmbedder = DaexEmbedder(this, modelManager)
         val daexCoreMemory = com.daex.android.services.DaexCoreMemoryImpl(this)
-        val daexRag = DaexRagImpl(boxStore, daexEmbedder)
+        val daexRag = DaexRagImpl(this.applicationContext, boxStore, daexEmbedder)
         val daexSkillManager = com.daex.android.services.DaexSkillManagerImpl(this)
 
         setContent {
