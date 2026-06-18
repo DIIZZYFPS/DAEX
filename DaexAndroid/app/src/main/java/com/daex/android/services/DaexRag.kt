@@ -37,23 +37,63 @@ class DaexRagImpl(
     override suspend fun ingestFile(fileName: String, content: String, onProgress: (Int, Int) -> Unit) {
         withContext(Dispatchers.Default) {
             val documentId = UUID.randomUUID().toString()
-            val chunks = chunkText(content)
-            Log.d("DaexRag", "Ingesting file '$fileName': ${chunks.size} chunks")
+            
+            // Dynamic chunk sizing based on content length
+            val contentLength = content.length
+            val maxChunkSize = when {
+                contentLength < 50_000 -> 300 // < 50 KB
+                contentLength < 500_000 -> 600 // < 500 KB
+                else -> 1000 // >= 500 KB
+            }
+            val overlap = when {
+                contentLength < 50_000 -> 50
+                contentLength < 500_000 -> 100
+                else -> 150
+            }
+
+            val chunks = chunkText(content, maxChunkSize, overlap)
+            Log.d("DaexRag", "Ingesting file '$fileName' (size: $contentLength chars): ${chunks.size} chunks (maxSize: $maxChunkSize, overlap: $overlap)")
+
+            val entities = mutableListOf<DocumentChunkEntity>()
+            val ftsChunks = mutableListOf<com.daex.android.database.DaexFtsDatabaseHelper.FtsMatch>()
+            val batchSize = 200
 
             chunks.forEachIndexed { index, chunkText ->
                 try {
                     val vector = embedder.generateEmbedding(chunkText, isQuery = false)
-                    val entity = DocumentChunkEntity(
-                        documentId = documentId,
-                        fileName = fileName,
-                        chunkIndex = index,
-                        content = chunkText,
-                        embedding = vector
+                    entities.add(
+                        DocumentChunkEntity(
+                            documentId = documentId,
+                            fileName = fileName,
+                            chunkIndex = index,
+                            content = chunkText,
+                            embedding = vector
+                        )
                     )
-                    withContext(Dispatchers.IO) {
-                        chunkBox.put(entity)
-                        ftsDbHelper.insertChunk(documentId, fileName, index, chunkText)
+                    ftsChunks.add(
+                        com.daex.android.database.DaexFtsDatabaseHelper.FtsMatch(
+                            documentId = documentId,
+                            fileName = fileName,
+                            chunkIndex = index,
+                            content = chunkText,
+                            score = 0.0
+                        )
+                    )
+
+                    // Write batch to database when limit reached or at the last chunk
+                    if (entities.size >= batchSize || index == chunks.lastIndex) {
+                        val entitiesBatch = entities.toList()
+                        val ftsBatch = ftsChunks.toList()
+                        entities.clear()
+                        ftsChunks.clear()
+
+                        withContext(Dispatchers.IO) {
+                            chunkBox.put(entitiesBatch)
+                            ftsDbHelper.insertChunks(ftsBatch)
+                        }
+                        Log.d("DaexRag", "Committed batch of ${entitiesBatch.size} chunks to database.")
                     }
+
                     onProgress(index + 1, chunks.size)
                     Log.d("DaexRag", "Embedded chunk ${index + 1}/${chunks.size}")
                 } catch (e: Exception) {

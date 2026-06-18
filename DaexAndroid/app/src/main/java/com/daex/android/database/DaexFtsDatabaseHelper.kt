@@ -67,6 +67,38 @@ class DaexFtsDatabaseHelper(private val context: Context) {
         }
     }
 
+    suspend fun insertChunks(chunks: List<FtsMatch>) = mutex.withLock {
+        try {
+            val conn = getOrOpenConnection()
+            conn.prepare("BEGIN TRANSACTION").use { it.step() }
+            try {
+                conn.prepare("""
+                    INSERT INTO $TABLE_FTS ($COLUMN_DOC_ID, $COLUMN_FILE_NAME, $COLUMN_CHUNK_INDEX, $COLUMN_CONTENT)
+                    VALUES (?, ?, ?, ?)
+                """).use { stmt ->
+                    for (chunk in chunks) {
+                        stmt.bindText(1, chunk.documentId)
+                        stmt.bindText(2, chunk.fileName)
+                        stmt.bindLong(3, chunk.chunkIndex.toLong())
+                        stmt.bindText(4, chunk.content)
+                        stmt.step()
+                        stmt.clearBindings()
+                    }
+                }
+                conn.prepare("COMMIT").use { it.step() }
+            } catch (e: Exception) {
+                try {
+                    conn.prepare("ROLLBACK").use { it.step() }
+                } catch (rollbackEx: Exception) {
+                    Log.e("DaexFtsDatabaseHelper", "Failed to rollback FTS transaction", rollbackEx)
+                }
+                throw e
+            }
+        } catch (e: Exception) {
+            Log.e("DaexFtsDatabaseHelper", "Failed to batch insert chunks into FTS5", e)
+        }
+    }
+
     suspend fun deleteChunksByDocumentId(documentId: String) = mutex.withLock {
         try {
             val conn = getOrOpenConnection()

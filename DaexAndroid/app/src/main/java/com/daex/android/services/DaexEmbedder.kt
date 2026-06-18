@@ -38,15 +38,37 @@ class DaexEmbedder(
                         channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size())
                     }
 
-                    val baseOptions = BaseOptions.builder()
-                        .setModelAssetBuffer(byteBuffer)
-                        .build()
+                    var embedderCreated = false
+                    try {
+                        val baseOptions = BaseOptions.builder()
+                            .setModelAssetBuffer(byteBuffer)
+                            .setDelegate(com.google.mediapipe.tasks.core.Delegate.GPU)
+                            .build()
 
-                    val options = TextEmbedderOptions.builder()
-                        .setBaseOptions(baseOptions)
-                        .build()
+                        val options = TextEmbedderOptions.builder()
+                            .setBaseOptions(baseOptions)
+                            .build()
 
-                    textEmbedder = TextEmbedder.createFromOptions(context, options)
+                        textEmbedder = TextEmbedder.createFromOptions(context, options)
+                        embedderCreated = true
+                        Log.d("DaexEmbedder", "MediaPipe TextEmbedder initialized successfully with GPU delegate.")
+                    } catch (gpuException: Exception) {
+                        Log.w("DaexEmbedder", "Failed to initialize TextEmbedder with GPU, falling back to CPU", gpuException)
+                    }
+
+                    if (!embedderCreated) {
+                        val baseOptions = BaseOptions.builder()
+                            .setModelAssetBuffer(byteBuffer)
+                            .setDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
+                            .build()
+
+                        val options = TextEmbedderOptions.builder()
+                            .setBaseOptions(baseOptions)
+                            .build()
+
+                        textEmbedder = TextEmbedder.createFromOptions(context, options)
+                        Log.d("DaexEmbedder", "MediaPipe TextEmbedder initialized successfully with CPU delegate.")
+                    }
                     Log.d("DaexEmbedder", "MediaPipe TextEmbedder initialized successfully.")
                 } catch (e: Exception) {
                     Log.e("DaexEmbedder", "Failed to initialize MediaPipe TextEmbedder", e)
