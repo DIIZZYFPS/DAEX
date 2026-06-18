@@ -110,7 +110,7 @@ class DaexRagImpl(
 
             // 1. Vector search using ObjectBox
             val queryVector = embedder.generateEmbedding(query, isQuery = true)
-            val vectorCond = DocumentChunkEntity_.embedding.nearestNeighbors(queryVector, 20)
+            val vectorCond = DocumentChunkEntity_.embedding.nearestNeighbors(queryVector, 200)
             
             var fileCond: io.objectbox.query.QueryCondition<DocumentChunkEntity>? = null
             for (fileName in activeFileNames) {
@@ -124,11 +124,22 @@ class DaexRagImpl(
                 vectorCond
             }
             
-            val vectorResults = chunkBox.query(combinedCond).build().find()
+            val vectorResultsWithScores = chunkBox.query(combinedCond).build().findWithScores()
+            Log.d("DaexRag", "Vector results count: ${vectorResultsWithScores.size}")
+            vectorResultsWithScores.forEachIndexed { i, res ->
+                val entity = res.get()
+                Log.d("DaexRag", "  Vector match #$i (score=${res.score}): [Index ${entity.chunkIndex}] ${entity.content.take(60).replace("\n", " ")}...")
+            }
+            val vectorResults = vectorResultsWithScores.map { it.get() }.take(15)
 
             // 2. Full-Text Search with BM25 using SQLite
-            val ftsResults = ftsDbHelper.searchChunks(query, 50)
-                .filter { it.fileName in activeFileNames }
+            val ftsRawResults = ftsDbHelper.searchChunks(query, 50)
+            Log.d("DaexRag", "FTS raw results count: ${ftsRawResults.size}")
+            ftsRawResults.forEachIndexed { i, res ->
+                Log.d("DaexRag", "  FTS match #$i (score=${res.score}): [Index ${res.chunkIndex}] ${res.content.take(60).replace("\n", " ")}...")
+            }
+            val ftsResults = ftsRawResults
+                .filter { it.score < -0.1 && it.fileName in activeFileNames }
                 .take(20)
 
             // 3. Reciprocal Rank Fusion (RRF) combination
@@ -146,7 +157,7 @@ class DaexRagImpl(
             ftsResults.forEachIndexed { index, match ->
                 val key = "${match.fileName}_${match.chunkIndex}"
                 val rank = index + 1
-                rrfScores[key] = (rrfScores[key] ?: 0.0) + 1.0 / (60.0 + rank)
+                rrfScores[key] = (rrfScores[key] ?: 0.0) + 2.0 / (60.0 + rank)
                 if (!chunkContents.containsKey(key)) {
                     chunkContents[key] = match.content
                 }
