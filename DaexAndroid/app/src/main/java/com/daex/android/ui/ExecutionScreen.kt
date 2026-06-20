@@ -39,6 +39,10 @@ import com.daex.android.services.VoiceState
 import androidx.compose.animation.Crossfade
 import com.daex.android.ui.components.*
 import com.daex.android.services.BackendType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Text
@@ -81,6 +85,7 @@ fun ExecutionScreen(
     val voiceAmplitude by viewModel.voiceAmplitude.collectAsState()
     val selectedBackend by viewModel.selectedBackend.collectAsState()
     val suggestedPrompts by viewModel.suggestedPrompts.collectAsState()
+    val isVoiceSessionActive by viewModel.isLiveVoiceActive.collectAsState()
     
     val context = LocalContext.current
 
@@ -821,209 +826,318 @@ fun ExecutionScreen(
                     }
  
                     // Main Floating Pill
-                    Box(
+                    BoxWithConstraints(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(IntrinsicSize.Min)
+                            .wrapContentHeight()
                     ) {
-                        // Blurred Background Pill Layer
-                        Box(
-                            modifier = Modifier
-                                .matchParentSize()
-                                .clip(RoundedCornerShape(28.dp))
-                                .graphicsLayer {
-                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                                        renderEffect = android.graphics.RenderEffect
-                                            .createBlurEffect(20f, 20f, android.graphics.Shader.TileMode.DECAL)
-                                            .asComposeRenderEffect()
-                                    }
-                                }
-                                .background(DaexTheme.colors.background.copy(alpha = 0.85f))
-                                .drawBehind {
-                                    if (voiceModeProgress > 0f) {
-                                        val waveAlpha = voiceModeProgress
-                                        val baseLineY = size.height * 0.5f
-                                        val widthF = size.width
-                                        val piF = kotlin.math.PI.toFloat()
-
-                                        // Wave 1 (Back, slow, dark)
-                                        val path1 = Path()
-                                        val amplitude1 = 4.dp.toPx() + (smoothedAmplitude * 10.dp.toPx())
-                                        path1.moveTo(0f, size.height)
-                                        for (x in 0..size.width.toInt() step 10) {
-                                            val xf = x.toFloat()
-                                            val envelope = kotlin.math.sin(xf / widthF * piF)
-                                            val sineVal = kotlin.math.sin(xf * 0.01f + wavePhase)
-                                            val y = baseLineY + sineVal * amplitude1 * 0.4f * envelope
-                                            path1.lineTo(xf, y)
-                                        }
-                                        path1.lineTo(size.width, size.height)
-                                        path1.close()
-                                        drawPath(
-                                            path = path1,
-                                            brush = Brush.verticalGradient(
-                                                colors = listOf(
-                                                    auraColor.copy(alpha = waveAlpha * 0.25f),
-                                                    Color.Transparent
-                                                ),
-                                                startY = baseLineY - amplitude1,
-                                                endY = size.height
-                                            )
-                                        )
-
-                                        // Wave 2 (Middle, medium speed)
-                                        val path2 = Path()
-                                        val amplitude2 = 6.dp.toPx() + (smoothedAmplitude * 14.dp.toPx())
-                                        path2.moveTo(0f, size.height)
-                                        for (x in 0..size.width.toInt() step 10) {
-                                            val xf = x.toFloat()
-                                            val envelope = kotlin.math.sin(xf / widthF * piF)
-                                            val sineVal = kotlin.math.sin(xf * 0.015f - wavePhase * 2.0f + 1.0f)
-                                            val y = baseLineY + sineVal * amplitude2 * 0.6f * envelope
-                                            path2.lineTo(xf, y)
-                                        }
-                                        path2.lineTo(size.width, size.height)
-                                        path2.close()
-                                        drawPath(
-                                            path = path2,
-                                            brush = Brush.verticalGradient(
-                                                colors = listOf(
-                                                    auraColor.copy(alpha = waveAlpha * 0.40f),
-                                                    Color.Transparent
-                                                ),
-                                                startY = baseLineY - amplitude2,
-                                                endY = size.height
-                                            )
-                                        )
-
-                                        // Wave 3 (Front, fast, dynamic)
-                                        val path3 = Path()
-                                        val amplitude3 = 8.dp.toPx() + (smoothedAmplitude * 18.dp.toPx())
-                                        path3.moveTo(0f, size.height)
-                                        for (x in 0..size.width.toInt() step 10) {
-                                            val xf = x.toFloat()
-                                            val envelope = kotlin.math.sin(xf / widthF * piF)
-                                            val sineVal = kotlin.math.sin(xf * 0.02f + wavePhase * 3.0f + 2.5f)
-                                            val y = baseLineY + sineVal * amplitude3 * 0.8f * envelope
-                                            path3.lineTo(xf, y)
-                                        }
-                                        path3.lineTo(size.width, size.height)
-                                        path3.close()
-                                        drawPath(
-                                            path = path3,
-                                            brush = Brush.verticalGradient(
-                                                colors = listOf(
-                                                    auraColor.copy(alpha = waveAlpha * 0.60f),
-                                                    Color.Transparent
-                                                ),
-                                                startY = baseLineY - amplitude3,
-                                                endY = size.height
-                                            )
-                                        )
-                                    }
-                                }
-                                .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.15f), RoundedCornerShape(28.dp))
+                        val maxBarWidth = maxWidth
+                        val barWidth by animateDpAsState(
+                            targetValue = if (isVoiceSessionActive) 120.dp else maxBarWidth,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            label = "bar_width"
+                        )
+                        val transitionProgress by animateFloatAsState(
+                            targetValue = if (isVoiceSessionActive) 1f else 0f,
+                            animationSpec = spring(stiffness = Spring.StiffnessMediumLow),
+                            label = "transition_progress"
                         )
 
-                        // Foreground Input Row (Pill Style)
-                        Row(
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(4.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                                .width(barWidth)
+                                .height(52.dp)
+                                .align(Alignment.Center)
                         ) {
-                            // Attachment button
-                            DaexButton(
-                                onClick = {
-                                    viewModel.triggerHapticFeedback(context)
-                                    documentLibraryVisible = true
-                                },
-                                enabled = !isGenerating && !isVectorizing && isModelReady,
-                                modifier = Modifier.size(36.dp),
-                                backgroundColor = Color.Transparent,
-                                useDefaultPadding = false,
-                                shape = CircleShape
-                            ) {
-                                BasicText(
-                                    text = "+",
-                                    style = DaexTheme.typography.body1.copy(
-                                        color = DaexTheme.colors.primary,
-                                        fontSize = 18.sp
-                                    )
-                                )
-                            }
-                            val placeholderText = when {
-                                !isModelReady -> "Engine not loaded..."
-                                voiceState == VoiceState.LISTENING -> "Listening to speech..."
-                                voiceState == VoiceState.PROCESSING -> "Processing speech..."
-                                else -> "Initialize execution with Icarus..."
-                            }
-                            DaexTextField(
-                                value = inputText,
-                                onValueChange = { inputText = it },
-                                modifier = Modifier.weight(1f),
-                                placeholder = placeholderText,
-                                enabled = !isGenerating && isModelReady && voiceState != VoiceState.LISTENING,
-                                backgroundColor = Color.Transparent
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            DaexButton(
-                                onClick = {
-                                    if (isGenerating) {
-                                        viewModel.triggerHapticFeedback(context)
-                                        viewModel.cancelGeneration()
-                                        val lastUserMsg = messages.lastOrNull { it.role == "user" }
-                                        if (lastUserMsg != null) {
-                                            inputText = lastUserMsg.content
-                                        }
-                                    } else if (inputText.isNotEmpty()) {
-                                        viewModel.triggerHapticFeedback(context)
-                                        viewModel.submitPrompt(inputText)
-                                        inputText = ""
-                                    } else {
-                                        // Voice mode mic tap
-                                        val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(
-                                            context,
-                                            android.Manifest.permission.RECORD_AUDIO
-                                        )
-                                        if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                                            viewModel.triggerHapticFeedback(context)
-                                            viewModel.toggleVoiceInput { recognizedText ->
-                                                inputText = recognizedText
-                                            }
-                                        } else {
-                                            recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                            // Blurred Background Pill Layer
+                            Box(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .clip(RoundedCornerShape(28.dp))
+                                    .graphicsLayer {
+                                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                                            renderEffect = android.graphics.RenderEffect
+                                                .createBlurEffect(20f, 20f, android.graphics.Shader.TileMode.DECAL)
+                                                .asComposeRenderEffect()
                                         }
                                     }
-                                },
-                                enabled = (isGenerating || isModelReady) && (isGenerating || inputText.isNotEmpty() || voiceState != VoiceState.PROCESSING),
-                                modifier = Modifier.size(44.dp),
-                                backgroundColor = if (isGenerating) DaexTheme.colors.primary else if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.1f) else DaexTheme.colors.primary,
-                                useDefaultPadding = false,
-                                shape = CircleShape
+                                    .background(DaexTheme.colors.background.copy(alpha = 0.85f))
+                                    .drawBehind {
+                                        val waveAlpha = voiceModeProgress
+                                        if (waveAlpha > 0f) {
+                                            val baseLineY = size.height * 0.5f
+                                            val widthF = size.width
+                                            val piF = kotlin.math.PI.toFloat()
+
+                                            // Wave 1 (Back, slow, dark)
+                                            val path1 = Path()
+                                            val amplitude1 = 4.dp.toPx() + (smoothedAmplitude * 10.dp.toPx())
+                                            path1.moveTo(0f, size.height)
+                                            for (x in 0..size.width.toInt() step 10) {
+                                                val xf = x.toFloat()
+                                                val envelope = kotlin.math.sin(xf / widthF * piF)
+                                                val sineVal = kotlin.math.sin(xf * 0.01f + wavePhase)
+                                                val y = baseLineY + sineVal * amplitude1 * 0.4f * envelope
+                                                path1.lineTo(xf, y)
+                                            }
+                                            path1.lineTo(size.width, size.height)
+                                            path1.close()
+                                            drawPath(
+                                                path = path1,
+                                                brush = Brush.verticalGradient(
+                                                    colors = listOf(
+                                                        auraColor.copy(alpha = waveAlpha * 0.25f),
+                                                        Color.Transparent
+                                                    ),
+                                                    startY = baseLineY - amplitude1,
+                                                    endY = size.height
+                                                )
+                                            )
+
+                                            // Wave 2 (Middle, medium speed)
+                                            val path2 = Path()
+                                            val amplitude2 = 6.dp.toPx() + (smoothedAmplitude * 14.dp.toPx())
+                                            path2.moveTo(0f, size.height)
+                                            for (x in 0..size.width.toInt() step 10) {
+                                                val xf = x.toFloat()
+                                                val envelope = kotlin.math.sin(xf / widthF * piF)
+                                                val sineVal = kotlin.math.sin(xf * 0.015f - wavePhase * 2.0f + 1.0f)
+                                                val y = baseLineY + sineVal * amplitude2 * 0.6f * envelope
+                                                path2.lineTo(xf, y)
+                                            }
+                                            path2.lineTo(size.width, size.height)
+                                            path2.close()
+                                            drawPath(
+                                                path = path2,
+                                                brush = Brush.verticalGradient(
+                                                    colors = listOf(
+                                                        auraColor.copy(alpha = waveAlpha * 0.40f),
+                                                        Color.Transparent
+                                                    ),
+                                                    startY = baseLineY - amplitude2,
+                                                    endY = size.height
+                                                )
+                                            )
+
+                                            // Wave 3 (Front, fast, dynamic)
+                                            val path3 = Path()
+                                            val amplitude3 = 8.dp.toPx() + (smoothedAmplitude * 18.dp.toPx())
+                                            path3.moveTo(0f, size.height)
+                                            for (x in 0..size.width.toInt() step 10) {
+                                                val xf = x.toFloat()
+                                                val envelope = kotlin.math.sin(xf / widthF * piF)
+                                                val sineVal = kotlin.math.sin(xf * 0.02f + wavePhase * 3.0f + 2.5f)
+                                                val y = baseLineY + sineVal * amplitude3 * 0.8f * envelope
+                                                path3.lineTo(xf, y)
+                                            }
+                                            path3.lineTo(size.width, size.height)
+                                            path3.close()
+                                            drawPath(
+                                                path = path3,
+                                                brush = Brush.verticalGradient(
+                                                    colors = listOf(
+                                                        auraColor.copy(alpha = waveAlpha * 0.60f),
+                                                        Color.Transparent
+                                                    ),
+                                                    startY = baseLineY - amplitude3,
+                                                    endY = size.height
+                                                )
+                                            )
+                                        }
+                                    }
+                                    .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.15f), RoundedCornerShape(28.dp))
+                            )
+
+                            // Foreground Input Row (Pill Style)
+                            Row(
+                                modifier = Modifier
+                                    .matchParentSize()
+                                    .padding(4.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                if (isGenerating) {
-                                    DaexStopIcon(
-                                        color = DaexTheme.colors.onPrimary,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                } else if (voiceState == VoiceState.PROCESSING) {
-                                    DaexLoader(size = 28.dp)
-                                } else {
-                                    Crossfade(targetState = inputText.isEmpty(), label = "morph_button") { isEmpty ->
-                                        if (isEmpty) {
-                                            DaexMicIcon(
-                                                color = if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary,
-                                                modifier = Modifier.size(18.dp)
+                                val textFieldWeight = (1f - transitionProgress).coerceAtLeast(0.001f)
+
+                                if (transitionProgress < 0.95f) {
+                                    Row(
+                                        modifier = Modifier
+                                            .weight(textFieldWeight)
+                                            .fillMaxHeight()
+                                            .graphicsLayer {
+                                                alpha = 1f - transitionProgress
+                                                scaleX = 1f - transitionProgress
+                                                scaleY = 1f - transitionProgress
+                                            },
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Attachment button
+                                        DaexButton(
+                                            onClick = {
+                                                viewModel.triggerHapticFeedback(context)
+                                                documentLibraryVisible = true
+                                            },
+                                            enabled = !isGenerating && !isVectorizing && isModelReady,
+                                            modifier = Modifier.size(36.dp),
+                                            backgroundColor = Color.Transparent,
+                                            useDefaultPadding = false,
+                                            shape = CircleShape
+                                        ) {
+                                            BasicText(
+                                                text = "+",
+                                                style = DaexTheme.typography.body1.copy(
+                                                    color = DaexTheme.colors.primary,
+                                                    fontSize = 18.sp
+                                                )
                                             )
-                                        } else {
-                                            DaexSendIcon(
-                                                color = if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary,
-                                                modifier = Modifier.size(16.dp)
-                                            )
+                                        }
+                                        val placeholderText = when {
+                                            !isModelReady -> "Engine not loaded..."
+                                            voiceState == VoiceState.LISTENING -> "Listening to speech..."
+                                            voiceState == VoiceState.PROCESSING -> "Processing speech..."
+                                            else -> "Initialize execution with Icarus..."
+                                        }
+                                        DaexTextField(
+                                            value = inputText,
+                                            onValueChange = { inputText = it },
+                                            modifier = Modifier.weight(1f),
+                                            placeholder = placeholderText,
+                                            enabled = !isGenerating && isModelReady && voiceState != VoiceState.LISTENING,
+                                            backgroundColor = Color.Transparent
+                                        )
+                                    }
+                                }
+
+                                if (transitionProgress < 0.95f) {
+                                    Spacer(modifier = Modifier.width(8.dp * (1f - transitionProgress)))
+                                }
+
+                                 if (transitionProgress < 0.95f) {
+                                     Box(
+                                         modifier = Modifier
+                                             .fillMaxHeight()
+                                             .graphicsLayer {
+                                                 alpha = 1f - transitionProgress
+                                                 scaleX = 1f - transitionProgress
+                                                 scaleY = 1f - transitionProgress
+                                             },
+                                         contentAlignment = Alignment.Center
+                                     ) {
+                                        DaexButton(
+                                            onClick = {
+                                                if (isGenerating) {
+                                                    viewModel.triggerHapticFeedback(context)
+                                                    viewModel.cancelGeneration()
+                                                    val lastUserMsg = messages.lastOrNull { it.role == "user" }
+                                                    if (lastUserMsg != null) {
+                                                        inputText = lastUserMsg.content
+                                                    }
+                                                } else if (inputText.isNotEmpty()) {
+                                                    viewModel.triggerHapticFeedback(context)
+                                                    viewModel.submitPrompt(inputText)
+                                                    inputText = ""
+                                                } else {
+                                                    // Toggle Voice Mode
+                                                    viewModel.triggerHapticFeedback(context)
+                                                    if (voiceState == VoiceState.LISTENING) {
+                                                        viewModel.toggleVoiceInput { recognizedText ->
+                                                            inputText = recognizedText
+                                                        }
+                                                    } else {
+                                                        val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(
+                                                            context,
+                                                            android.Manifest.permission.RECORD_AUDIO
+                                                        )
+                                                        if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                                            viewModel.toggleVoiceInput { recognizedText ->
+                                                                inputText = recognizedText
+                                                            }
+                                                        } else {
+                                                            recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                                        }
+                                                    }
+                                                }
+                                            },
+                                            enabled = (isGenerating || isModelReady) && (isGenerating || inputText.isNotEmpty() || voiceState != VoiceState.PROCESSING),
+                                            modifier = Modifier.size(44.dp),
+                                            backgroundColor = if (isVoiceSessionActive) Color.Transparent else if (isGenerating) DaexTheme.colors.primary else if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.1f) else DaexTheme.colors.primary,
+                                            useDefaultPadding = false,
+                                            shape = CircleShape
+                                        ) {
+                                            if (isGenerating) {
+                                                DaexStopIcon(
+                                                    color = DaexTheme.colors.onPrimary,
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                            } else if (voiceState == VoiceState.PROCESSING) {
+                                                DaexLoader(size = 28.dp)
+                                            } else {
+                                                Crossfade(targetState = inputText.isEmpty(), label = "morph_button") { isEmpty ->
+                                                    if (isEmpty) {
+                                                        DaexMicIcon(
+                                                            color = if (isVoiceSessionActive) DaexTheme.colors.primary else if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    } else {
+                                                        DaexSendIcon(
+                                                            color = if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary,
+                                                            modifier = Modifier.size(16.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
+                            }
+
+                            // Gesture Overlay for horizontal swiping
+                            val showGestureOverlay = (voiceState == VoiceState.IDLE && !isVoiceSessionActive) || isVoiceSessionActive
+                            if (showGestureOverlay && isModelReady && !isGenerating) {
+                                Box(
+                                    modifier = Modifier
+                                        .matchParentSize()
+                                        .padding(end = if (isVoiceSessionActive) 0.dp else 52.dp)
+                                        .then(
+                                            if (isVoiceSessionActive) {
+                                                Modifier.clickable(
+                                                    interactionSource = remember { MutableInteractionSource() },
+                                                    indication = null
+                                                ) {
+                                                    // Stop listening and restore
+                                                    viewModel.triggerHapticFeedback(context)
+                                                    viewModel.stopLiveVoiceSession()
+                                                }
+                                            } else {
+                                                Modifier
+                                            }
+                                        )
+                                        .pointerInput(Unit) {
+                                            detectHorizontalDragGestures(
+                                                onHorizontalDrag = { change, dragAmount ->
+                                                    change.consume()
+                                                    if (dragAmount < -10f && !isVoiceSessionActive) {
+                                                        viewModel.triggerHapticFeedback(context)
+                                                        val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(
+                                                            context,
+                                                            android.Manifest.permission.RECORD_AUDIO
+                                                        )
+                                                        if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                                            viewModel.startLiveVoiceSession { recognizedText ->
+                                                                inputText = recognizedText
+                                                            }
+                                                        } else {
+                                                            recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                                        }
+                                                    } else if (dragAmount > 10f && isVoiceSessionActive) {
+                                                        viewModel.triggerHapticFeedback(context)
+                                                        viewModel.stopLiveVoiceSession()
+                                                    }
+                                                }
+                                            )
+                                        }
+                                )
                             }
                         }
                     }

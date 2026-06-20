@@ -161,6 +161,9 @@ class DaexInferenceViewModel(
     private val _voiceState = MutableStateFlow(VoiceState.IDLE)
     val voiceState: StateFlow<VoiceState> = _voiceState.asStateFlow()
 
+    private val _isLiveVoiceActive = MutableStateFlow(false)
+    val isLiveVoiceActive: StateFlow<Boolean> = _isLiveVoiceActive.asStateFlow()
+
     private val _voiceAmplitude = MutableStateFlow(0f)
     val voiceAmplitude: StateFlow<Float> = _voiceAmplitude.asStateFlow()
 
@@ -344,10 +347,39 @@ class DaexInferenceViewModel(
 
     fun setVoiceState(state: VoiceState) {
         _voiceState.value = state
+        if (state == VoiceState.IDLE) {
+            _isLiveVoiceActive.value = false
+        }
     }
 
     fun setVoiceAmplitude(amplitude: Float) {
         _voiceAmplitude.value = amplitude
+    }
+
+    fun startLiveVoiceSession(onTextResult: (String) -> Unit) {
+        _isLiveVoiceActive.value = true
+        // NOTE: Currently using SpeechManager as a placeholder.
+        // In the future, this is the dedicated entry point for Gemini Live-like 
+        // real-time bidirectional streaming (e.g. WebSocket, WebRTC, local duplex audio).
+        val ctx = context ?: return
+        if (speechManager == null) {
+            speechManager = SpeechManager(
+                context = ctx,
+                onAmplitudeChanged = { setVoiceAmplitude(it) },
+                onResult = { result ->
+                    onTextResult(result)
+                },
+                onStateChanged = { state ->
+                    setVoiceState(state)
+                }
+            )
+        }
+        speechManager?.startListening()
+    }
+
+    fun stopLiveVoiceSession() {
+        _isLiveVoiceActive.value = false
+        speechManager?.stopListening()
     }
 
     fun toggleVoiceInput(onTextResult: (String) -> Unit) {
