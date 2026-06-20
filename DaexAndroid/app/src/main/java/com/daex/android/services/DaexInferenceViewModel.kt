@@ -22,7 +22,7 @@ enum class ModelStatus {
 }
 
 enum class VoiceState {
-    IDLE, LISTENING, PROCESSING
+    IDLE, LISTENING, PROCESSING, SPEAKING
 }
 
 enum class HapticType {
@@ -157,6 +157,14 @@ class DaexInferenceViewModel(
     )
     val suggestedPrompts: StateFlow<List<String>> = _suggestedPrompts.asStateFlow()
 
+    private val _isTtsEnabled = MutableStateFlow(true)
+    val isTtsEnabled: StateFlow<Boolean> = _isTtsEnabled.asStateFlow()
+
+    private val _ttsVoiceId = MutableStateFlow(1) // Default to af_bella (1)
+    val ttsVoiceId: StateFlow<Int> = _ttsVoiceId.asStateFlow()
+
+    private var kokoroTtsService: KokoroTtsService? = null
+
     // Voice Mode State Flows
     private val _voiceState = MutableStateFlow(VoiceState.IDLE)
     val voiceState: StateFlow<VoiceState> = _voiceState.asStateFlow()
@@ -169,6 +177,24 @@ class DaexInferenceViewModel(
 
     private var speechManager: SpeechManager? = null
     private var audioRecorder: AudioRecorder? = null
+    private var audioFocusRequest: android.media.AudioFocusRequest? = null
+
+    private val audioFocusChangeListener = android.media.AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            android.media.AudioManager.AUDIOFOCUS_LOSS -> {
+                // Permanent loss of audio focus: stop the live session
+                stopLiveVoiceSession()
+            }
+            android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                // Temporary loss or ducking request: stop/pause TTS playback
+                kokoroTtsService?.stopPlayback()
+            }
+            android.media.AudioManager.AUDIOFOCUS_GAIN -> {
+                // Regained focus
+            }
+        }
+    }
 
     val deviceSpecs: DeviceSpecs? = deviceService?.getDeviceSpecs()
 
@@ -269,6 +295,46 @@ class DaexInferenceViewModel(
             }
         }
 
+        viewModelScope.launch {
+            preferences?.isTtsEnabledFlow?.collectLatest { enabled ->
+                _isTtsEnabled.value = enabled
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.ttsVoiceIdFlow?.collectLatest { voiceId ->
+                _ttsVoiceId.value = voiceId
+            }
+        }
+
+        val ctx = context
+        if (ctx != null) {
+            kokoroTtsService = KokoroTtsService(ctx)
+            kokoroTtsService?.onSpeakingStateChanged = { speaking ->
+                if (_isLiveVoiceActive.value) {
+                    if (speaking) {
+                        speakingRevertJob?.cancel()
+                        setVoiceStateInternal(VoiceState.SPEAKING)
+                    } else {
+                        // Debounced revert — cancel any existing pending revert first.
+                        // After TTS stops speaking (between sentences), wait long enough
+                        // for the AudioTrack buffer to drain before reverting to LISTENING.
+                        speakingRevertJob?.cancel()
+                        ttsCooldownUntilMs = System.currentTimeMillis() + 1500L
+                        speakingRevertJob = viewModelScope.launch {
+                            kotlinx.coroutines.delay(1600L)
+                            // Gate on the actual isSpeaking flag — not voiceState —
+                            // so a between-sentence false trigger doesn't revert early.
+                            if (kokoroTtsService?.isSpeaking != true && _isLiveVoiceActive.value) {
+                                setVoiceStateInternal(VoiceState.LISTENING)
+                            }
+                        }
+                    }
+                }
+            }
+
+        }
+
         refreshConversations()
 
         // Autoload last used model if already downloaded
@@ -361,8 +427,17 @@ class DaexInferenceViewModel(
         }
     }
 
+    private fun setVoiceStateInternal(state: VoiceState) {
+        if (_isLiveVoiceActive.value && state == VoiceState.LISTENING && kokoroTtsService?.isSpeaking == true) {
+            _voiceState.value = VoiceState.SPEAKING
+            android.util.Log.w("DaexInference", "Blocked transition to LISTENING because TTS is speaking.")
+        } else {
+            _voiceState.value = state
+        }
+    }
+
     fun setVoiceState(state: VoiceState) {
-        _voiceState.value = state
+        setVoiceStateInternal(state)
         if (state == VoiceState.IDLE) {
             _isLiveVoiceActive.value = false
         }
@@ -374,11 +449,59 @@ class DaexInferenceViewModel(
 
     fun startLiveVoiceSession(onTextResult: (String) -> Unit) {
         _isLiveVoiceActive.value = true
-        _voiceState.value = VoiceState.LISTENING
-        startNewRecordingSegment()
+        setVoiceStateInternal(VoiceState.LISTENING)
+
+        // Play premium awake hum (120Hz to 180Hz sweep over 250ms)
+        kokoroTtsService?.playSystemSound(startFreq = 120f, endFreq = 180f, durationMs = 250L)
+
+        // Request Transient Audio Focus to duck background music and identify stream intent
+        context?.let { ctx ->
+            try {
+                val audioManager = ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                val focusRequest = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                    .setAudioAttributes(
+                        android.media.AudioAttributes.Builder()
+                            .setUsage(android.media.AudioAttributes.USAGE_ASSISTANT)
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    .setAcceptsDelayedFocusGain(false)
+                    .setOnAudioFocusChangeListener(audioFocusChangeListener)
+                    .build()
+                audioFocusRequest = focusRequest
+                val result = audioManager.requestAudioFocus(focusRequest)
+                android.util.Log.i("DaexInference", "Requested Audio Focus: result=$result")
+            } catch (e: Exception) {
+                android.util.Log.e("DaexInference", "Failed to request Audio Focus", e)
+            }
+        }
+
+        // Note: We do NOT set AudioManager.mode to MODE_IN_COMMUNICATION or force speakerphone because
+        // on some devices (especially Samsung), VoIP call routing triggers aggressive system-level half-duplex
+        // echo suppression that completely silences/mutes the microphone input during active speaker playback.
+        // Keeping it at MODE_NORMAL keeps the mic open, and we rely on our scaled VAD threshold (0.22f) to filter bleed.
+
+        if (_isTtsEnabled.value) {
+            kokoroTtsService?.initTts()
+        }
+
+        // Delay starting the recording segment by 300ms to allow the awake hum sound effect to finish playing.
+        // This prevents the microphone from capturing the hum and false-triggering a speech-start interruption.
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(300L)
+            if (_isLiveVoiceActive.value) {
+                startNewRecordingSegment()
+            }
+        }
     }
 
     private val liveAudioFiles = mutableListOf<java.io.File>()
+    // Tracks post-TTS cooldown: isPlaybackActive stays true for 500ms after TTS ends
+    // to prevent residual speaker audio from triggering a false VAD speech start.
+    @Volatile private var ttsCooldownUntilMs = 0L
+    // Debounce job for the SPEAKING → LISTENING state revert
+    private var speakingRevertJob: kotlinx.coroutines.Job? = null
+
 
     private fun startNewRecordingSegment() {
         val ctx = context ?: return
@@ -396,6 +519,49 @@ class DaexInferenceViewModel(
             speechThreshold = 0.03f,
             silenceThreshold = 0.015f,
             silenceDurationMs = 1500L,
+            isPlaybackActive = { kokoroTtsService?.isSpeaking == true || System.currentTimeMillis() < ttsCooldownUntilMs },
+            currentSpeechThreshold = {
+                val rms = kokoroTtsService?.currentPlaybackRms ?: 0f
+                val audioManager = ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
+                val speechThreshold = 0.03f
+                if (audioManager != null) {
+                    val streamType = try {
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                            11 // AudioManager.STREAM_ASSISTANT
+                        } else {
+                            android.media.AudioManager.STREAM_MUSIC
+                        }
+                    } catch (e: Exception) {
+                        android.media.AudioManager.STREAM_MUSIC
+                    }
+                    val currentVolume = try {
+                        audioManager.getStreamVolume(streamType)
+                    } catch (e: Exception) {
+                        audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
+                    }
+                    val maxVolume = try {
+                        audioManager.getStreamMaxVolume(streamType)
+                    } catch (e: Exception) {
+                        audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
+                    }
+                    val volumeRatio = if (maxVolume > 0) currentVolume.toFloat() / maxVolume else 1.0f
+                    // Square the volume ratio to match the physical logarithmic hardware volume curve
+                    val volumeRatioSquared = volumeRatio * volumeRatio
+                    
+                    // Multiplier of 4.0f scales the normalized speech RMS (typically 0.08f to 0.15f)
+                    // to dynamically hit the maximum ceiling at highest volumes.
+                    val adaptiveIncrement = rms * volumeRatioSquared * 4.0f
+                    
+                    // Clamp threshold dynamically based on the current volume level.
+                    // At max volume (volumeRatioSquared = 1.0), ceiling is 0.35f.
+                    // At mid volume (volumeRatioSquared = 0.25), ceiling is 0.11f.
+                    val maxCeiling = speechThreshold + (0.32f * volumeRatioSquared)
+                    
+                    (speechThreshold + adaptiveIncrement).coerceAtMost(maxCeiling)
+                } else {
+                    speechThreshold
+                }
+            },
             onSpeechStarted = {
                 handleUserSpeechStarted()
             },
@@ -408,12 +574,14 @@ class DaexInferenceViewModel(
     }
 
     private fun handleUserSpeechStarted() {
-        if (_isGenerating.value) {
-            android.util.Log.i("DaexInference", "VAD: User speech detected while model is generating. Interruption triggered!")
+        val isTtsSpeaking = kokoroTtsService?.isSpeaking == true
+        if (_isGenerating.value || isTtsSpeaking || _voiceState.value == VoiceState.SPEAKING) {
+            android.util.Log.i("DaexInference", "VAD: User speech detected while model is generating/speaking. Interruption triggered!")
+            kokoroTtsService?.stopPlayback()
             viewModelScope.launch {
                 cancelGeneration()
                 // Force state back to LISTENING since the user interrupted the model
-                _voiceState.value = VoiceState.LISTENING
+                setVoiceStateInternal(VoiceState.LISTENING)
                 // Play a brief interrupt haptic
                 val ctx = context
                 if (ctx != null) {
@@ -430,7 +598,7 @@ class DaexInferenceViewModel(
             // Finalize current chunk by calling stop() on its recorder
             audioRecorder?.stop()
 
-            _voiceState.value = VoiceState.PROCESSING
+            setVoiceStateInternal(VoiceState.PROCESSING)
 
             // Immediately start next segment to keep recording loop uninterrupted
             if (_isLiveVoiceActive.value) {
@@ -441,7 +609,7 @@ class DaexInferenceViewModel(
                 submitAudioPrompt(audioFile.absolutePath)
             } else {
                 if (_isLiveVoiceActive.value && _voiceState.value == VoiceState.PROCESSING) {
-                    _voiceState.value = VoiceState.LISTENING
+                    setVoiceStateInternal(VoiceState.LISTENING)
                 }
             }
         }
@@ -449,11 +617,31 @@ class DaexInferenceViewModel(
 
     fun stopLiveVoiceSession() {
         _isLiveVoiceActive.value = false
-        _voiceState.value = VoiceState.IDLE
+        setVoiceStateInternal(VoiceState.IDLE)
         audioRecorder?.stop()
         audioRecorder = null
         cancelGeneration()
         liveAudioFiles.clear()
+        kokoroTtsService?.stopPlayback()
+        kokoroTtsService?.releaseTts()
+
+        // Play premium close hum (180Hz to 100Hz sweep over 300ms)
+        kokoroTtsService?.playSystemSound(startFreq = 180f, endFreq = 100f, durationMs = 300L)
+
+        // Abandon Audio Focus
+        context?.let { ctx ->
+            try {
+                val audioManager = ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                audioFocusRequest?.let { focusRequest ->
+                    val result = audioManager.abandonAudioFocusRequest(focusRequest)
+                    android.util.Log.i("DaexInference", "Abandoned Audio Focus: result=$result")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DaexInference", "Failed to abandon Audio Focus", e)
+            } finally {
+                audioFocusRequest = null
+            }
+        }
     }
 
     fun toggleVoiceInput(onTextResult: (String) -> Unit) {
@@ -475,6 +663,20 @@ class DaexInferenceViewModel(
             speechManager?.stopListening()
         } else {
             speechManager?.startListening()
+        }
+    }
+
+    fun setTtsEnabled(enabled: Boolean) {
+        _isTtsEnabled.value = enabled
+        viewModelScope.launch {
+            preferences?.setTtsEnabled(enabled)
+        }
+    }
+
+    fun setTtsVoiceId(voiceId: Int) {
+        _ttsVoiceId.value = voiceId
+        viewModelScope.launch {
+            preferences?.setTtsVoiceId(voiceId)
         }
     }
 
@@ -1194,7 +1396,7 @@ class DaexInferenceViewModel(
             _errorMessage.value = "Model is not loaded yet."
             // Reset voice states on failure
             _isLiveVoiceActive.value = false
-            _voiceState.value = VoiceState.IDLE
+            setVoiceStateInternal(VoiceState.IDLE)
             return
         }
         curationJob?.cancel()
@@ -1213,7 +1415,7 @@ class DaexInferenceViewModel(
 
             if (convId == null) {
                 _isLiveVoiceActive.value = false
-                _voiceState.value = VoiceState.IDLE
+                setVoiceStateInternal(VoiceState.IDLE)
                 return@launch
             }
 
@@ -1233,6 +1435,7 @@ class DaexInferenceViewModel(
             triggerHapticFeedback(type = HapticType.START_RESPONSE)
 
             generationJob = viewModelScope.launch {
+                var lastSpokenIndex = 0
                 try {
                     val fullHistory = (daexMemory?.getRecentHistory(convId) ?: emptyList())
                         .filter { it.id != modelMsgId && it.role != "system" }
@@ -1266,7 +1469,7 @@ class DaexInferenceViewModel(
                     }
 
                     if (_isLiveVoiceActive.value) {
-                        systemContext += "\n\nIMPORTANT: You are in a live voice session. Keep your response extremely brief, conversational, and direct (under 25 words). Do not use lists or structured formatting."
+                        systemContext += "\n\nIMPORTANT: You are in a live voice session. Keep your response conversational, friendly, and direct. Keep your response to around 1 to 3 sentences (under 60 words). Do not use lists, bullet points, or structured formatting."
                     }
 
                     val result = daexService.generateResponse(
@@ -1289,7 +1492,8 @@ class DaexInferenceViewModel(
                                 _messages.value = updated
                             }
                         },
-                        maxTokens = _maxTokens.value
+                        maxTokens = _maxTokens.value,
+                        isLiveVoiceActive = _isLiveVoiceActive.value
                     ) { token ->
                         if (!isActive) return@generateResponse
                         rawText += token
@@ -1349,7 +1553,39 @@ class DaexInferenceViewModel(
                             updated[idx] = updated[idx].copy(content = actual.trimStart(), thoughtContent = thought)
                             _messages.value = updated
                         }
+
+                        if (_isLiveVoiceActive.value && _isTtsEnabled.value) {
+                            val currentText = actual.trimStart()
+                            if (currentText.length > lastSpokenIndex) {
+                                val searchSubstring = currentText.substring(lastSpokenIndex)
+                                val punctuations = listOf('.', '?', '!', '\n')
+                                var firstPuncIndex = -1
+                                for (char in searchSubstring) {
+                                    if (char in punctuations) {
+                                        firstPuncIndex = searchSubstring.indexOf(char)
+                                        break
+                                    }
+                                }
+                                if (firstPuncIndex != -1) {
+                                    val sentence = searchSubstring.substring(0, firstPuncIndex + 1).trim()
+                                    if (sentence.isNotEmpty()) {
+                                        kokoroTtsService?.speak(sentence, _ttsVoiceId.value)
+                                    }
+                                    lastSpokenIndex += firstPuncIndex + 1
+                                }
+                            }
+                        }
                     }
+
+                    if (_isLiveVoiceActive.value && _isTtsEnabled.value) {
+                        if (rawText.trimStart().length > lastSpokenIndex) {
+                            val remaining = rawText.trimStart().substring(lastSpokenIndex).trim()
+                            if (remaining.isNotEmpty()) {
+                                kokoroTtsService?.speak(remaining, _ttsVoiceId.value)
+                            }
+                        }
+                    }
+
                     _tokenSpeed.value = result.tokensPerSecond
                     triggerHapticFeedback(type = HapticType.SUCCESS_COMPLETION)
                     
@@ -1380,9 +1616,9 @@ class DaexInferenceViewModel(
                 } finally {
                     _isGenerating.value = false
                     if (!_isLiveVoiceActive.value) {
-                        _voiceState.value = VoiceState.IDLE
+                        setVoiceStateInternal(VoiceState.IDLE)
                     } else {
-                        _voiceState.value = VoiceState.LISTENING
+                        setVoiceStateInternal(VoiceState.LISTENING)
                     }
                     refreshConversations()
                 }
@@ -1394,6 +1630,7 @@ class DaexInferenceViewModel(
         generationJob?.cancel()
         (daexService as? DaexServiceImpl)?.cancelGeneration()
         _isGenerating.value = false
+        kokoroTtsService?.stopPlayback()
     }
 
     fun clearMessages() {
@@ -1710,5 +1947,6 @@ class DaexInferenceViewModel(
     override fun onCleared() {
         super.onCleared()
         speechManager?.destroy()
+        kokoroTtsService?.release()
     }
 }

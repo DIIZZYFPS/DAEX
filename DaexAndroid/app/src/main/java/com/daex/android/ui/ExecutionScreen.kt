@@ -36,7 +36,11 @@ import com.daex.android.services.ModelManager
 import com.daex.android.services.ModelStatus
 import com.daex.android.services.PermissionRequest
 import com.daex.android.services.VoiceState
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.ui.draw.alpha
 import com.daex.android.ui.components.*
 import com.daex.android.services.BackendType
 import androidx.compose.ui.input.pointer.pointerInput
@@ -221,9 +225,10 @@ fun ExecutionScreen(
 
     val voiceModeProgress by animateFloatAsState(
         targetValue = if (voiceState == VoiceState.LISTENING) 1f else 0f,
-        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        animationSpec = tween(durationMillis = 600, easing = FastOutSlowInEasing),
         label = "VoiceModeProgress"
     )
+
 
     val smoothedAmplitude by animateFloatAsState(
         targetValue = voiceAmplitude,
@@ -232,6 +237,25 @@ fun ExecutionScreen(
             stiffness = Spring.StiffnessMediumLow
         ),
         label = "SmoothedAmplitude"
+    )
+
+    // Immersive live overlay alpha — drives fading of all normal UI elements
+    val liveOverlayAlpha by animateFloatAsState(
+        targetValue = if (isVoiceSessionActive) 1f else 0f,
+        animationSpec = tween(durationMillis = 500, easing = FastOutSlowInEasing),
+        label = "LiveOverlayAlpha"
+    )
+
+    // State-reactive aura color for live overlay
+    val liveAuraColor by animateColorAsState(
+        targetValue = when (voiceState) {
+            VoiceState.SPEAKING   -> Color(0xFF06B6D4) // Cyan — TTS speaking
+            VoiceState.PROCESSING -> Color(0xFF6366F1) // Indigo — thinking
+            VoiceState.LISTENING  -> DaexTheme.colors.primary
+            else                  -> DaexTheme.colors.primary
+        },
+        animationSpec = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+        label = "LiveAuraColor"
     )
 
     val wavePhase by infiniteTransition.animateFloat(
@@ -389,16 +413,51 @@ fun ExecutionScreen(
 
 
                     }
+
+                    // Live-session reactive aura — fades in over the normal aura
+                    if (liveOverlayAlpha > 0f) {
+                        val cx = size.width * 0.5f
+                        val cy = size.height * 0.38f
+                        val radius = size.width * 1.1f * auraScale
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    liveAuraColor.copy(alpha = 0.30f * liveOverlayAlpha),
+                                    liveAuraColor.copy(alpha = 0.08f * liveOverlayAlpha),
+                                    Color.Transparent
+                                ),
+                                center = Offset(cx, cy),
+                                radius = radius
+                            ),
+                            center = Offset(cx, cy),
+                            radius = radius
+                        )
+                        val cx2 = size.width * 0.85f
+                        val cy2 = size.height * 0.7f
+                        val r2 = size.width * 0.6f
+                        drawCircle(
+                            brush = Brush.radialGradient(
+                                colors = listOf(
+                                    liveAuraColor.copy(alpha = 0.10f * liveOverlayAlpha),
+                                    Color.Transparent
+                                ),
+                                center = Offset(cx2, cy2),
+                                radius = r2
+                            ),
+                            center = Offset(cx2, cy2),
+                            radius = r2
+                        )
+                    }
                 }
                 .windowInsetsPadding(WindowInsets.statusBars)
                 .windowInsetsPadding(WindowInsets.navigationBars)
                 .windowInsetsPadding(WindowInsets.ime) // Root Column handles the IME
         ) {
             // Header
-            // Header
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .graphicsLayer { alpha = 1f - liveOverlayAlpha }
                     .padding(top = 16.dp, start = 16.dp, end = 16.dp, bottom = 12.dp)
             ) {
                 // Left Slot: Hamburger Menu
@@ -700,42 +759,96 @@ fun ExecutionScreen(
 
             // Chat Area or Welcome
             Box(modifier = Modifier.weight(1f)) {
-                if (messages.isEmpty()) {
-                    SuggestedPrompts(
-                        prompts = suggestedPrompts,
-                        onSelectPrompt = {
-                            viewModel.triggerHapticFeedback(context)
-                            if (isModelReady && !isGenerating) {
-                                viewModel.submitPrompt(it)
-                            } else if (!isModelReady) {
-                                (currentModel ?: selectedModel).let { model -> viewModel.loadModel(model) }
+                // Message list / welcome screen — fade out when live session is active
+                Box(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 1f - liveOverlayAlpha }) {
+                    if (messages.isEmpty()) {
+                        SuggestedPrompts(
+                            prompts = suggestedPrompts,
+                            onSelectPrompt = {
+                                viewModel.triggerHapticFeedback(context)
+                                if (isModelReady && !isGenerating) {
+                                    viewModel.submitPrompt(it)
+                                } else if (!isModelReady) {
+                                    (currentModel ?: selectedModel).let { model -> viewModel.loadModel(model) }
+                                }
                             }
-                        }
-                    )
-                } else {
-                    val visibleMessages = messages.filter { !it.content.startsWith("[CONTEXT COMPACTION]:") }
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(bottom = 120.dp, top = 16.dp) 
-                    ) {
-                        itemsIndexed(visibleMessages) { index, msg ->
-                            val isLastModel = msg.role == "model" && visibleMessages.subList(index + 1, visibleMessages.size).none { it.role == "model" }
-                            MessageLine(
-                                message = msg,
-                                isLastModel = isLastModel,
-                                isGenerating = isGenerating,
-                                tokenSpeed = tokenSpeed,
-                                activePermission = if (isLastModel) activePermission else null
-                            )
-                        }
-                        
-                        // Anchor item for robust bottom-scrolling
-                        item {
-                            Spacer(modifier = Modifier.height(1.dp).fillMaxWidth())
+                        )
+                    } else {
+                        val visibleMessages = messages.filter { !it.content.startsWith("[CONTEXT COMPACTION]:") }
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(bottom = 120.dp, top = 16.dp)
+                        ) {
+                            itemsIndexed(visibleMessages) { index, msg ->
+                                val isLastModel = msg.role == "model" && visibleMessages.subList(index + 1, visibleMessages.size).none { it.role == "model" }
+                                MessageLine(
+                                    message = msg,
+                                    isLastModel = isLastModel,
+                                    isGenerating = isGenerating,
+                                    tokenSpeed = tokenSpeed,
+                                    activePermission = if (isLastModel) activePermission else null
+                                )
+                            }
+                            // Anchor item for robust bottom-scrolling
+                            item {
+                                Spacer(modifier = Modifier.height(1.dp).fillMaxWidth())
+                            }
                         }
                     }
                 }
+
+                // ── Live session state label — floats above the pill, fades in with the session ──
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .offset(y = (-80).dp)
+                ) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = isVoiceSessionActive,
+                        enter = fadeIn(animationSpec = tween(500)),
+                        exit  = fadeOut(animationSpec = tween(350))
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            val stateLabel = when (voiceState) {
+                                VoiceState.SPEAKING   -> "Speaking"
+                                VoiceState.PROCESSING -> "Thinking"
+                                VoiceState.LISTENING  -> "Listening"
+                                else                  -> ""
+                            }
+                            Crossfade(
+                                targetState = stateLabel,
+                                animationSpec = tween(350),
+                                label = "live_state_label"
+                            ) { label ->
+                                BasicText(
+                                    text = label,
+                                    style = DaexTheme.typography.h1.copy(
+                                        color = liveAuraColor,
+                                        fontSize = 36.sp,
+                                        letterSpacing = 3.sp
+                                    )
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            val hintLabel = when (voiceState) {
+                                VoiceState.SPEAKING   -> "Generating audio response"
+                                VoiceState.PROCESSING -> "Processing your speech"
+                                VoiceState.LISTENING  -> "Speak  ·  pause to send"
+                                else                  -> ""
+                            }
+                            BasicText(
+                                text = hintLabel,
+                                style = DaexTheme.typography.mono.copy(
+                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.45f),
+                                    fontSize = 12.sp,
+                                    letterSpacing = 1.sp
+                                )
+                            )
+                        }
+                    }
+                }
+
 
                 // --- LAYERED INPUT BAR (Floating Pill Style) ---
                 Column(
@@ -1150,8 +1263,10 @@ fun ExecutionScreen(
                 }
             }
         }
-        
+
+
         var memoryEditorVisible by remember { mutableStateOf(false) }
+
 
         ModelSelectorModal(
             visible = selectorVisible,

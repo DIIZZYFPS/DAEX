@@ -62,6 +62,8 @@ fun SettingsScreen(
     val maxTokens by viewModel.maxTokens.collectAsState()
     val isHapticEnabled by viewModel.isHapticEnabled.collectAsState()
     val isAuraEnabled by viewModel.isAuraEnabled.collectAsState()
+    val isTtsEnabled by viewModel.isTtsEnabled.collectAsState()
+    val ttsVoiceId by viewModel.ttsVoiceId.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("TUNING", "THEME", "SYSTEM")
@@ -345,6 +347,111 @@ fun SettingsScreen(
                                     checked = isToolCallingEnabled,
                                     onCheckedChange = { viewModel.setToolCallingEnabled(it) }
                                 )
+                            }
+                        }
+                    }
+
+                    item {
+                        SectionHeader("OFFLINE VOICE OUTPUT (TTS)")
+                        SettingsCard {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    BasicText(
+                                        text = "Read Aloud Responses",
+                                        style = DaexTheme.typography.body1.copy(
+                                            color = DaexTheme.colors.onBackground,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    )
+                                    BasicText(
+                                        text = "Synthesizes responses using local Kokoro TTS",
+                                        style = DaexTheme.typography.mono.copy(
+                                            color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                            fontSize = 11.sp
+                                        ),
+                                        modifier = Modifier.padding(top = 4.dp)
+                                    )
+                                }
+                                DaexSwitch(
+                                    checked = isTtsEnabled,
+                                    onCheckedChange = { viewModel.setTtsEnabled(it) }
+                                )
+                            }
+
+                            if (isTtsEnabled) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                
+                                BasicText(
+                                    text = "SELECT SPEAKER PROFILE",
+                                    style = DaexTheme.typography.mono.copy(
+                                        color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                        fontSize = 10.sp,
+                                        letterSpacing = 1.sp
+                                    ),
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+
+                                val voiceProfiles = remember {
+                                    listOf(
+                                        VoiceProfile(0, "af_alloy", "Alloy", "Female ♀", "US"),
+                                        VoiceProfile(1, "af_bella", "Bella", "Female ♀", "US"),
+                                        VoiceProfile(2, "af_nicole", "Nicole", "Female ♀", "US"),
+                                        VoiceProfile(3, "af_sarah", "Sarah", "Female ♀", "US"),
+                                        VoiceProfile(4, "af_sky", "Sky", "Female ♀", "US"),
+                                        VoiceProfile(5, "am_adam", "Adam", "Male ♂", "US"),
+                                        VoiceProfile(6, "am_michael", "Michael", "Male ♂", "US"),
+                                        VoiceProfile(7, "bf_emma", "Emma", "Female ♀", "UK"),
+                                        VoiceProfile(8, "bf_isabella", "Isabella", "Female ♀", "UK"),
+                                        VoiceProfile(9, "bm_george", "George", "Male ♂", "UK"),
+                                        VoiceProfile(10, "bm_lewis", "Lewis", "Male ♂", "UK")
+                                    )
+                                }
+
+                                LazyRow(
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    items(voiceProfiles.size) { index ->
+                                        val profile = voiceProfiles[index]
+                                        val isSelected = ttsVoiceId == profile.id
+                                        val cardBg = if (isSelected) DaexTheme.colors.primary.copy(alpha = 0.15f) else DaexTheme.colors.background
+                                        val borderCl = if (isSelected) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.15f)
+                                        
+                                        Column(
+                                            modifier = Modifier
+                                                .width(100.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(cardBg)
+                                                .border(1.dp, borderCl, RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    viewModel.setTtsVoiceId(profile.id)
+                                                    viewModel.triggerHapticFeedback(context, force = true, type = com.daex.android.services.HapticType.TICK)
+                                                }
+                                                .padding(12.dp),
+                                            horizontalAlignment = Alignment.CenterHorizontally
+                                        ) {
+                                            BasicText(
+                                                text = profile.displayName,
+                                                style = DaexTheme.typography.body2.copy(
+                                                    color = DaexTheme.colors.onBackground,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            BasicText(
+                                                text = "${profile.region} • ${if (profile.gender.contains("Female")) "♀" else "♂"}",
+                                                style = DaexTheme.typography.mono.copy(
+                                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.5f),
+                                                    fontSize = 9.sp
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -818,3 +925,11 @@ private fun ActionButton(text: String, color: Color, onClick: () -> Unit) {
         )
     }
 }
+
+data class VoiceProfile(
+    val id: Int,
+    val name: String,
+    val displayName: String,
+    val gender: String,
+    val region: String
+)

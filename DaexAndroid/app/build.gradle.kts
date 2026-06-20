@@ -95,6 +95,9 @@ dependencies {
     // LiteRT-LM Inference Engine
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.13.1")
     
+    // Sherpa-ONNX offline speech engine
+    implementation("com.github.k2-fsa:sherpa-onnx:v1.13.1")
+    
     // MediaPipe Tasks Text for LiteRT embedding inference
     implementation("com.google.mediapipe:tasks-text:0.10.14")
     

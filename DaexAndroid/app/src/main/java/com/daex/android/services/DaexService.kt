@@ -51,6 +51,7 @@ interface DaexService {
         onRequestPermission: (suspend (String, String) -> Boolean)? = null,
         onStatusUpdate: ((String?) -> Unit)? = null,
         maxTokens: Int = 1024,
+        isLiveVoiceActive: Boolean = false,
         onToken: (String) -> Unit
     ): GenerationResult
     suspend fun generateSilent(prompt: String, maxTokens: Int = 512): String
@@ -195,6 +196,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         onRequestPermission: (suspend (String, String) -> Boolean)?,
         onStatusUpdate: ((String?) -> Unit)?,
         maxTokens: Int,
+        isLiveVoiceActive: Boolean,
         onToken: (String) -> Unit
     ): GenerationResult {
         Log.i(TAG, "generateResponse: isToolCallingEnabled=$isToolCallingEnabled, temperature=$temperature, topK=$topK, topP=$topP, customPromptLength=${customSystemPrompt.length}")
@@ -207,7 +209,11 @@ class DaexServiceImpl(private val context: Context) : DaexService {
             } else {
                 append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n")
                 append("Do not self-reference as an AI, assistant, or mention 'Icarus' or 'DAEX' in your responses. Avoid meta-commentary about running on-device or your technical setup unless directly asked. Respond naturally and directly to the user.\n")
-                append("In the chat history, turns are prefixed with dynamic relative timestamps indicating elapsed time (e.g. '[5m ago]', '[1h ago]'). Do NOT include any timestamp prefixes in your new response.\n\n")
+                if (!isLiveVoiceActive) {
+                    append("In the chat history, turns are prefixed with dynamic relative timestamps indicating elapsed time (e.g. '[5m ago]', '[1h ago]'). Do NOT include any timestamp prefixes in your new response.\n\n")
+                } else {
+                    append("\n")
+                }
             }
             
             try {
@@ -238,15 +244,19 @@ class DaexServiceImpl(private val context: Context) : DaexService {
 
         val now = System.currentTimeMillis()
         val initialLiteRtMessages = history.map { msg ->
-            val diffSec = (now - msg.timestamp) / 1000
-            val relativeTime = when {
-                diffSec < 0 -> "just now"
-                diffSec < 60 -> "just now"
-                diffSec < 3600 -> "${diffSec / 60}m ago"
-                diffSec < 86400 -> "${diffSec / 3600}h ago"
-                else -> "${diffSec / 86400}d ago"
+            val contentWithTime = if (isLiveVoiceActive) {
+                msg.content
+            } else {
+                val diffSec = (now - msg.timestamp) / 1000
+                val relativeTime = when {
+                    diffSec < 0 -> "just now"
+                    diffSec < 60 -> "just now"
+                    diffSec < 3600 -> "${diffSec / 60}m ago"
+                    diffSec < 86400 -> "${diffSec / 3600}h ago"
+                    else -> "${diffSec / 86400}d ago"
+                }
+                "[$relativeTime] ${msg.content}"
             }
-            val contentWithTime = "[$relativeTime] ${msg.content}"
 
             when (msg.role) {
                 "user" -> {

@@ -32,6 +32,8 @@ class DaexPreferences(private val context: Context) {
         val IS_HAPTIC_ENABLED = booleanPreferencesKey("is_haptic_enabled")
         val IS_AURA_ENABLED = booleanPreferencesKey("is_aura_enabled")
         val SUGGESTED_PROMPTS = stringPreferencesKey("suggested_prompts")
+        val IS_TTS_ENABLED = booleanPreferencesKey("is_tts_enabled")
+        val TTS_VOICE_ID = intPreferencesKey("tts_voice_id")
     }
 
     val lastUsedModelIdFlow: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -93,6 +95,14 @@ class DaexPreferences(private val context: Context) {
 
     val isAuraEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
         preferences[IS_AURA_ENABLED] ?: true
+    }
+
+    val isTtsEnabledFlow: Flow<Boolean> = context.dataStore.data.map { preferences ->
+        preferences[IS_TTS_ENABLED] ?: true
+    }
+
+    val ttsVoiceIdFlow: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[TTS_VOICE_ID] ?: 1 // Default to af_bella (1)
     }
 
     val suggestedPromptsFlow: Flow<List<String>> = context.dataStore.data.map { preferences ->
@@ -191,6 +201,18 @@ class DaexPreferences(private val context: Context) {
     suspend fun setAuraEnabled(enabled: Boolean) {
         context.dataStore.edit { preferences ->
             preferences[IS_AURA_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setTtsEnabled(enabled: Boolean) {
+        context.dataStore.edit { preferences ->
+            preferences[IS_TTS_ENABLED] = enabled
+        }
+    }
+
+    suspend fun setTtsVoiceId(voiceId: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[TTS_VOICE_ID] = voiceId
         }
     }
 
