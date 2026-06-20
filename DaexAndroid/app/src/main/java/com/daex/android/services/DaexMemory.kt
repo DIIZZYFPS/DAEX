@@ -97,6 +97,7 @@ class DaexMemory(private val boxStore: BoxStore) {
                     thoughtContent = message.thoughtContent,
                     isPinned = message.isPinned,
                     isCompacted = message.isCompacted,
+                    audioPath = message.audioPath,
                     embedding = embedding
                 )
             } else {
@@ -106,6 +107,7 @@ class DaexMemory(private val boxStore: BoxStore) {
                 entity.thoughtContent = message.thoughtContent
                 entity.isPinned = message.isPinned
                 entity.isCompacted = message.isCompacted
+                entity.audioPath = message.audioPath
                 if (embedding != null) {
                     entity.embedding = embedding
                 }
@@ -203,6 +205,7 @@ class DaexMemory(private val boxStore: BoxStore) {
         thoughtContent = this.thoughtContent,
         isPinned = this.isPinned,
         isCompacted = this.isCompacted,
+        audioPath = this.audioPath,
         timestamp = this.timestamp
     )
 }

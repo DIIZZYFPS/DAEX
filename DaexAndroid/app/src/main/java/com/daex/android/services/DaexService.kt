@@ -32,6 +32,7 @@ data class Message(
     val toolStatus: String? = null,
     val isPinned: Boolean = false,
     val isCompacted: Boolean = false,
+    val audioPath: String? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -105,6 +106,8 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 val config = EngineConfig(
                     modelPath = modelPath,
                     backend = backend,
+                    visionBackend = backend,
+                    audioBackend = Backend.CPU(), // Audio preprocessor constraint requires CPU
                     maxNumTokens = 4096, // Safe default KV cache size that accommodates system prompt, RAG context, history and response
                     cacheDir = context.cacheDir.absolutePath
                 )
@@ -246,7 +249,26 @@ class DaexServiceImpl(private val context: Context) : DaexService {
             val contentWithTime = "[$relativeTime] ${msg.content}"
 
             when (msg.role) {
-                "user" -> LiteRtMessage.user(contentWithTime)
+                "user" -> {
+                    if (msg.audioPath != null) {
+                        val file = java.io.File(msg.audioPath)
+                        if (file.exists() && file.length() > 44) {
+                            val audioContent = com.google.ai.edge.litertlm.Content.AudioFile(msg.audioPath)
+                            val contents = if (msg.content.isNotBlank()) {
+                                val textContent = com.google.ai.edge.litertlm.Content.Text(msg.content)
+                                LiteRtContents.of(audioContent, textContent)
+                            } else {
+                                LiteRtContents.of(audioContent)
+                            }
+                            LiteRtMessage.user(contents)
+                        } else {
+                            val fallbackText = if (msg.content.isNotBlank()) msg.content else "[Voice Audio Unavailable]"
+                            LiteRtMessage.user(fallbackText)
+                        }
+                    } else {
+                        LiteRtMessage.user(contentWithTime)
+                    }
+                }
                 "model" -> LiteRtMessage.model(LiteRtContents.of(contentWithTime))
                 else -> LiteRtMessage.user(contentWithTime)
             }
@@ -301,7 +323,21 @@ class DaexServiceImpl(private val context: Context) : DaexService {
 
         try {
             withContext(Dispatchers.IO) {
-                activeConversation.sendMessageAsync(activePrompt, extraContext).collect { reply ->
+                val lastMsg = messages.lastOrNull()
+                val flow = if (lastMsg != null && lastMsg.audioPath != null) {
+                    val audioContent = com.google.ai.edge.litertlm.Content.AudioFile(lastMsg.audioPath)
+                    val contents = if (lastMsg.content.isNotBlank()) {
+                        val textContent = com.google.ai.edge.litertlm.Content.Text(lastMsg.content)
+                        LiteRtContents.of(audioContent, textContent)
+                    } else {
+                        LiteRtContents.of(audioContent)
+                    }
+                    activeConversation.sendMessageAsync(contents, extraContext)
+                } else {
+                    activeConversation.sendMessageAsync(activePrompt, extraContext)
+                }
+
+                flow.collect { reply ->
                     val thinkingChunk = reply.channels["thinking"]
                     val chunk = reply.contents.toString()
 

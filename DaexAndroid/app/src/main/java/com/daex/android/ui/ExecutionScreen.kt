@@ -851,6 +851,47 @@ fun ExecutionScreen(
                                 .width(barWidth)
                                 .height(52.dp)
                                 .align(Alignment.Center)
+                                .then(
+                                    if (isVoiceSessionActive) {
+                                        Modifier
+                                            .clickable(
+                                                interactionSource = remember { MutableInteractionSource() },
+                                                indication = null
+                                            ) {
+                                                viewModel.triggerHapticFeedback(context)
+                                                viewModel.stopLiveVoiceSession()
+                                            }
+                                            .pointerInput(Unit) {
+                                                detectHorizontalDragGestures { change, dragAmount ->
+                                                    if (dragAmount > 10f) {
+                                                        change.consume()
+                                                        viewModel.triggerHapticFeedback(context)
+                                                        viewModel.stopLiveVoiceSession()
+                                                    }
+                                                }
+                                            }
+                                    } else {
+                                        Modifier.pointerInput(Unit) {
+                                            detectHorizontalDragGestures { change, dragAmount ->
+                                                if (dragAmount < -10f && isModelReady && !isGenerating) {
+                                                    change.consume()
+                                                    viewModel.triggerHapticFeedback(context)
+                                                    val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(
+                                                        context,
+                                                        android.Manifest.permission.RECORD_AUDIO
+                                                    )
+                                                    if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                                                        viewModel.startLiveVoiceSession { recognizedText ->
+                                                            inputText = recognizedText
+                                                        }
+                                                    } else {
+                                                        recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                )
                         ) {
                             // Blurred Background Pill Layer
                             Box(
@@ -866,15 +907,22 @@ fun ExecutionScreen(
                                     }
                                     .background(DaexTheme.colors.background.copy(alpha = 0.85f))
                                     .drawBehind {
-                                        val waveAlpha = voiceModeProgress
+                                        val waveAlpha = if (isVoiceSessionActive) 1f else voiceModeProgress
                                         if (waveAlpha > 0f) {
                                             val baseLineY = size.height * 0.5f
                                             val widthF = size.width
                                             val piF = kotlin.math.PI.toFloat()
 
+                                            // If thinking or generating, show breathing amplitude
+                                            val activeAmplitude = if (isVoiceSessionActive && (voiceState == VoiceState.PROCESSING || isGenerating)) {
+                                                0.15f + 0.1f * kotlin.math.sin(wavePhase * 2.0f)
+                                            } else {
+                                                smoothedAmplitude
+                                            }
+
                                             // Wave 1 (Back, slow, dark)
                                             val path1 = Path()
-                                            val amplitude1 = 4.dp.toPx() + (smoothedAmplitude * 10.dp.toPx())
+                                            val amplitude1 = 4.dp.toPx() + (activeAmplitude * 10.dp.toPx())
                                             path1.moveTo(0f, size.height)
                                             for (x in 0..size.width.toInt() step 10) {
                                                 val xf = x.toFloat()
@@ -899,7 +947,7 @@ fun ExecutionScreen(
 
                                             // Wave 2 (Middle, medium speed)
                                             val path2 = Path()
-                                            val amplitude2 = 6.dp.toPx() + (smoothedAmplitude * 14.dp.toPx())
+                                            val amplitude2 = 6.dp.toPx() + (activeAmplitude * 14.dp.toPx())
                                             path2.moveTo(0f, size.height)
                                             for (x in 0..size.width.toInt() step 10) {
                                                 val xf = x.toFloat()
@@ -924,7 +972,7 @@ fun ExecutionScreen(
 
                                             // Wave 3 (Front, fast, dynamic)
                                             val path3 = Path()
-                                            val amplitude3 = 8.dp.toPx() + (smoothedAmplitude * 18.dp.toPx())
+                                            val amplitude3 = 8.dp.toPx() + (activeAmplitude * 18.dp.toPx())
                                             path3.moveTo(0f, size.height)
                                             for (x in 0..size.width.toInt() step 10) {
                                                 val xf = x.toFloat()
@@ -948,7 +996,11 @@ fun ExecutionScreen(
                                             )
                                         }
                                     }
-                                    .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.15f), RoundedCornerShape(28.dp))
+                                    .border(
+                                        width = if (isVoiceSessionActive) 1.dp else 0.5.dp,
+                                        color = if (isVoiceSessionActive) auraColor.copy(alpha = 0.6f) else DaexTheme.colors.onSurface.copy(alpha = 0.15f),
+                                        shape = RoundedCornerShape(28.dp)
+                                    )
                             )
 
                             // Foreground Input Row (Pill Style)
@@ -1092,53 +1144,7 @@ fun ExecutionScreen(
                                 }
                             }
 
-                            // Gesture Overlay for horizontal swiping
-                            val showGestureOverlay = (voiceState == VoiceState.IDLE && !isVoiceSessionActive) || isVoiceSessionActive
-                            if (showGestureOverlay && isModelReady && !isGenerating) {
-                                Box(
-                                    modifier = Modifier
-                                        .matchParentSize()
-                                        .padding(end = if (isVoiceSessionActive) 0.dp else 52.dp)
-                                        .then(
-                                            if (isVoiceSessionActive) {
-                                                Modifier.clickable(
-                                                    interactionSource = remember { MutableInteractionSource() },
-                                                    indication = null
-                                                ) {
-                                                    // Stop listening and restore
-                                                    viewModel.triggerHapticFeedback(context)
-                                                    viewModel.stopLiveVoiceSession()
-                                                }
-                                            } else {
-                                                Modifier
-                                            }
-                                        )
-                                        .pointerInput(Unit) {
-                                            detectHorizontalDragGestures(
-                                                onHorizontalDrag = { change, dragAmount ->
-                                                    change.consume()
-                                                    if (dragAmount < -10f && !isVoiceSessionActive) {
-                                                        viewModel.triggerHapticFeedback(context)
-                                                        val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(
-                                                            context,
-                                                            android.Manifest.permission.RECORD_AUDIO
-                                                        )
-                                                        if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                                                            viewModel.startLiveVoiceSession { recognizedText ->
-                                                                inputText = recognizedText
-                                                            }
-                                                        } else {
-                                                            recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
-                                                        }
-                                                    } else if (dragAmount > 10f && isVoiceSessionActive) {
-                                                        viewModel.triggerHapticFeedback(context)
-                                                        viewModel.stopLiveVoiceSession()
-                                                    }
-                                                }
-                                            )
-                                        }
-                                )
-                            }
+
                         }
                     }
                 }

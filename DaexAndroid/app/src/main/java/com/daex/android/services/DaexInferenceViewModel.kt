@@ -168,6 +168,7 @@ class DaexInferenceViewModel(
     val voiceAmplitude: StateFlow<Float> = _voiceAmplitude.asStateFlow()
 
     private var speechManager: SpeechManager? = null
+    private var audioRecorder: AudioRecorder? = null
 
     val deviceSpecs: DeviceSpecs? = deviceService?.getDeviceSpecs()
 
@@ -175,6 +176,21 @@ class DaexInferenceViewModel(
     private var curationJob: Job? = null
 
     init {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val ctx = context
+                if (ctx != null) {
+                    ctx.cacheDir.listFiles()?.forEach { file ->
+                        if (file.name.startsWith("live_audio_") && file.name.endsWith(".wav")) {
+                            file.delete()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("DaexInference", "Failed to clean up old audio cache files", e)
+            }
+        }
+
         viewModelScope.launch {
             preferences?.primaryColorFlow?.collectLatest { colorInt ->
                 _primaryColor.value = Color(colorInt)
@@ -358,28 +374,86 @@ class DaexInferenceViewModel(
 
     fun startLiveVoiceSession(onTextResult: (String) -> Unit) {
         _isLiveVoiceActive.value = true
-        // NOTE: Currently using SpeechManager as a placeholder.
-        // In the future, this is the dedicated entry point for Gemini Live-like 
-        // real-time bidirectional streaming (e.g. WebSocket, WebRTC, local duplex audio).
+        _voiceState.value = VoiceState.LISTENING
+        startNewRecordingSegment()
+    }
+
+    private val liveAudioFiles = mutableListOf<java.io.File>()
+
+    private fun startNewRecordingSegment() {
         val ctx = context ?: return
-        if (speechManager == null) {
-            speechManager = SpeechManager(
-                context = ctx,
-                onAmplitudeChanged = { setVoiceAmplitude(it) },
-                onResult = { result ->
-                    onTextResult(result)
-                },
-                onStateChanged = { state ->
-                    setVoiceState(state)
-                }
-            )
+        val audioFile = java.io.File(ctx.cacheDir, "live_audio_${System.currentTimeMillis()}.wav")
+        liveAudioFiles.add(audioFile)
+
+        // Stop any active recorder
+        audioRecorder?.stop()
+
+        val recorder = AudioRecorder(audioFile)
+        audioRecorder = recorder
+
+        recorder.start(
+            scope = viewModelScope,
+            speechThreshold = 0.03f,
+            silenceThreshold = 0.015f,
+            silenceDurationMs = 1500L,
+            onSpeechStarted = {
+                handleUserSpeechStarted()
+            },
+            onSilenceDetected = {
+                handleUserSilenceDetected(audioFile)
+            }
+        ) { amplitude ->
+            setVoiceAmplitude(amplitude)
         }
-        speechManager?.startListening()
+    }
+
+    private fun handleUserSpeechStarted() {
+        if (_isGenerating.value) {
+            android.util.Log.i("DaexInference", "VAD: User speech detected while model is generating. Interruption triggered!")
+            viewModelScope.launch {
+                cancelGeneration()
+                // Force state back to LISTENING since the user interrupted the model
+                _voiceState.value = VoiceState.LISTENING
+                // Play a brief interrupt haptic
+                val ctx = context
+                if (ctx != null) {
+                    triggerHapticFeedback(type = HapticType.CLICK)
+                }
+            }
+        }
+    }
+
+    private fun handleUserSilenceDetected(audioFile: java.io.File) {
+        viewModelScope.launch {
+            android.util.Log.i("DaexInference", "VAD: Silence detected. Finalizing chunk and submitting.")
+
+            // Finalize current chunk by calling stop() on its recorder
+            audioRecorder?.stop()
+
+            _voiceState.value = VoiceState.PROCESSING
+
+            // Immediately start next segment to keep recording loop uninterrupted
+            if (_isLiveVoiceActive.value) {
+                startNewRecordingSegment()
+            }
+
+            if (audioFile.exists() && audioFile.length() > 44) {
+                submitAudioPrompt(audioFile.absolutePath)
+            } else {
+                if (_isLiveVoiceActive.value && _voiceState.value == VoiceState.PROCESSING) {
+                    _voiceState.value = VoiceState.LISTENING
+                }
+            }
+        }
     }
 
     fun stopLiveVoiceSession() {
         _isLiveVoiceActive.value = false
-        speechManager?.stopListening()
+        _voiceState.value = VoiceState.IDLE
+        audioRecorder?.stop()
+        audioRecorder = null
+        cancelGeneration()
+        liveAudioFiles.clear()
     }
 
     fun toggleVoiceInput(onTextResult: (String) -> Unit) {
@@ -1109,6 +1183,208 @@ class DaexInferenceViewModel(
                     }
                 } finally {
                     _isGenerating.value = false
+                }
+            }
+        }
+    }
+
+    fun submitAudioPrompt(audioPath: String) {
+        if (_isGenerating.value) return
+        if (_modelStatus.value != ModelStatus.READY || !daexService.isLoaded()) {
+            _errorMessage.value = "Model is not loaded yet."
+            // Reset voice states on failure
+            _isLiveVoiceActive.value = false
+            _voiceState.value = VoiceState.IDLE
+            return
+        }
+        curationJob?.cancel()
+
+        viewModelScope.launch {
+            var convId = _currentConversationId.value
+            if (convId == null) {
+                val modelId = _currentModel.value?.id ?: ModelBank.generativeModels.first().id
+                convId = daexMemory?.createConversation(modelId, "Audio Session")
+                _currentConversationId.value = convId
+                if (convId != null && _attachedFiles.value.isNotEmpty()) {
+                    daexMemory?.updateAttachedFiles(convId, _attachedFiles.value)
+                }
+                refreshConversations()
+            }
+
+            if (convId == null) {
+                _isLiveVoiceActive.value = false
+                _voiceState.value = VoiceState.IDLE
+                return@launch
+            }
+
+            val userMsgId = System.currentTimeMillis().toString()
+            val modelMsgId = (System.currentTimeMillis() + 1).toString()
+            
+            val userMsg = Message(id = userMsgId, role = "user", content = "[Live Audio]", audioPath = audioPath)
+            val modelMsg = Message(id = modelMsgId, role = "model", content = "")
+            
+            _messages.value = _messages.value + listOf(userMsg, modelMsg)
+            
+            daexMemory?.saveMessage(convId, userMsg)
+            daexMemory?.saveMessage(convId, modelMsg)
+            
+            _isGenerating.value = true
+            _tokenSpeed.value = 0.0
+            triggerHapticFeedback(type = HapticType.START_RESPONSE)
+
+            generationJob = viewModelScope.launch {
+                try {
+                    val fullHistory = (daexMemory?.getRecentHistory(convId) ?: emptyList())
+                        .filter { it.id != modelMsgId && it.role != "system" }
+                    
+                    var activeHistory = fullHistory.filter { !it.isCompacted }
+                    val maxContextLimit = _currentModel.value?.maxContextTokens ?: 8192
+                    
+                    val inferenceHistory = activeHistory.toMutableList()
+                    var rawText = ""
+                    val coreMemoryContent = daexCoreMemory?.getMemoryContent() ?: ""
+                    
+                    var systemContext = coreMemoryContent
+                    if (daexRag != null && daexRag.hasDocuments() && _attachedFiles.value.isNotEmpty()) {
+                        try {
+                            val relevantChunks = daexRag.queryDocuments(
+                                query = "Audio Input",
+                                activeFileNames = _attachedFiles.value
+                            )
+                            if (relevantChunks.isNotEmpty()) {
+                                val contextBlock = relevantChunks.joinToString("\n---\n")
+                                systemContext += "\n\n<uploaded_documents>\n$contextBlock\n</uploaded_documents>\n"
+                                systemContext += "Use the above document excerpts to help answer the user's query. If the excerpts are not relevant, ignore them.\n"
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("DaexInference", "RAG query failed", e)
+                        }
+                    }
+
+                    if (daexSkillManager != null) {
+                        systemContext += "\n\nYou have domain-specific \"skills\" (additional instructions/parameters) available. If you need a special skill or want to see what is available, call the listSkills() tool. If you find a matching skill, call the loadSkill(skillName) tool to retrieve its instructions.\n"
+                    }
+
+                    if (_isLiveVoiceActive.value) {
+                        systemContext += "\n\nIMPORTANT: You are in a live voice session. Keep your response extremely brief, conversational, and direct (under 25 words). Do not use lists or structured formatting."
+                    }
+
+                    val result = daexService.generateResponse(
+                        messages = inferenceHistory,
+                        systemContext = systemContext,
+                        isReasoningEnabled = if (_isLiveVoiceActive.value) false else _isReasoningEnabled.value,
+                        temperature = _inferenceTemperature.value,
+                        topK = _inferenceTopK.value,
+                        topP = _inferenceTopP.value,
+                        customSystemPrompt = _customSystemPrompt.value,
+                        isToolCallingEnabled = _isToolCallingEnabled.value,
+                        onRequestPermission = { toolName, description ->
+                            requestPermission(toolName, description)
+                        },
+                        onStatusUpdate = { status ->
+                            val updated = _messages.value.toMutableList()
+                            val idx = updated.indexOfFirst { it.id == modelMsgId }
+                            if (idx != -1) {
+                                updated[idx] = updated[idx].copy(toolStatus = status)
+                                _messages.value = updated
+                            }
+                        },
+                        maxTokens = _maxTokens.value
+                    ) { token ->
+                        if (!isActive) return@generateResponse
+                        rawText += token
+                        
+                        var thought: String? = null
+                        var actual = rawText
+                        
+                        val thinkTags = listOf(
+                            Pair("<|think|>", "</think|>"),
+                            Pair("<think>", "</think>"),
+                            Pair("<|channel>", "<channel|>")
+                        )
+                        
+                        val extractedThoughts = mutableListOf<String>()
+                        val modifiedText = java.lang.StringBuilder()
+                        
+                        var i = 0
+                        while (i < rawText.length) {
+                            var foundTag = false
+                            for (tagPair in thinkTags) {
+                                if (rawText.startsWith(tagPair.first, i)) {
+                                    val startIdx = i + tagPair.first.length
+                                    val endIdx = rawText.indexOf(tagPair.second, startIdx)
+                                    if (endIdx != -1) {
+                                        val content = rawText.substring(startIdx, endIdx).trim()
+                                        if (content.isNotEmpty()) {
+                                            extractedThoughts.add(content)
+                                        }
+                                        i = endIdx + tagPair.second.length
+                                        foundTag = true
+                                        break
+                                    } else {
+                                        val content = rawText.substring(startIdx).trim()
+                                        if (content.isNotEmpty()) {
+                                            extractedThoughts.add(content)
+                                        }
+                                        i = rawText.length
+                                        foundTag = true
+                                        break
+                                    }
+                                }
+                            }
+                            if (!foundTag) {
+                                modifiedText.append(rawText[i])
+                                i++
+                            }
+                        }
+                        
+                        if (extractedThoughts.isNotEmpty()) {
+                            thought = extractedThoughts.joinToString("\n\n")
+                        }
+                        actual = modifiedText.toString()
+                        
+                        val updated = _messages.value.toMutableList()
+                        val idx = updated.indexOfFirst { it.id == modelMsgId }
+                        if (idx != -1) {
+                            updated[idx] = updated[idx].copy(content = actual.trimStart(), thoughtContent = thought)
+                            _messages.value = updated
+                        }
+                    }
+                    _tokenSpeed.value = result.tokensPerSecond
+                    triggerHapticFeedback(type = HapticType.SUCCESS_COMPLETION)
+                    
+                    val updatedList = _messages.value
+                    val finalMsg = updatedList.find { it.id == modelMsgId }
+                    if (finalMsg != null) {
+                        val finalModelMsg = finalMsg.copy(tokensPerSecond = result.tokensPerSecond)
+                        daexMemory?.saveMessage(convId, finalModelMsg)
+                    }
+                } catch (e: Exception) {
+                    val isCancellation = e is kotlinx.coroutines.CancellationException ||
+                                         e is java.util.concurrent.CancellationException ||
+                                         e.message?.contains("cancel", ignoreCase = true) == true
+                    
+                    val updated = _messages.value.toMutableList()
+                    val idx = updated.indexOfFirst { it.id == modelMsgId }
+                    if (idx != -1) {
+                        val messageToAppend = if (isCancellation) {
+                            "\n\n[Generation stopped by user]"
+                        } else {
+                            "\n[Error: ${e.message ?: "Generation failed"}]"
+                        }
+                        val errorContent = updated[idx].content + messageToAppend
+                        updated[idx] = updated[idx].copy(content = errorContent)
+                        _messages.value = updated
+                        daexMemory?.saveMessage(convId, updated[idx])
+                    }
+                } finally {
+                    _isGenerating.value = false
+                    if (!_isLiveVoiceActive.value) {
+                        _voiceState.value = VoiceState.IDLE
+                    } else {
+                        _voiceState.value = VoiceState.LISTENING
+                    }
+                    refreshConversations()
                 }
             }
         }
