@@ -163,6 +163,9 @@ class DaexInferenceViewModel(
     private val _ttsVoiceId = MutableStateFlow(1) // Default to af_bella (1)
     val ttsVoiceId: StateFlow<Int> = _ttsVoiceId.asStateFlow()
 
+    private val _systemChimeStyle = MutableStateFlow(0) // Default to Option 0: Glass Bell
+    val systemChimeStyle: StateFlow<Int> = _systemChimeStyle.asStateFlow()
+
     private var kokoroTtsService: KokoroTtsService? = null
 
     // Voice Mode State Flows
@@ -307,6 +310,13 @@ class DaexInferenceViewModel(
             }
         }
 
+        viewModelScope.launch {
+            preferences?.systemChimeStyleFlow?.collectLatest { style ->
+                _systemChimeStyle.value = style
+                kokoroTtsService?.systemChimeStyle = style
+            }
+        }
+
         val ctx = context
         if (ctx != null) {
             kokoroTtsService = KokoroTtsService(ctx)
@@ -320,9 +330,9 @@ class DaexInferenceViewModel(
                         // After TTS stops speaking (between sentences), wait long enough
                         // for the AudioTrack buffer to drain before reverting to LISTENING.
                         speakingRevertJob?.cancel()
-                        ttsCooldownUntilMs = System.currentTimeMillis() + 1500L
+                        ttsCooldownUntilMs = System.currentTimeMillis() + 400L
                         speakingRevertJob = viewModelScope.launch {
-                            kotlinx.coroutines.delay(1600L)
+                            kotlinx.coroutines.delay(400L)
                             // Gate on the actual isSpeaking flag — not voiceState —
                             // so a between-sentence false trigger doesn't revert early.
                             if (kokoroTtsService?.isSpeaking != true && _isLiveVoiceActive.value) {
@@ -503,7 +513,7 @@ class DaexInferenceViewModel(
     private var speakingRevertJob: kotlinx.coroutines.Job? = null
 
 
-    private fun startNewRecordingSegment() {
+    private suspend fun startNewRecordingSegment() {
         val ctx = context ?: return
         val audioFile = java.io.File(ctx.cacheDir, "live_audio_${System.currentTimeMillis()}.wav")
         liveAudioFiles.add(audioFile)
@@ -519,49 +529,7 @@ class DaexInferenceViewModel(
             speechThreshold = 0.03f,
             silenceThreshold = 0.015f,
             silenceDurationMs = 1500L,
-            isPlaybackActive = { kokoroTtsService?.isSpeaking == true || System.currentTimeMillis() < ttsCooldownUntilMs },
-            currentSpeechThreshold = {
-                val rms = kokoroTtsService?.currentPlaybackRms ?: 0f
-                val audioManager = ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as? android.media.AudioManager
-                val speechThreshold = 0.03f
-                if (audioManager != null) {
-                    val streamType = try {
-                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                            11 // AudioManager.STREAM_ASSISTANT
-                        } else {
-                            android.media.AudioManager.STREAM_MUSIC
-                        }
-                    } catch (e: Exception) {
-                        android.media.AudioManager.STREAM_MUSIC
-                    }
-                    val currentVolume = try {
-                        audioManager.getStreamVolume(streamType)
-                    } catch (e: Exception) {
-                        audioManager.getStreamVolume(android.media.AudioManager.STREAM_MUSIC)
-                    }
-                    val maxVolume = try {
-                        audioManager.getStreamMaxVolume(streamType)
-                    } catch (e: Exception) {
-                        audioManager.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC)
-                    }
-                    val volumeRatio = if (maxVolume > 0) currentVolume.toFloat() / maxVolume else 1.0f
-                    // Square the volume ratio to match the physical logarithmic hardware volume curve
-                    val volumeRatioSquared = volumeRatio * volumeRatio
-                    
-                    // Multiplier of 4.0f scales the normalized speech RMS (typically 0.08f to 0.15f)
-                    // to dynamically hit the maximum ceiling at highest volumes.
-                    val adaptiveIncrement = rms * volumeRatioSquared * 4.0f
-                    
-                    // Clamp threshold dynamically based on the current volume level.
-                    // At max volume (volumeRatioSquared = 1.0), ceiling is 0.35f.
-                    // At mid volume (volumeRatioSquared = 0.25), ceiling is 0.11f.
-                    val maxCeiling = speechThreshold + (0.32f * volumeRatioSquared)
-                    
-                    (speechThreshold + adaptiveIncrement).coerceAtMost(maxCeiling)
-                } else {
-                    speechThreshold
-                }
-            },
+            currentPlaybackRms = { kokoroTtsService?.currentPlaybackRms ?: 0f },
             onSpeechStarted = {
                 handleUserSpeechStarted()
             },
@@ -574,21 +542,9 @@ class DaexInferenceViewModel(
     }
 
     private fun handleUserSpeechStarted() {
-        val isTtsSpeaking = kokoroTtsService?.isSpeaking == true
-        if (_isGenerating.value || isTtsSpeaking || _voiceState.value == VoiceState.SPEAKING) {
-            android.util.Log.i("DaexInference", "VAD: User speech detected while model is generating/speaking. Interruption triggered!")
-            kokoroTtsService?.stopPlayback()
-            viewModelScope.launch {
-                cancelGeneration()
-                // Force state back to LISTENING since the user interrupted the model
-                setVoiceStateInternal(VoiceState.LISTENING)
-                // Play a brief interrupt haptic
-                val ctx = context
-                if (ctx != null) {
-                    triggerHapticFeedback(type = HapticType.CLICK)
-                }
-            }
-        }
+        // Interruption disabled — speech detection still triggers recording,
+        // but does not stop TTS or cancel generation.
+        android.util.Log.d("DaexInference", "VAD: Speech started (interruption disabled)")
     }
 
     private fun handleUserSilenceDetected(audioFile: java.io.File) {
@@ -618,7 +574,7 @@ class DaexInferenceViewModel(
     fun stopLiveVoiceSession() {
         _isLiveVoiceActive.value = false
         setVoiceStateInternal(VoiceState.IDLE)
-        audioRecorder?.stop()
+        audioRecorder?.stopAsync()
         audioRecorder = null
         cancelGeneration()
         liveAudioFiles.clear()
@@ -678,6 +634,15 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             preferences?.setTtsVoiceId(voiceId)
         }
+    }
+
+    fun setSystemChimeStyle(style: Int) {
+        _systemChimeStyle.value = style
+        kokoroTtsService?.systemChimeStyle = style
+        viewModelScope.launch {
+            preferences?.setSystemChimeStyle(style)
+        }
+        kokoroTtsService?.playSystemSound(startFreq = 120f, endFreq = 180f, durationMs = 250L)
     }
 
     fun setSpeculativeDecodingEnabled(enabled: Boolean) {

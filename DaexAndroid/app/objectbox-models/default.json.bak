@@ -46,7 +46,7 @@
     },
     {
       "id": "2:6638959390687185976",
-      "lastPropertyId": "11:2463945863462381491",
+      "lastPropertyId": "12:274006001639345371",
       "name": "MessageEntity",
       "properties": [
         {
@@ -108,6 +108,11 @@
           "id": "11:2463945863462381491",
           "name": "isCompacted",
           "type": 1
+        },
+        {
+          "id": "12:274006001639345371",
+          "name": "audioPath",
+          "type": 9
         }
       ],
       "relations": []

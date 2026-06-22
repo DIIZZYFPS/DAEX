@@ -34,6 +34,7 @@ class DaexPreferences(private val context: Context) {
         val SUGGESTED_PROMPTS = stringPreferencesKey("suggested_prompts")
         val IS_TTS_ENABLED = booleanPreferencesKey("is_tts_enabled")
         val TTS_VOICE_ID = intPreferencesKey("tts_voice_id")
+        val SYSTEM_CHIME_STYLE = intPreferencesKey("system_chime_style")
     }
 
     val lastUsedModelIdFlow: Flow<String?> = context.dataStore.data.map { preferences ->
@@ -103,6 +104,10 @@ class DaexPreferences(private val context: Context) {
 
     val ttsVoiceIdFlow: Flow<Int> = context.dataStore.data.map { preferences ->
         preferences[TTS_VOICE_ID] ?: 1 // Default to af_bella (1)
+    }
+
+    val systemChimeStyleFlow: Flow<Int> = context.dataStore.data.map { preferences ->
+        preferences[SYSTEM_CHIME_STYLE] ?: 0 // Default to Option 0: Glass Bell
     }
 
     val suggestedPromptsFlow: Flow<List<String>> = context.dataStore.data.map { preferences ->
@@ -213,6 +218,12 @@ class DaexPreferences(private val context: Context) {
     suspend fun setTtsVoiceId(voiceId: Int) {
         context.dataStore.edit { preferences ->
             preferences[TTS_VOICE_ID] = voiceId
+        }
+    }
+
+    suspend fun setSystemChimeStyle(style: Int) {
+        context.dataStore.edit { preferences ->
+            preferences[SYSTEM_CHIME_STYLE] = style
         }
     }
 

@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class AudioRecorder(private val outputFile: File) {
     private var audioRecord: AudioRecord? = null
@@ -30,8 +31,7 @@ class AudioRecorder(private val outputFile: File) {
         speechThreshold: Float = 0.03f,
         silenceThreshold: Float = 0.015f,
         silenceDurationMs: Long = 1500L,
-        isPlaybackActive: () -> Boolean = { false },
-        currentSpeechThreshold: () -> Float = { speechThreshold },
+        currentPlaybackRms: () -> Float = { 0f }, // DIIZZY: Injected dynamic RMS ducking lambda
         onSpeechStarted: (() -> Unit)? = null,
         onSilenceDetected: (() -> Unit)? = null,
         onAmplitude: (Float) -> Unit
@@ -40,9 +40,6 @@ class AudioRecorder(private val outputFile: File) {
         isRecording = true
 
         recordingJob = scope.launch(Dispatchers.IO) {
-            var aec: android.media.audiofx.AcousticEchoCanceler? = null
-            var ns: android.media.audiofx.NoiseSuppressor? = null
-            var agc: android.media.audiofx.AutomaticGainControl? = null
             try {
                 // Ensure output file directories exist
                 outputFile.parentFile?.mkdirs()
@@ -50,8 +47,9 @@ class AudioRecorder(private val outputFile: File) {
                     outputFile.delete()
                 }
 
+                // VOICE_RECOGNITION: speech-optimized mic signal without digital playback routing.
                 val record = AudioRecord(
-                    MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                    MediaRecorder.AudioSource.VOICE_RECOGNITION,
                     sampleRate,
                     channelConfig,
                     audioFormat,
@@ -62,20 +60,6 @@ class AudioRecorder(private val outputFile: File) {
                 if (record.state != AudioRecord.STATE_INITIALIZED) {
                     Log.e("AudioRecorder", "AudioRecord not initialized")
                     return@launch
-                }
-
-                // Enable Acoustic Echo Cancellation, Noise Suppression and Automatic Gain Control if available
-                if (android.media.audiofx.AcousticEchoCanceler.isAvailable()) {
-                    aec = android.media.audiofx.AcousticEchoCanceler.create(record.audioSessionId)
-                    aec?.enabled = true
-                }
-                if (android.media.audiofx.NoiseSuppressor.isAvailable()) {
-                    ns = android.media.audiofx.NoiseSuppressor.create(record.audioSessionId)
-                    ns?.enabled = true
-                }
-                if (android.media.audiofx.AutomaticGainControl.isAvailable()) {
-                    agc = android.media.audiofx.AutomaticGainControl.create(record.audioSessionId)
-                    agc?.enabled = true
                 }
 
                 val fos = FileOutputStream(outputFile)
@@ -91,6 +75,7 @@ class AudioRecorder(private val outputFile: File) {
                 var consecutiveSpeechFrames = 0
                 val preRollBuffers = java.util.LinkedList<ShortArray>()
                 var lastLogTime = 0L
+                var smoothedTtsRms = 0f // Envelope follower state
 
                 while (isRecording) {
                     val readSize = record.read(buffer, 0, buffer.size)
@@ -106,9 +91,32 @@ class AudioRecorder(private val outputFile: File) {
                         val normalized = (rms / 32768.0).toFloat().coerceIn(0f, 1f)
                         onAmplitude(normalized)
 
+                        // DIIZZY: Fetch real-time TTS volume to calculate software ducking floor
+                        val kokoroRms = currentPlaybackRms()
+                        
+                        // Asymmetric Peak Envelope Follower to mask acoustic latency
+                        if (kokoroRms > smoothedTtsRms) {
+                            // Fast Attack: instantly track rising volume
+                            smoothedTtsRms = kokoroRms
+                        } else if (kokoroRms == 0f) {
+                            // Instant Release: collapse dynamic floor instantly when TTS stops
+                            smoothedTtsRms = 0f
+                        } else {
+                            // Slow Release: decay by 8% per frame (~350ms masking window)
+                            smoothedTtsRms *= 0.92f
+                        }
+
+                        // Acoustic echo estimation (no digital routing with VOICE_RECOGNITION)
+                        val ECHO_COUPLING_FACTOR = 0.12f // acoustic speaker→mic bleed is ~10-15%
+                        val echoEstimate = smoothedTtsRms * ECHO_COUPLING_FACTOR
+                        // Mic signal must be 1.5x louder than estimated acoustic echo
+                        val dynamicSilenceFloor = maxOf(speechThreshold, echoEstimate * 1.5f)
+                        val dynamicSilenceThreshold = maxOf(silenceThreshold, echoEstimate * 0.8f)
+                        val requiredSpeechFrames = if (smoothedTtsRms > 0.01f) 3 else 2
+
                         val nowTime = System.currentTimeMillis()
                         if (nowTime - lastLogTime > 500L) {
-                            Log.d("AudioRecorder", "VAD: amplitude=$normalized, isPlaybackActive=${isPlaybackActive()}, hasSpeechStarted=$hasSpeechStarted")
+                            Log.d("AudioRecorder", "VAD: mic=$normalized, tts_rms=$kokoroRms, env=$smoothedTtsRms, duck_floor=$dynamicSilenceFloor")
                             lastLogTime = nowTime
                         }
 
@@ -120,17 +128,14 @@ class AudioRecorder(private val outputFile: File) {
                             preRollBuffers.removeFirst()
                         }
 
-                        // VAD Logic: Require 3 consecutive frames (approx 150-200ms) above threshold 
-                        // when device speaker is playing to filter out transient echo/speaker spikes.
-                        // We query the adaptive threshold calculated dynamically by the ViewModel.
-                        val currentSpeechThreshold = if (isPlaybackActive()) {
-                            currentSpeechThreshold()
-                        } else {
-                            speechThreshold
-                        }
-                        val requiredSpeechFrames = if (isPlaybackActive()) 3 else 1
+                        // VAD Logic: Require N consecutive frames above dynamic threshold
+                        // Gate: completely block speech detection while TTS is actively playing
+                        val isTtsActive = kokoroRms > 0.01f
                         if (!hasSpeechStarted) {
-                            if (normalized > currentSpeechThreshold) {
+                            if (isTtsActive) {
+                                // TTS is playing — don't detect speech (would be echo)
+                                consecutiveSpeechFrames = 0
+                            } else if (normalized > dynamicSilenceFloor) {
                                 consecutiveSpeechFrames++
                                 if (consecutiveSpeechFrames >= requiredSpeechFrames) {
                                     hasSpeechStarted = true
@@ -152,7 +157,6 @@ class AudioRecorder(private val outputFile: File) {
                                     }
 
                                     onSpeechStarted?.invoke()
-                                    Log.d("AudioRecorder", "VAD: Speech started (amplitude: $normalized, threshold: $currentSpeechThreshold, frames: $consecutiveSpeechFrames)")
                                 }
                             } else {
                                 consecutiveSpeechFrames = 0
@@ -166,7 +170,7 @@ class AudioRecorder(private val outputFile: File) {
                                 totalBytesWritten += 2
                             }
 
-                            if (normalized < silenceThreshold) {
+                            if (normalized < dynamicSilenceThreshold) {
                                 if (silenceStartTime == 0L) {
                                     silenceStartTime = System.currentTimeMillis()
                                 } else {
@@ -185,6 +189,9 @@ class AudioRecorder(private val outputFile: File) {
                                 silenceStartTime = 0L
                             }
                         }
+                    } else if (readSize < 0) {
+                        Log.e("AudioRecorder", "Error reading PCM frames: $readSize")
+                        break
                     }
                 }
 
@@ -203,29 +210,46 @@ class AudioRecorder(private val outputFile: File) {
             } catch (e: Exception) {
                 Log.e("AudioRecorder", "Error recording audio", e)
             } finally {
-                try {
-                    aec?.release()
-                } catch (e: Exception) {}
-                try {
-                    ns?.release()
-                } catch (e: Exception) {}
-                try {
-                    agc?.release()
-                } catch (e: Exception) {}
                 isRecording = false
             }
         }
     }
 
-    fun stop() {
+    suspend fun stop() {
+        isRecording = false
+        recordingJob?.join()
+        recordingJob = null
+        val recordToRelease = audioRecord
+        audioRecord = null
+        if (recordToRelease != null) {
+            withContext(Dispatchers.IO) {
+                try {
+                    recordToRelease.stop()
+                } catch (e: Exception) {}
+                try {
+                    recordToRelease.release()
+                } catch (e: Exception) {}
+            }
+        }
+    }
+
+    fun stopAsync() {
         isRecording = false
         recordingJob?.cancel()
         recordingJob = null
-        try {
-            audioRecord?.stop()
-            audioRecord?.release()
-        } catch (e: Exception) {}
+        val recordToRelease = audioRecord
         audioRecord = null
+        if (recordToRelease != null) {
+            // DIIZZY: Release AudioRecord on a background thread to prevent UI thread stutter/lock
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    recordToRelease.stop()
+                } catch (e: Exception) {}
+                try {
+                    recordToRelease.release()
+                } catch (e: Exception) {}
+            }
+        }
     }
 
     private fun writeWavHeader(fos: FileOutputStream, totalAudioLen: Int) {

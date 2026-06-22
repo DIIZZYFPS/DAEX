@@ -455,6 +455,85 @@ fun SettingsScreen(
                             }
                         }
                     }
+
+                    item {
+                        SectionHeader("SYSTEM CHIME SOUND DESIGN")
+                        SettingsCard {
+                            BasicText(
+                                text = "SELECT ACTIVATION CHIME STYLE",
+                                style = DaexTheme.typography.mono.copy(
+                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                    fontSize = 10.sp,
+                                    letterSpacing = 1.sp
+                                ),
+                                modifier = Modifier.padding(bottom = 12.dp)
+                            )
+
+                            val chimeStyles = remember {
+                                listOf(
+                                    ChimeStyle(0, "Cozy Ambient Glow", "Warm polyphonic chorus synthesizer pad swell"),
+                                    ChimeStyle(1, "Crystal Prism", "Cascading sparkling glass chimes arpeggio"),
+                                    ChimeStyle(2, "Cosmic Shimmer", "Deep spatial sub-bass with twinkling high chime"),
+                                    ChimeStyle(3, "Zen Breath", "Organic acoustic meditation bowl strike"),
+                                    ChimeStyle(4, "Siri Soothing Hum", "Double sub-bass hum with soft attack and warm analog beating")
+                                )
+                            }
+                            
+                            val systemChimeStyle by viewModel.systemChimeStyle.collectAsState()
+
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                chimeStyles.forEach { style ->
+                                    val isSelected = systemChimeStyle == style.id
+                                    val cardBg = if (isSelected) DaexTheme.colors.primary.copy(alpha = 0.15f) else DaexTheme.colors.background
+                                    val borderCl = if (isSelected) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.15f)
+                                    
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(cardBg)
+                                            .border(1.dp, borderCl, RoundedCornerShape(8.dp))
+                                            .clickable {
+                                                viewModel.setSystemChimeStyle(style.id)
+                                                viewModel.triggerHapticFeedback(context, force = true, type = com.daex.android.services.HapticType.TICK)
+                                            }
+                                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            BasicText(
+                                                text = style.name,
+                                                style = DaexTheme.typography.body1.copy(
+                                                    color = DaexTheme.colors.onBackground,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            BasicText(
+                                                text = style.description,
+                                                style = DaexTheme.typography.body2.copy(
+                                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.5f)
+                                                )
+                                            )
+                                        }
+                                        if (isSelected) {
+                                            BasicText(
+                                                text = "✓",
+                                                style = DaexTheme.typography.body1.copy(
+                                                    color = DaexTheme.colors.primary,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
 
                 1 -> { // APPEARANCE & THEME
@@ -932,4 +1011,10 @@ data class VoiceProfile(
     val displayName: String,
     val gender: String,
     val region: String
+)
+
+private data class ChimeStyle(
+    val id: Int,
+    val name: String,
+    val description: String
 )
