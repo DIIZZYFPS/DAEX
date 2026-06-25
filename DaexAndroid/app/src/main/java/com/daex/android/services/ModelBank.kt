@@ -113,5 +113,53 @@ object ModelBank {
         ),
         embeddingModel
     )
+
+    val kokoroModel = Model(
+        id = "kokoro-model",
+        name = "Kokoro TTS Model",
+        size = 345_555_491L,
+        description = "Kokoro TTS ONNX model",
+        requiredRAM = 128_000_000L,
+        downloadUrl = "https://huggingface.co/csukuangfj/kokoro-en-v0_19/resolve/main/model.onnx",
+        extension = "onnx",
+        provider = "Hexgrad",
+        familyId = "kokoro",
+        familyName = "Kokoro",
+        sizeName = "0.19",
+        variantName = "ONNX",
+        maxContextTokens = 0
+    )
+
+    val kokoroVoices = Model(
+        id = "kokoro-voices",
+        name = "Kokoro TTS Voices",
+        size = 5_755_904L,
+        description = "Kokoro TTS Voice profiles bin",
+        requiredRAM = 0L,
+        downloadUrl = "https://huggingface.co/csukuangfj/kokoro-en-v0_19/resolve/main/voices.bin",
+        extension = "bin",
+        provider = "Hexgrad",
+        familyId = "kokoro",
+        familyName = "Kokoro",
+        sizeName = "0.19",
+        variantName = "Voices Bin",
+        maxContextTokens = 0
+    )
+
+    val kokoroTokens = Model(
+        id = "kokoro-tokens",
+        name = "Kokoro TTS Tokens",
+        size = 1_078L,
+        description = "Kokoro TTS Token mapping",
+        requiredRAM = 0L,
+        downloadUrl = "https://huggingface.co/csukuangfj/kokoro-en-v0_19/resolve/main/tokens.txt",
+        extension = "txt",
+        provider = "Hexgrad",
+        familyId = "kokoro",
+        familyName = "Kokoro",
+        sizeName = "0.19",
+        variantName = "Tokens Txt",
+        maxContextTokens = 0
+    )
 }
 

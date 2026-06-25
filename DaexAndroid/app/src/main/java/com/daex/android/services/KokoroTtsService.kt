@@ -64,27 +64,38 @@ class KokoroTtsService(private val context: Context) {
                 try {
                     android.util.Log.i("KokoroTtsService", "Initializing Kokoro TTS engine...")
                     
+                    val kokoroDir = File(context.filesDir, "kokoro-en-v0_19")
+                    val modelFile = File(kokoroDir, "model.onnx")
+                    val voicesFile = File(kokoroDir, "voices.bin")
+                    val tokensFile = File(kokoroDir, "tokens.txt")
+
+                    if (!modelFile.exists() || !voicesFile.exists() || !tokensFile.exists()) {
+                        android.util.Log.w("KokoroTtsService", "Cannot initialize Kokoro TTS engine: model files are not downloaded yet.")
+                        return@launch
+                    }
+
                     val localDataDir = File(context.filesDir, "kokoro/espeak-ng-data")
                     if (!localDataDir.exists() || localDataDir.listFiles().isNullOrEmpty()) {
                         localDataDir.mkdirs()
                         android.util.Log.i("KokoroTtsService", "Extracting espeak-ng-data from assets to $localDataDir...")
-                        copyAssetsFolder("kokoro-en-v0_19/espeak-ng-data", localDataDir)
+                        copyAssetsFolder("espeak-ng-data", localDataDir)
                         android.util.Log.i("KokoroTtsService", "Extraction complete.")
                     }
 
                     val config = OfflineTtsConfig(
                         model = OfflineTtsModelConfig(
                             kokoro = OfflineTtsKokoroModelConfig(
-                                model = "kokoro-en-v0_19/model.onnx",
-                                voices = "kokoro-en-v0_19/voices.bin",
-                                tokens = "kokoro-en-v0_19/tokens.txt",
+                                model = modelFile.absolutePath,
+                                voices = voicesFile.absolutePath,
+                                tokens = tokensFile.absolutePath,
                                 dataDir = localDataDir.absolutePath
                             ),
                             numThreads = 2,
                             debug = false
                         )
                     )
-                    tts = OfflineTts(context.assets, config)
+                    // Pass null as the assetManager since we are loading all files from local storage absolute paths
+                    tts = OfflineTts(null, config)
                     android.util.Log.i("KokoroTtsService", "Kokoro TTS engine initialized successfully.")
                 } catch (e: Exception) {
                     android.util.Log.e("KokoroTtsService", "Failed to initialize OfflineTts", e)

@@ -119,6 +119,8 @@ fun ExecutionScreen(
     val selectedBackend by viewModel.selectedBackend.collectAsState()
     val suggestedPrompts by viewModel.suggestedPrompts.collectAsState()
     val isVoiceSessionActive by viewModel.isLiveVoiceActive.collectAsState()
+    val isTtsEnabled by viewModel.isTtsEnabled.collectAsState()
+    val isTtsDownloaded by viewModel.isTtsDownloaded.collectAsState()
     
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -781,6 +783,8 @@ fun ExecutionScreen(
                         val currentIsVoiceSessionActive by rememberUpdatedState(isVoiceSessionActive)
                         val currentIsGenerating by rememberUpdatedState(isGenerating)
                         val currentIsModelReady by rememberUpdatedState(isModelReady)
+                        val currentIsTtsEnabled by rememberUpdatedState(isTtsEnabled)
+                        val currentIsTtsDownloaded by rememberUpdatedState(isTtsDownloaded)
 
                         LaunchedEffect(isVoiceSessionActive) {
                             if (!isVoiceSessionActive) {
@@ -812,7 +816,7 @@ fun ExecutionScreen(
                                 .pointerInput(Unit) {
                                     detectHorizontalDragGestures(
                                         onDragStart = {
-                                            if (!currentIsVoiceSessionActive && currentIsModelReady && !currentIsGenerating) {
+                                            if (!currentIsVoiceSessionActive && currentIsModelReady && !currentIsGenerating && (!currentIsTtsEnabled || currentIsTtsDownloaded)) {
                                                 isDragging = true
                                                 rawDragOffset = dragOffset.value
                                             }
@@ -831,7 +835,7 @@ fun ExecutionScreen(
                                                 isDragging = false
                                                 coroutineScope.launch {
                                                     dragOffset.snapTo(rawDragOffset)
-                                                    if (rawDragOffset < -maxDragDistancePx * 0.6f && currentIsModelReady && !currentIsGenerating) {
+                                                    if (rawDragOffset < -maxDragDistancePx * 0.6f && currentIsModelReady && !currentIsGenerating && (!currentIsTtsEnabled || currentIsTtsDownloaded)) {
                                                         dragOffset.animateTo(-maxDragDistancePx, tween(200))
                                                         val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO)
                                                         if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -855,7 +859,7 @@ fun ExecutionScreen(
                                                     viewModel.stopLiveVoiceSession()
                                                 }
                                             } else {
-                                                if (isDragging && currentIsModelReady && !currentIsGenerating) {
+                                                if (isDragging && currentIsModelReady && !currentIsGenerating && (!currentIsTtsEnabled || currentIsTtsDownloaded)) {
                                                     change.consume()
                                                     rawDragOffset = (rawDragOffset + dragAmount).coerceIn(-maxDragDistancePx, 0f)
                                                     // DIIZZY: Trigger immediately on pull when crossing 95% threshold
@@ -1005,6 +1009,7 @@ fun ExecutionScreen(
                                         !isModelReady -> "Engine not loaded..."
                                         voiceState == VoiceState.LISTENING -> "Listening to speech..."
                                         voiceState == VoiceState.PROCESSING -> "Processing speech..."
+                                        isTtsEnabled && !isTtsDownloaded -> "Download TTS engine in settings to start..."
                                         else -> "Initialize execution with Icarus..."
                                     }
                                     DaexTextField(
@@ -1040,7 +1045,7 @@ fun ExecutionScreen(
                                                 viewModel.triggerHapticFeedback(context)
                                                 viewModel.submitPrompt(inputText)
                                                 inputText = ""
-                                            } else {
+                                            } else if (!isTtsEnabled || isTtsDownloaded) {
                                                 viewModel.triggerHapticFeedback(context)
                                                 val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO)
                                                 if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
@@ -1048,6 +1053,9 @@ fun ExecutionScreen(
                                                 } else {
                                                     recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                                                 }
+                                            } else {
+                                                viewModel.triggerHapticFeedback(context)
+                                                android.widget.Toast.makeText(context, "TTS voice engine is not downloaded yet. Please download it in Settings.", android.widget.Toast.LENGTH_LONG).show()
                                             }
                                         },
                                         enabled = (isGenerating || isModelReady) && (isGenerating || inputText.isNotEmpty() || voiceState != VoiceState.PROCESSING) && transitionProgress < 0.5f,
@@ -1063,7 +1071,8 @@ fun ExecutionScreen(
                                         } else {
                                             Crossfade(targetState = inputText.isEmpty(), label = "morph_button") { isEmpty ->
                                                 if (isEmpty) {
-                                                    DaexMicIcon(color = if (isVoiceSessionActive) DaexTheme.colors.primary else if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary, modifier = Modifier.size(18.dp))
+                                                    val micBlocked = !isModelReady || (isTtsEnabled && !isTtsDownloaded)
+                                                    DaexMicIcon(color = if (isVoiceSessionActive) DaexTheme.colors.primary else if (micBlocked) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary, modifier = Modifier.size(18.dp))
                                                 } else {
                                                     DaexSendIcon(color = if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary, modifier = Modifier.size(16.dp))
                                                 }

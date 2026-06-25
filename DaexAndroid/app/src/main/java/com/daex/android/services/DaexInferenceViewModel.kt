@@ -166,6 +166,15 @@ class DaexInferenceViewModel(
     private val _systemChimeStyle = MutableStateFlow(0) // Default to Option 0: Glass Bell
     val systemChimeStyle: StateFlow<Int> = _systemChimeStyle.asStateFlow()
 
+    private val _isTtsDownloaded = MutableStateFlow(false)
+    val isTtsDownloaded: StateFlow<Boolean> = _isTtsDownloaded.asStateFlow()
+
+    private val _isTtsDownloading = MutableStateFlow(false)
+    val isTtsDownloading: StateFlow<Boolean> = _isTtsDownloading.asStateFlow()
+
+    private val _ttsDownloadProgress = MutableStateFlow(0)
+    val ttsDownloadProgress: StateFlow<Int> = _ttsDownloadProgress.asStateFlow()
+
     private var kokoroTtsService: KokoroTtsService? = null
 
     // Voice Mode State Flows
@@ -395,6 +404,29 @@ class DaexInferenceViewModel(
                 }
             }
         }
+
+        // Silent Background Initialization of the Kokoro TTS Model
+        viewModelScope.launch {
+            if (modelManager != null) {
+                val isDownloaded = modelManager.isKokoroDownloaded()
+                if (!isDownloaded) {
+                    try {
+                        _isTtsDownloading.value = true
+                        _ttsDownloadProgress.value = 0
+                        modelManager.downloadKokoro { progress ->
+                            _ttsDownloadProgress.value = progress
+                        }
+                        _isTtsDownloaded.value = true
+                        _isTtsDownloading.value = false
+                        _ttsDownloadProgress.value = 100
+                        refreshDownloadedModels()
+                    } catch (e: Exception) {
+                        _isTtsDownloading.value = false
+                        android.util.Log.e("DaexInferenceViewModel", "Background TTS download failed", e)
+                    }
+                }
+            }
+        }
         refreshDownloadedModels()
     }
 
@@ -406,6 +438,7 @@ class DaexInferenceViewModel(
                 .map { it.id }
                 .toSet()
             _downloadedModelIds.value = downloaded
+            _isTtsDownloaded.value = modelManager.isKokoroDownloaded()
         }
     }
 
@@ -458,6 +491,14 @@ class DaexInferenceViewModel(
     }
 
     fun startLiveVoiceSession(onTextResult: (String) -> Unit) {
+        if (_isTtsEnabled.value && !_isTtsDownloaded.value) {
+            android.util.Log.w("DaexInference", "Cannot start live voice session: TTS is enabled but not downloaded.")
+            context?.let { ctx ->
+                android.widget.Toast.makeText(ctx, "TTS voice engine is not downloaded yet. Please download it in Settings.", android.widget.Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+
         _isLiveVoiceActive.value = true
         setVoiceStateInternal(VoiceState.LISTENING)
 
@@ -870,6 +911,44 @@ class DaexInferenceViewModel(
         _downloadingModelId.value = null
         _modelStatus.value = ModelStatus.NOT_DOWNLOADED
         _downloadProgress.value = 0
+    }
+
+    fun downloadTtsModel() {
+        if (_isTtsDownloading.value || modelManager == null) return
+
+        _isTtsDownloading.value = true
+        _ttsDownloadProgress.value = 0
+        _errorMessage.value = null
+
+        viewModelScope.launch {
+            try {
+                modelManager.downloadKokoro { progress ->
+                    _ttsDownloadProgress.value = progress
+                }
+                _isTtsDownloaded.value = true
+                _isTtsDownloading.value = false
+                _ttsDownloadProgress.value = 100
+                refreshDownloadedModels()
+            } catch (e: Exception) {
+                _isTtsDownloading.value = false
+                _errorMessage.value = e.message ?: "TTS Download failed"
+                android.util.Log.e("DaexInferenceViewModel", "TTS model download failed", e)
+            }
+        }
+    }
+
+    fun deleteTtsModel() {
+        viewModelScope.launch {
+            if (modelManager == null) return@launch
+            try {
+                kokoroTtsService?.release()
+                modelManager.deleteKokoro()
+                _isTtsDownloaded.value = false
+                refreshDownloadedModels()
+            } catch (e: Exception) {
+                android.util.Log.e("DaexInferenceViewModel", "Failed to delete TTS model", e)
+            }
+        }
     }
 
     fun loadModel(model: Model) {

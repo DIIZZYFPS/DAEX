@@ -64,6 +64,9 @@ fun SettingsScreen(
     val isAuraEnabled by viewModel.isAuraEnabled.collectAsState()
     val isTtsEnabled by viewModel.isTtsEnabled.collectAsState()
     val ttsVoiceId by viewModel.ttsVoiceId.collectAsState()
+    val isTtsDownloaded by viewModel.isTtsDownloaded.collectAsState()
+    val isTtsDownloading by viewModel.isTtsDownloading.collectAsState()
+    val ttsDownloadProgress by viewModel.ttsDownloadProgress.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("TUNING", "THEME", "SYSTEM")
@@ -383,70 +386,145 @@ fun SettingsScreen(
                             }
 
                             if (isTtsEnabled) {
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                BasicText(
-                                    text = "SELECT SPEAKER PROFILE",
-                                    style = DaexTheme.typography.mono.copy(
-                                        color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
-                                        fontSize = 10.sp,
-                                        letterSpacing = 1.sp
-                                    ),
-                                    modifier = Modifier.padding(bottom = 8.dp)
-                                )
-
-                                val voiceProfiles = remember {
-                                    listOf(
-                                        VoiceProfile(0, "af_alloy", "Alloy", "Female ♀", "US"),
-                                        VoiceProfile(1, "af_bella", "Bella", "Female ♀", "US"),
-                                        VoiceProfile(2, "af_nicole", "Nicole", "Female ♀", "US"),
-                                        VoiceProfile(3, "af_sarah", "Sarah", "Female ♀", "US"),
-                                        VoiceProfile(4, "af_sky", "Sky", "Female ♀", "US"),
-                                        VoiceProfile(5, "am_adam", "Adam", "Male ♂", "US"),
-                                        VoiceProfile(6, "am_michael", "Michael", "Male ♂", "US"),
-                                        VoiceProfile(7, "bf_emma", "Emma", "Female ♀", "UK"),
-                                        VoiceProfile(8, "bf_isabella", "Isabella", "Female ♀", "UK"),
-                                        VoiceProfile(9, "bm_george", "George", "Male ♂", "UK"),
-                                        VoiceProfile(10, "bm_lewis", "Lewis", "Male ♂", "UK")
-                                    )
-                                }
-
-                                LazyRow(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    items(voiceProfiles.size) { index ->
-                                        val profile = voiceProfiles[index]
-                                        val isSelected = ttsVoiceId == profile.id
-                                        val cardBg = if (isSelected) DaexTheme.colors.primary.copy(alpha = 0.15f) else DaexTheme.colors.background
-                                        val borderCl = if (isSelected) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.15f)
-                                        
-                                        Column(
+                                if (isTtsDownloaded) {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        BasicText(
+                                            text = "SELECT SPEAKER PROFILE",
+                                            style = DaexTheme.typography.mono.copy(
+                                                color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                                fontSize = 10.sp,
+                                                letterSpacing = 1.sp
+                                            )
+                                        )
+                                        BasicText(
+                                            text = "DELETE ENGINE",
+                                            style = DaexTheme.typography.mono.copy(
+                                                color = DaexTheme.colors.error,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            ),
                                             modifier = Modifier
-                                                .width(100.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                                .background(cardBg)
-                                                .border(1.dp, borderCl, RoundedCornerShape(8.dp))
-                                                .clickable {
-                                                    viewModel.setTtsVoiceId(profile.id)
-                                                    viewModel.triggerHapticFeedback(context, force = true, type = com.daex.android.services.HapticType.TICK)
-                                                }
-                                                .padding(12.dp),
-                                            horizontalAlignment = Alignment.CenterHorizontally
+                                                .clickable { viewModel.deleteTtsModel() }
+                                                .padding(vertical = 4.dp, horizontal = 8.dp)
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.height(8.dp))
+
+                                    val voiceProfiles = remember {
+                                        listOf(
+                                            VoiceProfile(0, "af_alloy", "Alloy", "Female ♀", "US"),
+                                            VoiceProfile(1, "af_bella", "Bella", "Female ♀", "US"),
+                                            VoiceProfile(2, "af_nicole", "Nicole", "Female ♀", "US"),
+                                            VoiceProfile(3, "af_sarah", "Sarah", "Female ♀", "US"),
+                                            VoiceProfile(4, "af_sky", "Sky", "Female ♀", "US"),
+                                            VoiceProfile(5, "am_adam", "Adam", "Male ♂", "US"),
+                                            VoiceProfile(6, "am_michael", "Michael", "Male ♂", "US"),
+                                            VoiceProfile(7, "bf_emma", "Emma", "Female ♀", "UK"),
+                                            VoiceProfile(8, "bf_isabella", "Isabella", "Female ♀", "UK"),
+                                            VoiceProfile(9, "bm_george", "George", "Male ♂", "UK"),
+                                            VoiceProfile(10, "bm_lewis", "Lewis", "Male ♂", "UK")
+                                        )
+                                    }
+
+                                    LazyRow(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        items(voiceProfiles.size) { index ->
+                                            val profile = voiceProfiles[index]
+                                            val isSelected = ttsVoiceId == profile.id
+                                            val cardBg = if (isSelected) DaexTheme.colors.primary.copy(alpha = 0.15f) else DaexTheme.colors.background
+                                            val borderCl = if (isSelected) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.15f)
+                                            
+                                            Column(
+                                                modifier = Modifier
+                                                    .width(100.dp)
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(cardBg)
+                                                    .border(1.dp, borderCl, RoundedCornerShape(8.dp))
+                                                    .clickable {
+                                                        viewModel.setTtsVoiceId(profile.id)
+                                                        viewModel.triggerHapticFeedback(context, force = true, type = com.daex.android.services.HapticType.TICK)
+                                                    }
+                                                    .padding(12.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally
+                                            ) {
+                                                BasicText(
+                                                    text = profile.displayName,
+                                                    style = DaexTheme.typography.body2.copy(
+                                                        color = DaexTheme.colors.onBackground,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                )
+                                                Spacer(modifier = Modifier.height(4.dp))
+                                                BasicText(
+                                                    text = "${profile.region} • ${if (profile.gender.contains("Female")) "♀" else "♂"}",
+                                                    style = DaexTheme.typography.mono.copy(
+                                                        color = DaexTheme.colors.onSurface.copy(alpha = 0.5f),
+                                                        fontSize = 9.sp
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    Spacer(modifier = Modifier.height(16.dp))
+                                    if (isTtsDownloading) {
+                                        Column(modifier = Modifier.fillMaxWidth()) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                BasicText(
+                                                    text = "Downloading model assets...",
+                                                    style = DaexTheme.typography.body2.copy(color = DaexTheme.colors.onBackground)
+                                                )
+                                                BasicText(
+                                                    text = "$ttsDownloadProgress%",
+                                                    style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.primary, fontWeight = FontWeight.Bold)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(8.dp))
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .height(6.dp)
+                                                    .clip(RoundedCornerShape(3.dp))
+                                                    .background(Color.White.copy(alpha = 0.05f))
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth(ttsDownloadProgress / 100f)
+                                                        .fillMaxHeight()
+                                                        .background(DaexTheme.colors.primary)
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(DaexTheme.colors.primary.copy(alpha = 0.1f))
+                                                .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
+                                                .clickable { viewModel.downloadTtsModel() }
+                                                .padding(16.dp),
+                                            contentAlignment = Alignment.Center
                                         ) {
                                             BasicText(
-                                                text = profile.displayName,
-                                                style = DaexTheme.typography.body2.copy(
-                                                    color = DaexTheme.colors.onBackground,
-                                                    fontWeight = FontWeight.Bold
-                                                )
-                                            )
-                                            Spacer(modifier = Modifier.height(4.dp))
-                                            BasicText(
-                                                text = "${profile.region} • ${if (profile.gender.contains("Female")) "♀" else "♂"}",
+                                                text = "DOWNLOAD TTS VOICE ENGINE (102 MB)",
                                                 style = DaexTheme.typography.mono.copy(
-                                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.5f),
-                                                    fontSize = 9.sp
+                                                    color = DaexTheme.colors.primary,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 12.sp,
+                                                    letterSpacing = 1.sp
                                                 )
                                             )
                                         }
