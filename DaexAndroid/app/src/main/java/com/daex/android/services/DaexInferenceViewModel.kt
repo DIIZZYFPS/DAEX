@@ -1133,21 +1133,48 @@ class DaexInferenceViewModel(
         }
     }
 
-    fun uploadFile(fileName: String, content: String) {
+    fun uploadFile(uri: android.net.Uri, fileName: String) {
         viewModelScope.launch {
             _isVectorizing.value = true
             try {
-                daexRag?.ingestFile(fileName, content)
-                refreshUploadedFiles()
-                
-                // Auto-attach to the current session
-                val currentAttached = _attachedFiles.value.toMutableList()
-                if (!currentAttached.contains(fileName)) {
-                    currentAttached.add(fileName)
-                    _attachedFiles.value = currentAttached
-                    val convId = _currentConversationId.value
-                    if (convId != null) {
-                        daexMemory?.updateAttachedFiles(convId, currentAttached)
+                val textContent = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val ctx = context ?: return@withContext ""
+                    val mimeType = ctx.contentResolver.getType(uri) ?: ""
+                    if (mimeType == "application/pdf") {
+                        val inputStream = ctx.contentResolver.openInputStream(uri)
+                        inputStream?.use { stream ->
+                            val reader = com.itextpdf.kernel.pdf.PdfReader(stream)
+                            val pdfDoc = com.itextpdf.kernel.pdf.PdfDocument(reader)
+                            try {
+                                val sb = java.lang.StringBuilder()
+                                for (i in 1..pdfDoc.numberOfPages) {
+                                    val page = pdfDoc.getPage(i)
+                                    val text = com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor.getTextFromPage(page)
+                                    sb.appendLine(text)
+                                }
+                                sb.toString()
+                            } finally {
+                                pdfDoc.close()
+                            }
+                        } ?: ""
+                    } else {
+                        ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
+                    }
+                }
+
+                if (textContent.isNotBlank()) {
+                    daexRag?.ingestFile(fileName, textContent)
+                    refreshUploadedFiles()
+                    
+                    // Auto-attach to the current session
+                    val currentAttached = _attachedFiles.value.toMutableList()
+                    if (!currentAttached.contains(fileName)) {
+                        currentAttached.add(fileName)
+                        _attachedFiles.value = currentAttached
+                        val convId = _currentConversationId.value
+                        if (convId != null) {
+                            daexMemory?.updateAttachedFiles(convId, currentAttached)
+                        }
                     }
                 }
             } catch (e: Exception) {

@@ -266,33 +266,9 @@ fun ExecutionScreen(
                 }
                 val finalFileName = fileName ?: "uploaded_file"
                 
-                val mimeType = context.contentResolver.getType(uri) ?: ""
-                
-                val textContent = if (mimeType == "application/pdf") {
-                    // PDF extraction using iText
-                    val inputStream = context.contentResolver.openInputStream(uri)
-                    inputStream?.use { stream ->
-                        val reader = com.itextpdf.kernel.pdf.PdfReader(stream)
-                        val pdfDoc = com.itextpdf.kernel.pdf.PdfDocument(reader)
-                        val sb = StringBuilder()
-                        for (i in 1..pdfDoc.numberOfPages) {
-                            val page = pdfDoc.getPage(i)
-                            val text = com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor.getTextFromPage(page)
-                            sb.appendLine(text)
-                        }
-                        pdfDoc.close()
-                        sb.toString()
-                    } ?: ""
-                } else {
-                    // Plain text files
-                    context.contentResolver.openInputStream(uri)?.bufferedReader()?.readText() ?: ""
-                }
-
-                if (textContent.isNotBlank()) {
-                    viewModel.uploadFile(finalFileName, textContent)
-                }
+                viewModel.uploadFile(uri, finalFileName)
             } catch (e: Exception) {
-                android.util.Log.e("ExecutionScreen", "Failed to read file", e)
+                android.util.Log.e("ExecutionScreen", "Failed to initiate file upload", e)
             }
         }
     }

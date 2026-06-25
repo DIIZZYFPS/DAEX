@@ -40,6 +40,7 @@ class DaexEmbedder(
 
                     val baseOptions = BaseOptions.builder()
                         .setModelAssetBuffer(byteBuffer)
+                        .setDelegate(com.google.mediapipe.tasks.core.Delegate.CPU)
                         .build()
 
                     val options = TextEmbedderOptions.builder()
@@ -47,7 +48,7 @@ class DaexEmbedder(
                         .build()
 
                     textEmbedder = TextEmbedder.createFromOptions(context, options)
-                    Log.d("DaexEmbedder", "MediaPipe TextEmbedder initialized successfully.")
+                    Log.d("DaexEmbedder", "MediaPipe TextEmbedder initialized successfully with CPU delegate.")
                 } catch (e: Exception) {
                     Log.e("DaexEmbedder", "Failed to initialize MediaPipe TextEmbedder", e)
                 }
@@ -68,6 +69,19 @@ class DaexEmbedder(
                         if (embeddings.isNotEmpty()) {
                             val floatArray = embeddings[0].floatEmbedding()
                             if (floatArray != null) {
+                                var sum = 0.0f
+                                for (v in floatArray) {
+                                    sum += v * v
+                                }
+                                val norm = kotlin.math.sqrt(sum)
+                                if (com.daex.android.BuildConfig.DEBUG) {
+                                    Log.d("DaexEmbedder", "Embedding text='${text.take(30).replace("\n", " ")}' -> raw norm=$norm, size=${floatArray.size}, first 5=[${floatArray.take(5).joinToString(", ")}]")
+                                }
+                                if (norm > 1e-9f) {
+                                    for (i in floatArray.indices) {
+                                        floatArray[i] /= norm
+                                    }
+                                }
                                 return@withContext floatArray
                             }
                         }
@@ -75,8 +89,8 @@ class DaexEmbedder(
                         Log.e("DaexEmbedder", "Embedding inference failed", e)
                     }
                 }
-                Log.w("DaexEmbedder", "Falling back to 384-dimensional zero-vector")
-                FloatArray(384) { 0.0f }
+                Log.w("DaexEmbedder", "Falling back to 512-dimensional zero-vector")
+                FloatArray(512) { 0.0f }
             }
         }
     }

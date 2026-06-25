@@ -28,7 +28,7 @@ data class MessageEntity(
     var isPinned: Boolean = false,
     var isCompacted: Boolean = false,
     
-    @HnswIndex(dimensions = 384)
+    @HnswIndex(dimensions = 512)
     var embedding: FloatArray? = null
 )
 
@@ -41,6 +41,6 @@ data class DocumentChunkEntity(
     var content: String = "",
     var createdAt: Long = System.currentTimeMillis(),
 
-    @HnswIndex(dimensions = 384)
+    @HnswIndex(dimensions = 512)
     var embedding: FloatArray? = null
 )

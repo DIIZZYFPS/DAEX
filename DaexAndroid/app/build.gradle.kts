@@ -16,7 +16,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = 1
-        versionName = "0.3.0"
+        versionName = "0.3.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {
@@ -52,6 +52,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
     packaging {
         jniLibs {
@@ -106,8 +107,9 @@ dependencies {
     // PDF Parsing
     implementation("com.itextpdf:itext7-core:7.2.5")
 
-    // Room (Removed - Migrated to ObjectBox)
-
+    // SQLite Bundled Driver for FTS5 support
+    implementation("androidx.sqlite:sqlite:2.5.1")
+    implementation("androidx.sqlite:sqlite-bundled:2.5.1")
 
     // Debug tooling
     debugImplementation("androidx.compose.ui:ui-tooling")
