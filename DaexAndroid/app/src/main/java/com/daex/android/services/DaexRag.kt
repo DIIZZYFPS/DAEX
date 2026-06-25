@@ -110,7 +110,8 @@ class DaexRagImpl(
 
             // 1. Vector search using ObjectBox
             val queryVector = embedder.generateEmbedding(query, isQuery = true)
-            val vectorCond = DocumentChunkEntity_.embedding.nearestNeighbors(queryVector, 200)
+            val candidatePoolSize = (maxResults * VECTOR_CANDIDATE_MULTIPLIER).coerceAtLeast(MIN_VECTOR_CANDIDATES)
+            val vectorCond = DocumentChunkEntity_.embedding.nearestNeighbors(queryVector, candidatePoolSize)
             
             var fileCond: io.objectbox.query.QueryCondition<DocumentChunkEntity>? = null
             for (fileName in activeFileNames) {
@@ -126,20 +127,24 @@ class DaexRagImpl(
             
             val vectorResultsWithScores = chunkBox.query(combinedCond).build().findWithScores()
             Log.d("DaexRag", "Vector results count: ${vectorResultsWithScores.size}")
-            vectorResultsWithScores.forEachIndexed { i, res ->
-                val entity = res.get()
-                Log.d("DaexRag", "  Vector match #$i (score=${res.score}): [Index ${entity.chunkIndex}] ${entity.content.take(60).replace("\n", " ")}...")
+            if (com.daex.android.BuildConfig.DEBUG) {
+                vectorResultsWithScores.forEachIndexed { i, res ->
+                    val entity = res.get()
+                    Log.d("DaexRag", "  Vector match #$i (score=${res.score}): [Index ${entity.chunkIndex}] ${entity.content.take(60).replace("\n", " ")}...")
+                }
             }
             val vectorResults = vectorResultsWithScores.map { it.get() }.take(15)
 
             // 2. Full-Text Search with BM25 using SQLite
             val ftsRawResults = ftsDbHelper.searchChunks(query, 50)
             Log.d("DaexRag", "FTS raw results count: ${ftsRawResults.size}")
-            ftsRawResults.forEachIndexed { i, res ->
-                Log.d("DaexRag", "  FTS match #$i (score=${res.score}): [Index ${res.chunkIndex}] ${res.content.take(60).replace("\n", " ")}...")
+            if (com.daex.android.BuildConfig.DEBUG) {
+                ftsRawResults.forEachIndexed { i, res ->
+                    Log.d("DaexRag", "  FTS match #$i (score=${res.score}): [Index ${res.chunkIndex}] ${res.content.take(60).replace("\n", " ")}...")
+                }
             }
             val ftsResults = ftsRawResults
-                .filter { it.score < -0.1 && it.fileName in activeFileNames }
+                .filter { it.score < BM25_SCORE_CUTOFF && it.fileName in activeFileNames }
                 .take(20)
 
             // 3. Reciprocal Rank Fusion (RRF) combination
@@ -259,5 +264,13 @@ class DaexRagImpl(
             }
         }
         return chunks
+    }
+
+    companion object {
+        // BM25 returns a lower score (more negative) for better matches in SQLite FTS5.
+        // Chunks with a score less than this cutoff are considered strong matches.
+        private const val BM25_SCORE_CUTOFF = -0.1
+        private const val VECTOR_CANDIDATE_MULTIPLIER = 10
+        private const val MIN_VECTOR_CANDIDATES = 50
     }
 }

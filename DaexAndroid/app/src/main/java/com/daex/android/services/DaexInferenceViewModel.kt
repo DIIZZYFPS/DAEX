@@ -1145,14 +1145,17 @@ class DaexInferenceViewModel(
                         inputStream?.use { stream ->
                             val reader = com.itextpdf.kernel.pdf.PdfReader(stream)
                             val pdfDoc = com.itextpdf.kernel.pdf.PdfDocument(reader)
-                            val sb = java.lang.StringBuilder()
-                            for (i in 1..pdfDoc.numberOfPages) {
-                                val page = pdfDoc.getPage(i)
-                                val text = com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor.getTextFromPage(page)
-                                sb.appendLine(text)
+                            try {
+                                val sb = java.lang.StringBuilder()
+                                for (i in 1..pdfDoc.numberOfPages) {
+                                    val page = pdfDoc.getPage(i)
+                                    val text = com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor.getTextFromPage(page)
+                                    sb.appendLine(text)
+                                }
+                                sb.toString()
+                            } finally {
+                                pdfDoc.close()
                             }
-                            pdfDoc.close()
-                            sb.toString()
                         } ?: ""
                     } else {
                         ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""

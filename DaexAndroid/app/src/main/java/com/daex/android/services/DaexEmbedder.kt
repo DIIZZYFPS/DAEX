@@ -49,7 +49,6 @@ class DaexEmbedder(
 
                     textEmbedder = TextEmbedder.createFromOptions(context, options)
                     Log.d("DaexEmbedder", "MediaPipe TextEmbedder initialized successfully with CPU delegate.")
-                    Log.d("DaexEmbedder", "MediaPipe TextEmbedder initialized successfully.")
                 } catch (e: Exception) {
                     Log.e("DaexEmbedder", "Failed to initialize MediaPipe TextEmbedder", e)
                 }
@@ -75,7 +74,9 @@ class DaexEmbedder(
                                     sum += v * v
                                 }
                                 val norm = kotlin.math.sqrt(sum)
-                                Log.d("DaexEmbedder", "Embedding text='${text.take(30).replace("\n", " ")}' -> raw norm=$norm, size=${floatArray.size}, first 5=[${floatArray.take(5).joinToString(", ")}]")
+                                if (com.daex.android.BuildConfig.DEBUG) {
+                                    Log.d("DaexEmbedder", "Embedding text='${text.take(30).replace("\n", " ")}' -> raw norm=$norm, size=${floatArray.size}, first 5=[${floatArray.take(5).joinToString(", ")}]")
+                                }
                                 if (norm > 1e-9f) {
                                     for (i in floatArray.indices) {
                                         floatArray[i] /= norm
