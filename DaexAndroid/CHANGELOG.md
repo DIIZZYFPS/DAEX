@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.3.4...DaexAndroid-v0.3.5) (2026-06-25)
+
+
+### Bug Fixes
+
+* upgraded fts4 to fts5 ([#26](https://github.com/DIIZZYFPS/DAEX/issues/26)) ([6d85c11](https://github.com/DIIZZYFPS/DAEX/commit/6d85c1141924527bf988d1b391b34026476a4d9e))
+
 ## [0.3.4](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.3.3...DaexAndroid-v0.3.4) (2026-06-17)
 
 ### Embedding Engine (new)
