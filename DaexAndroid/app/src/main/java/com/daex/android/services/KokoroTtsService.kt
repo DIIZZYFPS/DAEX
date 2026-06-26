@@ -25,8 +25,7 @@ class KokoroTtsService(private val context: Context) {
     private val ttsScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
     private var activeSpeakJob: Job? = null
     private val speakChannel = Channel<SpeakRequest>(Channel.UNLIMITED)
-    private val playbackChannel = Channel<PlaybackRequest>(Channel.UNLIMITED)
-    private var activePlaybackJob: Job? = null
+    @Volatile private var stopped = false
 
     // Speaking state callback
     var onSpeakingStateChanged: ((Boolean) -> Unit)? = null
@@ -50,11 +49,9 @@ class KokoroTtsService(private val context: Context) {
     var systemChimeStyle = 0
 
     class SpeakRequest(val text: String, val voiceId: Int)
-    class PlaybackRequest(val samples: FloatArray, val text: String)
 
     init {
         startSynthesisPipeline()
-        startPlaybackConsumer()
     }
 
     fun initTts() {
@@ -145,16 +142,9 @@ class KokoroTtsService(private val context: Context) {
 
     fun speak(text: String, voiceId: Int) {
         if (text.isBlank()) return
-        
-        // DIIZZY: Chunking payload by punctuation to bypass JNI thread locking.
-        // C++ Sherpa ONNX is immune to coroutine cancellation, so we feed it bit by bit.
-        val sentences = text.split(Regex("(?<=[.!?])\\s+"))
-        sentences.forEach { chunk ->
-            if (chunk.isNotBlank()) {
-                android.util.Log.i("KokoroTtsService", "Queuing chunk: \"$chunk\"")
-                speakChannel.trySend(SpeakRequest(chunk, voiceId))
-            }
-        }
+        stopped = false
+        android.util.Log.i("KokoroTtsService", "Queuing text: \"$text\"")
+        speakChannel.trySend(SpeakRequest(text, voiceId))
     }
 
     private fun startSynthesisPipeline() {
@@ -178,26 +168,29 @@ class KokoroTtsService(private val context: Context) {
 
                     val activeTts = mutex.withLock { tts } ?: return@launch
                     try {
-                        val generatedAudio = mutex.withLock {
+                        mutex.withLock {
                             val currentTts = tts
-                            if (currentTts == null || currentTts != activeTts) {
-                                null
-                            } else {
+                            if (currentTts != null && currentTts == activeTts) {
                                 withContext(Dispatchers.Default) {
-                                    currentTts.generate(request.text, request.voiceId, 1.0f)
+                                    currentTts.generateWithCallback(
+                                        text = request.text,
+                                        sid = request.voiceId,
+                                        speed = 1.0f,
+                                        callback = TtsCallback { samples ->
+                                            ttsCallback(samples)
+                                        } as (FloatArray) -> Int
+                                    )
                                 }
                             }
-                        } ?: return@launch
-                        yield()
-                        val samples = generatedAudio.samples
-                        if (samples.isNotEmpty()) {
-                            normalizeSamples(samples)
-                            playbackChannel.send(PlaybackRequest(samples, request.text))
                         }
                     } catch (e: CancellationException) {
                         android.util.Log.i("KokoroTtsService", "Pipeline: Synthesis canceled")
                     } catch (e: Exception) {
                         android.util.Log.e("KokoroTtsService", "Pipeline: Synthesis failed", e)
+                    } finally {
+                        if (speakChannel.isEmpty) {
+                            isSpeaking = false
+                        }
                     }
                 }
                 activeSpeakJob = job
@@ -206,24 +199,12 @@ class KokoroTtsService(private val context: Context) {
         }
     }
 
-    private fun startPlaybackConsumer() {
-        ttsScope.launch {
-            for (playbackReq in playbackChannel) {
-                isSpeaking = true
-                val job = launch {
-                    playAudioSamples(playbackReq.samples, playbackReq.text)
-                }
-                activePlaybackJob = job
-                job.join()
-                
-                if (speakChannel.isEmpty && playbackChannel.isEmpty) {
-                    isSpeaking = false
-                }
-            }
-        }
+    private fun ttsCallback(samples: FloatArray): Int {
+        playAudioSamples(samples)
+        return 1
     }
 
-    private suspend fun playAudioSamples(samples: FloatArray, text: String) {
+    private fun playAudioSamples(samples: FloatArray) {
         try {
             val sampleRate = 24000
             val bufferSize = AudioTrack.getMinBufferSize(
@@ -263,8 +244,7 @@ class KokoroTtsService(private val context: Context) {
             val chunkSize = 4800
             var offset = 0
             try {
-                while (offset < samples.size) {
-                    yield() 
+                while (offset < samples.size && !stopped) {
                     val writeLen = minOf(chunkSize, samples.size - offset)
                     
                     var sum = 0f
@@ -280,13 +260,13 @@ class KokoroTtsService(private val context: Context) {
                     currentPlaybackRms = maxOf(newRms, currentPlaybackRms * 0.85f)
                     offset += written
                 }
-                waitForPlaybackComplete(track, samples.size)
+                if (!stopped) {
+                    waitForPlaybackComplete(track, samples.size)
+                }
             } finally {
                 currentPlaybackRms = 0f
             }
 
-        } catch (e: CancellationException) {
-            android.util.Log.i("KokoroTtsService", "Pipeline: Playback canceled")
         } catch (e: Exception) {
             android.util.Log.e("KokoroTtsService", "Pipeline: Playback failed", e)
         }
@@ -298,13 +278,11 @@ class KokoroTtsService(private val context: Context) {
 
     fun stopPlayback() {
         android.util.Log.i("KokoroTtsService", "Stopping playback and clearing TTS queue...")
+        stopped = true
         activeSpeakJob?.cancel()
         activeSpeakJob = null
-        activePlaybackJob?.cancel()
-        activePlaybackJob = null
 
         while (speakChannel.tryReceive().isSuccess) {}
-        while (playbackChannel.tryReceive().isSuccess) {}
 
         synchronized(this) {
             try {
