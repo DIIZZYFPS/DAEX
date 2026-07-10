@@ -45,6 +45,11 @@ class KokoroTtsService(private val context: Context) {
     @Volatile
     var currentPlaybackRms = 0f
 
+    // Frames written to the AudioTrack since play()/flush(). Compared against
+    // playbackHeadPosition to know when the speaker has actually gone silent.
+    @Volatile
+    private var framesWritten = 0
+
     @Volatile
     var systemChimeStyle = 0
 
@@ -152,25 +157,29 @@ class KokoroTtsService(private val context: Context) {
             for (request in speakChannel) {
                 isSpeaking = true
                 val job = launch {
-                    val ttsInstance = mutex.withLock { tts }
-                    if (ttsInstance == null) {
-                        initTts()
-                        var attempts = 0
-                        var resolvedTts: OfflineTts? = null
-                        while (attempts < 15) {
-                            delay(300)
-                            resolvedTts = mutex.withLock { tts }
-                            if (resolvedTts != null) break
-                            attempts++
-                        }
-                        if (resolvedTts == null) return@launch
-                    }
-
-                    val activeTts = mutex.withLock { tts } ?: return@launch
+                    // Everything runs inside try/finally so isSpeaking can never get
+                    // stuck true when the engine is missing or synthesis fails.
                     try {
+                        var activeTts = mutex.withLock { tts }
+                        if (activeTts == null) {
+                            initTts()
+                            var attempts = 0
+                            while (activeTts == null && attempts < 15) {
+                                delay(300)
+                                activeTts = mutex.withLock { tts }
+                                attempts++
+                            }
+                        }
+                        if (activeTts == null) {
+                            android.util.Log.w("KokoroTtsService", "Pipeline: TTS engine unavailable, dropping request")
+                            return@launch
+                        }
+
+                        // The lock is held for the whole synthesis, but a stop request
+                        // aborts quickly because ttsCallback returns 0 once `stopped` is set.
                         mutex.withLock {
                             val currentTts = tts
-                            if (currentTts != null && currentTts == activeTts) {
+                            if (currentTts != null && currentTts == activeTts && !stopped) {
                                 withContext(Dispatchers.Default) {
                                     currentTts.generateWithCallback(
                                         text = request.text,
@@ -182,6 +191,13 @@ class KokoroTtsService(private val context: Context) {
                                     )
                                 }
                             }
+                        }
+
+                        // Wait for the AudioTrack to physically finish before this
+                        // utterance counts as done — isSpeaking and currentPlaybackRms
+                        // must reflect what the speaker is doing, not what was written.
+                        if (!stopped) {
+                            drainPlayback()
                         }
                     } catch (e: CancellationException) {
                         android.util.Log.i("KokoroTtsService", "Pipeline: Synthesis canceled")
@@ -200,8 +216,28 @@ class KokoroTtsService(private val context: Context) {
     }
 
     private fun ttsCallback(samples: FloatArray): Int {
+        // Returning 0 tells sherpa-onnx to abort synthesis of this utterance;
+        // without it a stop request leaves native synthesis running to completion.
+        if (stopped) return 0
         playAudioSamples(samples)
         return 1
+    }
+
+    private suspend fun drainPlayback() {
+        val track = synchronized(this) { audioTrack }
+        if (track != null) {
+            try {
+                val deadline = System.currentTimeMillis() + 5000L
+                while (!stopped && System.currentTimeMillis() < deadline) {
+                    val remainingFrames = framesWritten - track.playbackHeadPosition
+                    if (remainingFrames <= 0) break
+                    delay((remainingFrames * 1000L / 24000).coerceIn(10L, 100L))
+                }
+            } catch (e: Exception) {
+                // Track may have been released mid-drain
+            }
+        }
+        currentPlaybackRms = 0f
     }
 
     private fun playAudioSamples(samples: FloatArray) {
@@ -243,37 +279,29 @@ class KokoroTtsService(private val context: Context) {
 
             val chunkSize = 4800
             var offset = 0
-            try {
-                while (offset < samples.size && !stopped) {
-                    val writeLen = minOf(chunkSize, samples.size - offset)
-                    
-                    var sum = 0f
-                    for (i in offset until (offset + writeLen)) {
-                        val s = samples[i]
-                        sum += s * s
-                    }
-                    val newRms = Math.sqrt((sum / writeLen).toDouble()).toFloat()
-                    
-                    val written = track.write(samples, offset, writeLen, AudioTrack.WRITE_BLOCKING)
-                    if (written <= 0) break
-                    
-                    currentPlaybackRms = maxOf(newRms, currentPlaybackRms * 0.85f)
-                    offset += written
+            while (offset < samples.size && !stopped) {
+                val writeLen = minOf(chunkSize, samples.size - offset)
+
+                var sum = 0f
+                for (i in offset until (offset + writeLen)) {
+                    val s = samples[i]
+                    sum += s * s
                 }
-                if (!stopped) {
-                    waitForPlaybackComplete(track, samples.size)
-                }
-            } finally {
-                currentPlaybackRms = 0f
+                val newRms = Math.sqrt((sum / writeLen).toDouble()).toFloat()
+
+                val written = track.write(samples, offset, writeLen, AudioTrack.WRITE_BLOCKING)
+                if (written <= 0) break
+
+                framesWritten += written
+                // RMS is intentionally never zeroed here: write() returns before the
+                // audio is heard, so only drainPlayback()/stopPlayback() may clear it.
+                currentPlaybackRms = maxOf(newRms, currentPlaybackRms * 0.85f)
+                offset += written
             }
 
         } catch (e: Exception) {
             android.util.Log.e("KokoroTtsService", "Pipeline: Playback failed", e)
         }
-    }
-
-    private fun waitForPlaybackComplete(track: AudioTrack, sampleCount: Int) {
-        Thread.sleep(150L)
     }
 
     fun stopPlayback() {
@@ -295,6 +323,8 @@ class KokoroTtsService(private val context: Context) {
             } catch (e: Exception) {
                 android.util.Log.e("KokoroTtsService", "Error stopping AudioTrack", e)
             }
+            // stop()/flush() reset playbackHeadPosition, so the write counter resets with it
+            framesWritten = 0
             isSpeaking = false
             currentPlaybackRms = 0f
         }

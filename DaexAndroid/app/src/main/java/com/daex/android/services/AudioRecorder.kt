@@ -4,6 +4,8 @@ import android.annotation.SuppressLint
 import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.MediaRecorder
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.NoiseSuppressor
 import android.util.Log
 import java.io.File
 import java.io.FileOutputStream
@@ -14,6 +16,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+// What the speaker is doing right now, as seen by the mic-side VAD gate.
+// SPEAKING: TTS audio is physically playing — normal speech detection is blocked,
+//   only a sustained barge-in can start a chunk.
+// COOLDOWN: TTS just went silent — normal detection runs with a stricter frame
+//   requirement while the acoustic tail dies out.
+// CLEAR: normal VAD.
+enum class TtsGateState { CLEAR, COOLDOWN, SPEAKING }
+
 class AudioRecorder(private val outputFile: File) {
     private var audioRecord: AudioRecord? = null
     @Volatile
@@ -23,7 +33,25 @@ class AudioRecorder(private val outputFile: File) {
     private val sampleRate = 16000
     private val channelConfig = AudioFormat.CHANNEL_IN_MONO
     private val audioFormat = AudioFormat.ENCODING_PCM_16BIT
-    private val bufferSize = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+    private val bufferSize: Int = run {
+        val min = AudioRecord.getMinBufferSize(sampleRate, channelConfig, audioFormat)
+        if (min > 0) min else {
+            Log.w("AudioRecorder", "getMinBufferSize returned $min; falling back to 4096 bytes")
+            4096
+        }
+    }
+
+    companion object {
+        // Acoustic speaker→mic bleed is ~10-15% on a handheld device
+        private const val ECHO_COUPLING_FACTOR = 0.12f
+        // Barge-in during TTS must clear an absolute floor (~3x the default speech
+        // threshold) AND 4x the echo estimate, sustained — echo alone can't do that.
+        private const val BARGE_IN_FLOOR = 0.09f
+        private const val BARGE_IN_SUSTAIN_MS = 600L
+        // A chunk whose speech overlapped playing TTS longer than this (without being
+        // a barge-in) is almost certainly echo — the VM discards it.
+        private const val TTS_OVERLAP_DISCARD_MS = 1500L
+    }
 
     @SuppressLint("MissingPermission")
     fun start(
@@ -31,15 +59,22 @@ class AudioRecorder(private val outputFile: File) {
         speechThreshold: Float = 0.03f,
         silenceThreshold: Float = 0.015f,
         silenceDurationMs: Long = 1500L,
-        currentPlaybackRms: () -> Float = { 0f }, // DIIZZY: Injected dynamic RMS ducking lambda
+        currentPlaybackRms: () -> Float = { 0f },
+        ttsGateState: () -> TtsGateState = { TtsGateState.CLEAR },
         onSpeechStarted: (() -> Unit)? = null,
-        onSilenceDetected: (() -> Unit)? = null,
+        onBargeIn: (() -> Unit)? = null,
+        onSilenceDetected: ((contaminatedByTts: Boolean) -> Unit)? = null,
         onAmplitude: (Float) -> Unit
     ) {
         if (isRecording) return
         isRecording = true
 
         recordingJob = scope.launch(Dispatchers.IO) {
+            var record: AudioRecord? = null
+            var fos: FileOutputStream? = null
+            var echoCanceler: AcousticEchoCanceler? = null
+            var noiseSuppressor: NoiseSuppressor? = null
+            var totalBytesWritten = 0
             try {
                 // Ensure output file directories exist
                 outputFile.parentFile?.mkdirs()
@@ -48,126 +83,155 @@ class AudioRecorder(private val outputFile: File) {
                 }
 
                 // VOICE_RECOGNITION: speech-optimized mic signal without digital playback routing.
-                val record = AudioRecord(
+                val rec = AudioRecord(
                     MediaRecorder.AudioSource.VOICE_RECOGNITION,
                     sampleRate,
                     channelConfig,
                     audioFormat,
                     bufferSize
                 )
-                audioRecord = record
+                record = rec
+                audioRecord = rec
 
-                if (record.state != AudioRecord.STATE_INITIALIZED) {
+                if (rec.state != AudioRecord.STATE_INITIALIZED) {
                     Log.e("AudioRecorder", "AudioRecord not initialized")
                     return@launch
                 }
 
-                val fos = FileOutputStream(outputFile)
-                // Write dummy WAV header placeholder
-                writeWavHeader(fos, 0)
+                // VOICE_RECOGNITION does not apply AEC on most devices — attach it
+                // explicitly where the hardware supports it. Best-effort; the VAD
+                // gate below is the fallback when unavailable.
+                try {
+                    if (AcousticEchoCanceler.isAvailable()) {
+                        echoCanceler = AcousticEchoCanceler.create(rec.audioSessionId)?.apply { enabled = true }
+                    }
+                    if (NoiseSuppressor.isAvailable()) {
+                        noiseSuppressor = NoiseSuppressor.create(rec.audioSessionId)?.apply { enabled = true }
+                    }
+                    Log.i("AudioRecorder", "Audio effects: AEC=${echoCanceler != null}, NS=${noiseSuppressor != null}")
+                } catch (e: Exception) {
+                    Log.w("AudioRecorder", "Failed to attach audio effects", e)
+                }
 
-                record.startRecording()
+                val out = FileOutputStream(outputFile)
+                fos = out
+                // Write dummy WAV header placeholder
+                writeWavHeader(out, 0)
+
+                rec.startRecording()
                 val buffer = ShortArray(bufferSize)
-                var totalBytesWritten = 0
 
                 var hasSpeechStarted = false
+                var startedAsBargeIn = false
+                var bargeInSignaled = false
                 var silenceStartTime = 0L
                 var consecutiveSpeechFrames = 0
-                val preRollBuffers = java.util.LinkedList<ShortArray>()
+                var bargeInSpeechMs = 0L
+                var ttsOverlapMs = 0L
+                val preRollBuffers = java.util.LinkedList<ByteArray>()
                 var lastLogTime = 0L
                 var smoothedTtsRms = 0f // Envelope follower state
 
                 while (isRecording) {
-                    val readSize = record.read(buffer, 0, buffer.size)
+                    val readSize = rec.read(buffer, 0, buffer.size)
                     if (readSize > 0) {
+                        val frameMs = readSize * 1000L / sampleRate
+
                         // Calculate amplitude for waves visualization
                         var sum = 0.0
                         for (i in 0 until readSize) {
                             val value = buffer[i].toInt()
-                            sum += value * value
+                            sum += value.toDouble() * value
                         }
                         val rms = Math.sqrt(sum / readSize)
                         // Normalize RMS to 0f..1f range for waves
                         val normalized = (rms / 32768.0).toFloat().coerceIn(0f, 1f)
                         onAmplitude(normalized)
 
-                        // DIIZZY: Fetch real-time TTS volume to calculate software ducking floor
+                        // Real-time TTS playback volume drives a dynamic ducking floor
                         val kokoroRms = currentPlaybackRms()
-                        
-                        // Asymmetric Peak Envelope Follower to mask acoustic latency
-                        if (kokoroRms > smoothedTtsRms) {
-                            // Fast Attack: instantly track rising volume
-                            smoothedTtsRms = kokoroRms
-                        } else if (kokoroRms == 0f) {
-                            // Instant Release: collapse dynamic floor instantly when TTS stops
-                            smoothedTtsRms = 0f
-                        } else {
-                            // Slow Release: decay by 8% per frame (~350ms masking window)
-                            smoothedTtsRms *= 0.92f
-                        }
+
+                        // Peak envelope follower: fast attack, slow release (~350ms)
+                        // so the floor stays raised through the acoustic tail after
+                        // playback stops. (No instant-release shortcut — that defeats
+                        // the masking exactly when the tail needs it.)
+                        smoothedTtsRms = if (kokoroRms > smoothedTtsRms) kokoroRms else smoothedTtsRms * 0.92f
 
                         // Acoustic echo estimation (no digital routing with VOICE_RECOGNITION)
-                        val ECHO_COUPLING_FACTOR = 0.12f // acoustic speaker→mic bleed is ~10-15%
                         val echoEstimate = smoothedTtsRms * ECHO_COUPLING_FACTOR
                         // Mic signal must be 1.5x louder than estimated acoustic echo
                         val dynamicSilenceFloor = maxOf(speechThreshold, echoEstimate * 1.5f)
                         val dynamicSilenceThreshold = maxOf(silenceThreshold, echoEstimate * 0.8f)
-                        val requiredSpeechFrames = if (smoothedTtsRms > 0.01f) 3 else 2
+
+                        val gate = ttsGateState()
+                        val requiredSpeechFrames = if (gate == TtsGateState.CLEAR) 2 else 3
 
                         val nowTime = System.currentTimeMillis()
                         if (nowTime - lastLogTime > 500L) {
-                            Log.d("AudioRecorder", "VAD: mic=$normalized, tts_rms=$kokoroRms, env=$smoothedTtsRms, duck_floor=$dynamicSilenceFloor")
+                            Log.d("AudioRecorder", "VAD: mic=$normalized, tts_rms=$kokoroRms, env=$smoothedTtsRms, duck_floor=$dynamicSilenceFloor, gate=$gate")
                             lastLogTime = nowTime
                         }
 
-                        // Keep rolling pre-roll buffer in memory to avoid cutting off speech onset
-                        val bufferCopy = ShortArray(readSize)
-                        System.arraycopy(buffer, 0, bufferCopy, 0, readSize)
-                        preRollBuffers.add(bufferCopy)
-                        if (preRollBuffers.size > 4) {
-                            preRollBuffers.removeFirst()
-                        }
+                        val frameBytes = toLittleEndianBytes(buffer, readSize)
 
-                        // VAD Logic: Require N consecutive frames above dynamic threshold
-                        // Gate: completely block speech detection while TTS is actively playing
-                        val isTtsActive = kokoroRms > 0.01f
                         if (!hasSpeechStarted) {
-                            if (isTtsActive) {
-                                // TTS is playing — don't detect speech (would be echo)
-                                consecutiveSpeechFrames = 0
-                            } else if (normalized > dynamicSilenceFloor) {
-                                consecutiveSpeechFrames++
-                                if (consecutiveSpeechFrames >= requiredSpeechFrames) {
-                                    hasSpeechStarted = true
-                                    
-                                    // Speech started: Write the pre-roll buffers to the WAV file first
-                                    try {
-                                        for (prevBuffer in preRollBuffers) {
-                                            for (i in 0 until prevBuffer.size) {
-                                                val sample = prevBuffer[i]
-                                                fos.write(sample.toInt() and 0xFF)
-                                                fos.write((sample.toInt() shr 8) and 0xFF)
-                                                totalBytesWritten += 2
-                                            }
-                                        }
-                                        preRollBuffers.clear()
-                                        Log.i("AudioRecorder", "VAD: Speech started. Wrote pre-roll buffers to WAV file.")
-                                    } catch (e: Exception) {
-                                        Log.e("AudioRecorder", "VAD: Failed to write pre-roll buffers", e)
-                                    }
+                            // Keep rolling pre-roll buffer to avoid cutting off speech onset
+                            preRollBuffers.add(frameBytes)
+                            if (preRollBuffers.size > 4) {
+                                preRollBuffers.removeFirst()
+                            }
 
-                                    onSpeechStarted?.invoke()
+                            if (gate == TtsGateState.SPEAKING) {
+                                // TTS is physically playing: normal detection would just
+                                // hear our own voice. Only a sustained, dominant signal
+                                // (a real barge-in) can start a chunk here.
+                                consecutiveSpeechFrames = 0
+                                val bargeInThreshold = maxOf(BARGE_IN_FLOOR, echoEstimate * 4f)
+                                if (normalized > bargeInThreshold) {
+                                    bargeInSpeechMs += frameMs
+                                    if (bargeInSpeechMs >= BARGE_IN_SUSTAIN_MS) {
+                                        hasSpeechStarted = true
+                                        startedAsBargeIn = true
+                                        bargeInSignaled = true
+                                        totalBytesWritten += writePreRoll(out, preRollBuffers)
+                                        Log.i("AudioRecorder", "VAD: Barge-in over TTS (mic=$normalized, threshold=$bargeInThreshold)")
+                                        onBargeIn?.invoke()
+                                        onSpeechStarted?.invoke()
+                                    }
+                                } else {
+                                    bargeInSpeechMs = 0L
                                 }
                             } else {
-                                consecutiveSpeechFrames = 0
+                                // CLEAR or COOLDOWN: normal VAD. During COOLDOWN the
+                                // envelope-raised floor and the extra required frame
+                                // filter the residual tail.
+                                bargeInSpeechMs = 0L
+                                if (normalized > dynamicSilenceFloor) {
+                                    consecutiveSpeechFrames++
+                                    if (consecutiveSpeechFrames >= requiredSpeechFrames) {
+                                        hasSpeechStarted = true
+                                        totalBytesWritten += writePreRoll(out, preRollBuffers)
+                                        Log.i("AudioRecorder", "VAD: Speech started. Wrote pre-roll buffers to WAV file.")
+                                        onSpeechStarted?.invoke()
+                                    }
+                                } else {
+                                    consecutiveSpeechFrames = 0
+                                }
                             }
                         } else {
-                            // Speech is active: Write current samples directly to the WAV file
-                            for (i in 0 until readSize) {
-                                val sample = buffer[i]
-                                fos.write(sample.toInt() and 0xFF)
-                                fos.write((sample.toInt() shr 8) and 0xFF)
-                                totalBytesWritten += 2
+                            // Speech is active: write current samples to the WAV file
+                            out.write(frameBytes)
+                            totalBytesWritten += frameBytes.size
+
+                            if (gate == TtsGateState.SPEAKING) {
+                                ttsOverlapMs += frameMs
+                                if (!bargeInSignaled) {
+                                    // TTS started talking over active user speech —
+                                    // signal a barge-in so the VM shuts it up.
+                                    bargeInSignaled = true
+                                    Log.i("AudioRecorder", "VAD: TTS started over active user speech — signaling barge-in")
+                                    onBargeIn?.invoke()
+                                }
                             }
 
                             if (normalized < dynamicSilenceThreshold) {
@@ -176,12 +240,17 @@ class AudioRecorder(private val outputFile: File) {
                                 } else {
                                     val silentDuration = System.currentTimeMillis() - silenceStartTime
                                     if (silentDuration >= silenceDurationMs) {
-                                        Log.d("AudioRecorder", "VAD: Silence detected ($silentDuration ms)")
+                                        val contaminated = !startedAsBargeIn && ttsOverlapMs > TTS_OVERLAP_DISCARD_MS
+                                        Log.d("AudioRecorder", "VAD: Silence detected ($silentDuration ms, ttsOverlap=${ttsOverlapMs}ms, contaminated=$contaminated)")
                                         // Reset states before notifying to prevent multiple calls
                                         hasSpeechStarted = false
+                                        startedAsBargeIn = false
+                                        bargeInSignaled = false
                                         silenceStartTime = 0L
                                         consecutiveSpeechFrames = 0
-                                        onSilenceDetected?.invoke()
+                                        bargeInSpeechMs = 0L
+                                        ttsOverlapMs = 0L
+                                        onSilenceDetected?.invoke(contaminated)
                                     }
                                 }
                             } else {
@@ -195,24 +264,52 @@ class AudioRecorder(private val outputFile: File) {
                     }
                 }
 
-                fos.close()
-                try {
-                    record.stop()
-                } catch (e: Exception) {}
-                record.release()
-
-                // Overwrite the dummy header with correct sizes
-                val wavFile = RandomAccessFile(outputFile, "rw")
-                updateWavHeader(wavFile, totalBytesWritten)
-                wavFile.close()
-
                 Log.d("AudioRecorder", "Audio recorded successfully to ${outputFile.absolutePath}, size=$totalBytesWritten")
             } catch (e: Exception) {
                 Log.e("AudioRecorder", "Error recording audio", e)
             } finally {
                 isRecording = false
+                try { record?.stop() } catch (e: Exception) {}
+                try { record?.release() } catch (e: Exception) {}
+                try { echoCanceler?.release() } catch (e: Exception) {}
+                try { noiseSuppressor?.release() } catch (e: Exception) {}
+                try { fos?.close() } catch (e: Exception) {}
+                if (totalBytesWritten > 0) {
+                    try {
+                        RandomAccessFile(outputFile, "rw").use { wavFile ->
+                            updateWavHeader(wavFile, totalBytesWritten)
+                        }
+                    } catch (e: Exception) {
+                        Log.e("AudioRecorder", "Failed to finalize WAV header", e)
+                    }
+                }
             }
         }
+    }
+
+    private fun toLittleEndianBytes(src: ShortArray, count: Int): ByteArray {
+        val out = ByteArray(count * 2)
+        var j = 0
+        for (i in 0 until count) {
+            val v = src[i].toInt()
+            out[j++] = (v and 0xFF).toByte()
+            out[j++] = ((v shr 8) and 0xFF).toByte()
+        }
+        return out
+    }
+
+    private fun writePreRoll(fos: FileOutputStream, preRoll: java.util.LinkedList<ByteArray>): Int {
+        var written = 0
+        try {
+            for (bytes in preRoll) {
+                fos.write(bytes)
+                written += bytes.size
+            }
+        } catch (e: Exception) {
+            Log.e("AudioRecorder", "VAD: Failed to write pre-roll buffers", e)
+        }
+        preRoll.clear()
+        return written
     }
 
     suspend fun stop() {

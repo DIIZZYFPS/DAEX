@@ -336,10 +336,11 @@ class DaexInferenceViewModel(
                         setVoiceStateInternal(VoiceState.SPEAKING)
                     } else {
                         // Debounced revert — cancel any existing pending revert first.
-                        // After TTS stops speaking (between sentences), wait long enough
-                        // for the AudioTrack buffer to drain before reverting to LISTENING.
+                        // isSpeaking now flips false only after the AudioTrack has
+                        // physically drained, so the cooldown just needs to cover
+                        // device output latency and the room's acoustic tail.
                         speakingRevertJob?.cancel()
-                        ttsCooldownUntilMs = System.currentTimeMillis() + 400L
+                        ttsCooldownUntilMs = System.currentTimeMillis() + 500L
                         speakingRevertJob = viewModelScope.launch {
                             kotlinx.coroutines.delay(400L)
                             // Gate on the actual isSpeaking flag — not voiceState —
@@ -509,7 +510,9 @@ class DaexInferenceViewModel(
         context?.let { ctx ->
             try {
                 val audioManager = ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
-                val focusRequest = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
+                // GAIN_TRANSIENT (not MAY_DUCK): ducked background music would keep
+                // playing into the mic and false-trigger the VAD, so ask other apps to pause.
+                val focusRequest = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
                     .setAudioAttributes(
                         android.media.AudioAttributes.Builder()
                             .setUsage(android.media.AudioAttributes.USAGE_ASSISTANT)
@@ -530,7 +533,8 @@ class DaexInferenceViewModel(
         // Note: We do NOT set AudioManager.mode to MODE_IN_COMMUNICATION or force speakerphone because
         // on some devices (especially Samsung), VoIP call routing triggers aggressive system-level half-duplex
         // echo suppression that completely silences/mutes the microphone input during active speaker playback.
-        // Keeping it at MODE_NORMAL keeps the mic open, and we rely on our scaled VAD threshold (0.22f) to filter bleed.
+        // Keeping it at MODE_NORMAL keeps the mic open; echo is handled by the TTS gate in AudioRecorder
+        // (isSpeaking + cooldown), the RMS-scaled ducking floor, and hardware AEC where available.
 
         if (_isTtsEnabled.value) {
             kokoroTtsService?.initTts()
@@ -547,8 +551,9 @@ class DaexInferenceViewModel(
     }
 
     private val liveAudioFiles = mutableListOf<java.io.File>()
-    // Tracks post-TTS cooldown: isPlaybackActive stays true for 500ms after TTS ends
-    // to prevent residual speaker audio from triggering a false VAD speech start.
+    // Post-TTS cooldown consumed by the recorder's TTS gate: for 500ms after the
+    // speaker actually goes silent, the VAD stays in COOLDOWN (stricter detection)
+    // so the acoustic tail can't false-trigger a speech start.
     @Volatile private var ttsCooldownUntilMs = 0L
     // Debounce job for the SPEAKING → LISTENING state revert
     private var speakingRevertJob: kotlinx.coroutines.Job? = null
@@ -571,11 +576,21 @@ class DaexInferenceViewModel(
             silenceThreshold = 0.015f,
             silenceDurationMs = 1500L,
             currentPlaybackRms = { kokoroTtsService?.currentPlaybackRms ?: 0f },
+            ttsGateState = {
+                when {
+                    kokoroTtsService?.isSpeaking == true -> TtsGateState.SPEAKING
+                    System.currentTimeMillis() < ttsCooldownUntilMs -> TtsGateState.COOLDOWN
+                    else -> TtsGateState.CLEAR
+                }
+            },
             onSpeechStarted = {
                 handleUserSpeechStarted()
             },
-            onSilenceDetected = {
-                handleUserSilenceDetected(audioFile)
+            onBargeIn = {
+                handleBargeIn()
+            },
+            onSilenceDetected = { contaminatedByTts ->
+                handleUserSilenceDetected(audioFile, contaminatedByTts)
             }
         ) { amplitude ->
             setVoiceAmplitude(amplitude)
@@ -583,18 +598,43 @@ class DaexInferenceViewModel(
     }
 
     private fun handleUserSpeechStarted() {
-        // Interruption disabled — speech detection still triggers recording,
-        // but does not stop TTS or cancel generation.
-        android.util.Log.d("DaexInference", "VAD: Speech started (interruption disabled)")
+        // If the model is still generating (e.g. the user replies during a pause
+        // between spoken sentences), treat new speech as an interruption — otherwise
+        // the recorded chunk would be dropped by the isGenerating guard on submission.
+        if (_isGenerating.value) {
+            android.util.Log.i("DaexInference", "VAD: Speech started while generating — interrupting")
+            cancelGeneration()
+        } else {
+            android.util.Log.d("DaexInference", "VAD: Speech started")
+        }
     }
 
-    private fun handleUserSilenceDetected(audioFile: java.io.File) {
-        viewModelScope.launch {
-            android.util.Log.i("DaexInference", "VAD: Silence detected. Finalizing chunk and submitting.")
+    private fun handleBargeIn() {
+        // Sustained user speech over active TTS: stop the voice and the generation
+        // feeding it so the user's chunk is submitted cleanly.
+        android.util.Log.i("DaexInference", "VAD: Barge-in — stopping TTS playback and generation")
+        cancelGeneration()
+    }
 
+    private fun handleUserSilenceDetected(audioFile: java.io.File, contaminatedByTts: Boolean) {
+        viewModelScope.launch {
             // Finalize current chunk by calling stop() on its recorder
             audioRecorder?.stop()
 
+            if (contaminatedByTts) {
+                // The chunk mostly overlapped TTS playback without qualifying as a
+                // barge-in — it is almost certainly the model's own voice. Submitting
+                // it would make the model answer itself, so drop it.
+                android.util.Log.w("DaexInference", "VAD: Discarding echo-contaminated chunk ${audioFile.name}")
+                liveAudioFiles.remove(audioFile)
+                audioFile.delete()
+                if (_isLiveVoiceActive.value) {
+                    startNewRecordingSegment()
+                }
+                return@launch
+            }
+
+            android.util.Log.i("DaexInference", "VAD: Silence detected. Finalizing chunk and submitting.")
             setVoiceStateInternal(VoiceState.PROCESSING)
 
             // Immediately start next segment to keep recording loop uninterrupted
@@ -1435,7 +1475,16 @@ class DaexInferenceViewModel(
     }
 
     fun submitAudioPrompt(audioPath: String) {
-        if (_isGenerating.value) return
+        if (_isGenerating.value) {
+            // Should be rare: speech-start during generation cancels it (see
+            // handleUserSpeechStarted). If a race still lands here, don't strand
+            // the UI in PROCESSING.
+            android.util.Log.w("DaexInference", "submitAudioPrompt: dropped chunk — generation already in progress")
+            if (_isLiveVoiceActive.value && _voiceState.value == VoiceState.PROCESSING) {
+                setVoiceStateInternal(VoiceState.LISTENING)
+            }
+            return
+        }
         if (_modelStatus.value != ModelStatus.READY || !daexService.isLoaded()) {
             _errorMessage.value = "Model is not loaded yet."
             // Reset voice states on failure
@@ -1602,20 +1651,30 @@ class DaexInferenceViewModel(
                             val currentText = actual.trimStart()
                             if (currentText.length > lastSpokenIndex) {
                                 val searchSubstring = currentText.substring(lastSpokenIndex)
-                                val punctuations = listOf('.', '?', '!', '\n')
-                                var firstPuncIndex = -1
-                                for (char in searchSubstring) {
-                                    if (char in punctuations) {
-                                        firstPuncIndex = searchSubstring.indexOf(char)
+                                // Split only on punctuation followed by whitespace so
+                                // decimals ("3.14") and abbreviations ("Dr. Smith")
+                                // don't become TTS fragments. The end-of-stream
+                                // remainder is flushed after generation completes.
+                                var splitIndex = -1
+                                for (i in searchSubstring.indices) {
+                                    val c = searchSubstring[i]
+                                    if (c == '\n') {
+                                        splitIndex = i
+                                        break
+                                    }
+                                    if ((c == '.' || c == '?' || c == '!') &&
+                                        searchSubstring.getOrNull(i + 1)?.isWhitespace() == true
+                                    ) {
+                                        splitIndex = i
                                         break
                                     }
                                 }
-                                if (firstPuncIndex != -1) {
-                                    val sentence = searchSubstring.substring(0, firstPuncIndex + 1).trim()
+                                if (splitIndex != -1) {
+                                    val sentence = searchSubstring.substring(0, splitIndex + 1).trim()
                                     if (sentence.isNotEmpty()) {
                                         kokoroTtsService?.speak(sentence, _ttsVoiceId.value)
                                     }
-                                    lastSpokenIndex += firstPuncIndex + 1
+                                    lastSpokenIndex += splitIndex + 1
                                 }
                             }
                         }
