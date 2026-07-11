@@ -210,3 +210,10 @@ DaexAndroid/build/
 DaexAndroid/app/build/
 
 reflect_out.txt
+logcat_output.txt
+
+# Kokoro TTS model weights
+DaexAndroid/app/src/main/assets/kokoro-en-v0_19/
+
+# AI agent configs
+.agents/

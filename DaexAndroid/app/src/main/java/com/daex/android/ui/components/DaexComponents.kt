@@ -37,6 +37,13 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.foundation.layout.fillMaxSize
 
 @Composable
 fun Modifier.liquidGlass(
@@ -256,3 +263,85 @@ fun DaexStopIcon(
         )
     }
 }
+
+@Composable
+fun AudioWaveformPulseRings(
+    amplitude: Float,
+    modifier: Modifier = Modifier,
+    ringColor: Color = DaexTheme.colors.primary
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "pulse_rings")
+
+    val pulse1 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulse_1"
+    )
+
+    val pulse2 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = LinearEasing, delayMillis = 600),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulse_2"
+    )
+
+    val pulse3 by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(1800, easing = LinearEasing, delayMillis = 1200),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "pulse_3"
+    )
+
+    Canvas(modifier = modifier.fillMaxSize()) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val baseRadius = size.width * 0.45f
+        val ampFactor = 1f + (amplitude * 0.5f)
+
+        if (pulse1 > 0f) {
+            val scale = 1f + (pulse1 * 1.5f) * ampFactor
+            val alpha = (1f - pulse1) * 0.45f
+            drawCircle(
+                color = ringColor,
+                radius = baseRadius * scale,
+                center = center,
+                style = Stroke(width = (2.dp - (1.dp * pulse1)).toPx()),
+                alpha = alpha
+            )
+        }
+
+        if (pulse2 > 0f) {
+            val scale = 1f + (pulse2 * 1.5f) * ampFactor
+            val alpha = (1f - pulse2) * 0.45f
+            drawCircle(
+                color = ringColor,
+                radius = baseRadius * scale,
+                center = center,
+                style = Stroke(width = (2.dp - (1.dp * pulse2)).toPx()),
+                alpha = alpha
+            )
+        }
+
+        if (pulse3 > 0f) {
+            val scale = 1f + (pulse3 * 1.5f) * ampFactor
+            val alpha = (1f - pulse3) * 0.45f
+            drawCircle(
+                color = ringColor,
+                radius = baseRadius * scale,
+                center = center,
+                style = Stroke(width = (2.dp - (1.dp * pulse3)).toPx()),
+                alpha = alpha
+            )
+        }
+    }
+}
+

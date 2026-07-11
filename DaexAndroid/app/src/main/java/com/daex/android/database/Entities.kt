@@ -27,6 +27,7 @@ data class MessageEntity(
     var thoughtContent: String? = null,
     var isPinned: Boolean = false,
     var isCompacted: Boolean = false,
+    var audioPath: String? = null,
     
     @HnswIndex(dimensions = 512)
     var embedding: FloatArray? = null

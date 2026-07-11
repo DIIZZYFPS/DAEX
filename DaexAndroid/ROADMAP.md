@@ -2,6 +2,34 @@
 
 This document outlines the strategic phases for evolving DAEX from a simple LLM wrapper into an autonomous on-device AI engine.
 
+## Phase 0: Public Beta Hardening (2026-07-11 review)
+**Goal:** Fix the reliability gaps that will cost first-impression users, before feature work resumes. Ranked by impact.
+
+### P0 — must fix before beta
+- [ ] **ObjectBox re-entry crash**: `BoxStore` is rebuilt in `MainActivity.onCreate` every time the activity is (re)created; reopening the app while the previous store is still open throws `DbException: Another BoxStore is still open`. Move to a process-lifetime singleton (`Application` subclass or lazily-initialized object built once per process). Confirmed reproducible via adb (2026-07-10 field logs). *(spawned as a separate task — see chip)*
+- [ ] **Model download resilience** (`ModelManager.kt`): no HTTP Range resume, no `.part`-then-rename, and the "≥90% of expected size" check accepts truncated/corrupt files. A first-run is a 2.6–3.7GB download — any interruption currently means starting over, and a corrupt-but-"valid-enough" file fails opaquely at engine load. Add resume support, temp-file-then-atomic-rename, and exact-size or checksum validation.
+- [ ] **Foreground service for downloads** (`dataSync` type minimum): screen-off or app-switch during the mandatory first-run download currently kills it. Voice-session foreground service (`microphone` type) is a stretch goal for the same reason but more forgivable at beta.
+- [ ] **Crash visibility**: no crash reporting anywhere (reasonable given the privacy-first positioning), but there's also no local capture — wire an uncaught-exception handler into the existing `LogShareHelper.kt` so the app can offer "share crash log" on next launch. Otherwise beta feedback is unactionable ("it crashed").
+- [ ] **Storage check before download**: `ModelManager.checkSpecSupport` explicitly ignores free storage (`supported = hasEnoughRAM`) — a 3.7GB download onto a nearly-full device fails mid-write. Gate the download button on `hasEnoughStorage` too.
+- [ ] **Release build hygiene**: `versionCode` is hardcoded to `1`; decide the Play internal-testing-track vs. sideload-APK distribution path before beta (the former gets staged rollout + crash/ANR vitals for free — covers part of the crash-visibility gap above).
+
+### P1 — should fix early in beta, not necessarily before
+- [ ] Voice UI latency feedback: no visible state during the ~4-5s first-sentence TTS synthesis or long prefill — same latency reads as "broken" without a "thinking…"/"voicing…" indicator.
+- [ ] Per-token O(n²) re-parsing in the streaming callback (`DaexInferenceViewModel.kt`) — re-scans full accumulated text and copies the full message list on every token; fine for short voice replies, will jank on long text generations on mid-range hardware.
+- [ ] Full conversation/context rebuild every turn (`DaexService.kt`) — re-prefills entire history each turn; a meaningful chunk of voice-loop latency. Check whether the LiteRT-LM API supports appending to an existing conversation instead of recreating it.
+- [ ] Onboarding length: six slides plus a mandatory multi-GB download before first real use. Consider a skippable tutorial and starting the download in the background during it.
+- [ ] Denied `RECORD_AUDIO` silently no-ops the voice button — needs a visible explanation/retry path.
+- [ ] Accessibility pass: the custom `BasicText`-everywhere design system likely doesn't respect font scaling or TalkBack. One pass before beta widens the audience.
+- [ ] README/ROADMAP drift: README still describes Room (app actually uses ObjectBox + FTS5/BM25 hybrid retrieval); Phases 2 and 4 below are substantially implemented in code but shown unchecked. Keep these docs in sync going forward — they're a first impression for technical users browsing the repo.
+- [ ] Zero automated tests in the repo. Not a beta blocker, but the most fragile code (WAV writer, VAD gate state machine, download validation) is exactly where a regression would be silent and costly. Even minimal unit coverage on those three would pay for itself.
+
+### Post-beta arcs (not urgent, tracked for later)
+- **Voice v2**: clause-level splitting for faster first-sentence audio, thermal/battery monitoring during long sessions (LLM + Kokoro concurrently will heat mid-range phones), and interruption/barge-in done via proper software echo cancellation using the TTS reference signal already available in `KokoroTtsService` (makes barge-in tractable instead of threshold-tuning against device-specific echo).
+- **Agentic depth** (Phases 3-4 below): tool registry already exists; intent router and structured-output constraints are the missing pieces.
+- **Distribution & licensing**: verify Gemma weight redistribution terms from the `litert-community` HuggingFace mirror hold up at beta scale; confirm ObjectBox's AGPL terms are compatible with any future commercial path.
+
+---
+
 ## Phase 1: Persistence & Session Management (The Foundation)
 **Goal:** Ensure the AI doesn't "forget" and can manage multiple distinct conversations.
 - [x] **Room Database Integration:** Implement `Conversation` and `Message` entities.

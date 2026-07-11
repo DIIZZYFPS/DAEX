@@ -32,6 +32,7 @@ data class Message(
     val toolStatus: String? = null,
     val isPinned: Boolean = false,
     val isCompacted: Boolean = false,
+    val audioPath: String? = null,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -50,6 +51,7 @@ interface DaexService {
         onRequestPermission: (suspend (String, String) -> Boolean)? = null,
         onStatusUpdate: ((String?) -> Unit)? = null,
         maxTokens: Int = 1024,
+        isLiveVoiceActive: Boolean = false,
         onToken: (String) -> Unit
     ): GenerationResult
     suspend fun generateSilent(prompt: String, maxTokens: Int = 512): String
@@ -105,6 +107,8 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 val config = EngineConfig(
                     modelPath = modelPath,
                     backend = backend,
+                    visionBackend = backend,
+                    audioBackend = Backend.CPU(), // Audio preprocessor constraint requires CPU
                     maxNumTokens = 4096, // Safe default KV cache size that accommodates system prompt, RAG context, history and response
                     cacheDir = context.cacheDir.absolutePath
                 )
@@ -192,6 +196,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         onRequestPermission: (suspend (String, String) -> Boolean)?,
         onStatusUpdate: ((String?) -> Unit)?,
         maxTokens: Int,
+        isLiveVoiceActive: Boolean,
         onToken: (String) -> Unit
     ): GenerationResult {
         Log.i(TAG, "generateResponse: isToolCallingEnabled=$isToolCallingEnabled, temperature=$temperature, topK=$topK, topP=$topP, customPromptLength=${customSystemPrompt.length}")
@@ -204,7 +209,11 @@ class DaexServiceImpl(private val context: Context) : DaexService {
             } else {
                 append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n")
                 append("Do not self-reference as an AI, assistant, or mention 'Icarus' or 'DAEX' in your responses. Avoid meta-commentary about running on-device or your technical setup unless directly asked. Respond naturally and directly to the user.\n")
-                append("In the chat history, turns are prefixed with dynamic relative timestamps indicating elapsed time (e.g. '[5m ago]', '[1h ago]'). Do NOT include any timestamp prefixes in your new response.\n\n")
+                if (!isLiveVoiceActive) {
+                    append("In the chat history, turns are prefixed with dynamic relative timestamps indicating elapsed time (e.g. '[5m ago]', '[1h ago]'). Do NOT include any timestamp prefixes in your new response.\n\n")
+                } else {
+                    append("\n")
+                }
             }
             
             try {
@@ -235,18 +244,41 @@ class DaexServiceImpl(private val context: Context) : DaexService {
 
         val now = System.currentTimeMillis()
         val initialLiteRtMessages = history.map { msg ->
-            val diffSec = (now - msg.timestamp) / 1000
-            val relativeTime = when {
-                diffSec < 0 -> "just now"
-                diffSec < 60 -> "just now"
-                diffSec < 3600 -> "${diffSec / 60}m ago"
-                diffSec < 86400 -> "${diffSec / 3600}h ago"
-                else -> "${diffSec / 86400}d ago"
+            val contentWithTime = if (isLiveVoiceActive) {
+                msg.content
+            } else {
+                val diffSec = (now - msg.timestamp) / 1000
+                val relativeTime = when {
+                    diffSec < 0 -> "just now"
+                    diffSec < 60 -> "just now"
+                    diffSec < 3600 -> "${diffSec / 60}m ago"
+                    diffSec < 86400 -> "${diffSec / 3600}h ago"
+                    else -> "${diffSec / 86400}d ago"
+                }
+                "[$relativeTime] ${msg.content}"
             }
-            val contentWithTime = "[$relativeTime] ${msg.content}"
 
             when (msg.role) {
-                "user" -> LiteRtMessage.user(contentWithTime)
+                "user" -> {
+                    if (msg.audioPath != null) {
+                        val file = java.io.File(msg.audioPath)
+                        if (file.exists() && file.length() > 44) {
+                            val audioContent = com.google.ai.edge.litertlm.Content.AudioFile(msg.audioPath)
+                            val contents = if (msg.content.isNotBlank()) {
+                                val textContent = com.google.ai.edge.litertlm.Content.Text(msg.content)
+                                LiteRtContents.of(audioContent, textContent)
+                            } else {
+                                LiteRtContents.of(audioContent)
+                            }
+                            LiteRtMessage.user(contents)
+                        } else {
+                            val fallbackText = if (msg.content.isNotBlank()) msg.content else "[Voice Audio Unavailable]"
+                            LiteRtMessage.user(fallbackText)
+                        }
+                    } else {
+                        LiteRtMessage.user(contentWithTime)
+                    }
+                }
                 "model" -> LiteRtMessage.model(LiteRtContents.of(contentWithTime))
                 else -> LiteRtMessage.user(contentWithTime)
             }
@@ -301,7 +333,21 @@ class DaexServiceImpl(private val context: Context) : DaexService {
 
         try {
             withContext(Dispatchers.IO) {
-                activeConversation.sendMessageAsync(activePrompt, extraContext).collect { reply ->
+                val lastMsg = messages.lastOrNull()
+                val flow = if (lastMsg != null && lastMsg.audioPath != null) {
+                    val audioContent = com.google.ai.edge.litertlm.Content.AudioFile(lastMsg.audioPath)
+                    val contents = if (lastMsg.content.isNotBlank()) {
+                        val textContent = com.google.ai.edge.litertlm.Content.Text(lastMsg.content)
+                        LiteRtContents.of(audioContent, textContent)
+                    } else {
+                        LiteRtContents.of(audioContent)
+                    }
+                    activeConversation.sendMessageAsync(contents, extraContext)
+                } else {
+                    activeConversation.sendMessageAsync(activePrompt, extraContext)
+                }
+
+                flow.collect { reply ->
                     val thinkingChunk = reply.channels["thinking"]
                     val chunk = reply.contents.toString()
 

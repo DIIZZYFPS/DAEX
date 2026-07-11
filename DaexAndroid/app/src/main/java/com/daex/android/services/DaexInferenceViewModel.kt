@@ -22,7 +22,7 @@ enum class ModelStatus {
 }
 
 enum class VoiceState {
-    IDLE, LISTENING, PROCESSING
+    IDLE, LISTENING, PROCESSING, SPEAKING
 }
 
 enum class HapticType {
@@ -157,14 +157,53 @@ class DaexInferenceViewModel(
     )
     val suggestedPrompts: StateFlow<List<String>> = _suggestedPrompts.asStateFlow()
 
+    private val _isTtsEnabled = MutableStateFlow(true)
+    val isTtsEnabled: StateFlow<Boolean> = _isTtsEnabled.asStateFlow()
+
+    private val _ttsVoiceId = MutableStateFlow(1) // Default to af_bella (1)
+    val ttsVoiceId: StateFlow<Int> = _ttsVoiceId.asStateFlow()
+
+    private val _isTtsDownloaded = MutableStateFlow(false)
+    val isTtsDownloaded: StateFlow<Boolean> = _isTtsDownloaded.asStateFlow()
+
+    private val _isTtsDownloading = MutableStateFlow(false)
+    val isTtsDownloading: StateFlow<Boolean> = _isTtsDownloading.asStateFlow()
+
+    private val _ttsDownloadProgress = MutableStateFlow(0)
+    val ttsDownloadProgress: StateFlow<Int> = _ttsDownloadProgress.asStateFlow()
+
+    private var kokoroTtsService: KokoroTtsService? = null
+
     // Voice Mode State Flows
     private val _voiceState = MutableStateFlow(VoiceState.IDLE)
     val voiceState: StateFlow<VoiceState> = _voiceState.asStateFlow()
+
+    private val _isLiveVoiceActive = MutableStateFlow(false)
+    val isLiveVoiceActive: StateFlow<Boolean> = _isLiveVoiceActive.asStateFlow()
 
     private val _voiceAmplitude = MutableStateFlow(0f)
     val voiceAmplitude: StateFlow<Float> = _voiceAmplitude.asStateFlow()
 
     private var speechManager: SpeechManager? = null
+    private var audioRecorder: AudioRecorder? = null
+    private var audioFocusRequest: android.media.AudioFocusRequest? = null
+
+    private val audioFocusChangeListener = android.media.AudioManager.OnAudioFocusChangeListener { focusChange ->
+        when (focusChange) {
+            android.media.AudioManager.AUDIOFOCUS_LOSS -> {
+                // Permanent loss of audio focus: stop the live session
+                stopLiveVoiceSession()
+            }
+            android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT,
+            android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK -> {
+                // Temporary loss or ducking request: stop/pause TTS playback
+                kokoroTtsService?.stopPlayback()
+            }
+            android.media.AudioManager.AUDIOFOCUS_GAIN -> {
+                // Regained focus
+            }
+        }
+    }
 
     val deviceSpecs: DeviceSpecs? = deviceService?.getDeviceSpecs()
 
@@ -172,6 +211,21 @@ class DaexInferenceViewModel(
     private var curationJob: Job? = null
 
     init {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val ctx = context
+                if (ctx != null) {
+                    ctx.cacheDir.listFiles()?.forEach { file ->
+                        if (file.name.startsWith("live_audio_") && file.name.endsWith(".wav")) {
+                            file.delete()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("DaexInference", "Failed to clean up old audio cache files", e)
+            }
+        }
+
         viewModelScope.launch {
             preferences?.primaryColorFlow?.collectLatest { colorInt ->
                 _primaryColor.value = Color(colorInt)
@@ -250,6 +304,47 @@ class DaexInferenceViewModel(
             }
         }
 
+        viewModelScope.launch {
+            preferences?.isTtsEnabledFlow?.collectLatest { enabled ->
+                _isTtsEnabled.value = enabled
+            }
+        }
+
+        viewModelScope.launch {
+            preferences?.ttsVoiceIdFlow?.collectLatest { voiceId ->
+                _ttsVoiceId.value = voiceId
+            }
+        }
+
+        val ctx = context
+        if (ctx != null) {
+            kokoroTtsService = KokoroTtsService(ctx)
+            kokoroTtsService?.onSpeakingStateChanged = { speaking ->
+                if (_isLiveVoiceActive.value) {
+                    if (speaking) {
+                        speakingRevertJob?.cancel()
+                        setVoiceStateInternal(VoiceState.SPEAKING)
+                    } else {
+                        // Debounced revert — cancel any existing pending revert first.
+                        // isSpeaking now flips false only after the AudioTrack has
+                        // physically drained, so the cooldown just needs to cover
+                        // device output latency and the room's acoustic tail.
+                        speakingRevertJob?.cancel()
+                        ttsCooldownUntilMs = System.currentTimeMillis() + 500L
+                        speakingRevertJob = viewModelScope.launch {
+                            kotlinx.coroutines.delay(400L)
+                            // Gate on the actual isSpeaking flag — not voiceState —
+                            // so a between-sentence false trigger doesn't revert early.
+                            if (kokoroTtsService?.isSpeaking != true && _isLiveVoiceActive.value) {
+                                setVoiceStateInternal(VoiceState.LISTENING)
+                            }
+                        }
+                    }
+                }
+            }
+
+        }
+
         refreshConversations()
 
         // Autoload last used model if already downloaded
@@ -300,6 +395,29 @@ class DaexInferenceViewModel(
                 }
             }
         }
+
+        // Silent Background Initialization of the Kokoro TTS Model
+        viewModelScope.launch {
+            if (modelManager != null) {
+                val isDownloaded = modelManager.isKokoroDownloaded()
+                if (!isDownloaded) {
+                    try {
+                        _isTtsDownloading.value = true
+                        _ttsDownloadProgress.value = 0
+                        modelManager.downloadKokoro { progress ->
+                            _ttsDownloadProgress.value = progress
+                        }
+                        _isTtsDownloaded.value = true
+                        _isTtsDownloading.value = false
+                        _ttsDownloadProgress.value = 100
+                        refreshDownloadedModels()
+                    } catch (e: Exception) {
+                        _isTtsDownloading.value = false
+                        android.util.Log.e("DaexInferenceViewModel", "Background TTS download failed", e)
+                    }
+                }
+            }
+        }
         refreshDownloadedModels()
     }
 
@@ -311,6 +429,7 @@ class DaexInferenceViewModel(
                 .map { it.id }
                 .toSet()
             _downloadedModelIds.value = downloaded
+            _isTtsDownloaded.value = modelManager.isKokoroDownloaded()
         }
     }
 
@@ -342,12 +461,220 @@ class DaexInferenceViewModel(
         }
     }
 
+    private fun setVoiceStateInternal(state: VoiceState) {
+        if (_isLiveVoiceActive.value && state == VoiceState.LISTENING && kokoroTtsService?.isSpeaking == true) {
+            _voiceState.value = VoiceState.SPEAKING
+            android.util.Log.w("DaexInference", "Blocked transition to LISTENING because TTS is speaking.")
+        } else {
+            _voiceState.value = state
+        }
+    }
+
     fun setVoiceState(state: VoiceState) {
-        _voiceState.value = state
+        setVoiceStateInternal(state)
+        if (state == VoiceState.IDLE) {
+            _isLiveVoiceActive.value = false
+        }
     }
 
     fun setVoiceAmplitude(amplitude: Float) {
         _voiceAmplitude.value = amplitude
+    }
+
+    fun startLiveVoiceSession(onTextResult: (String) -> Unit) {
+        if (_isTtsEnabled.value && !_isTtsDownloaded.value) {
+            android.util.Log.w("DaexInference", "Cannot start live voice session: TTS is enabled but not downloaded.")
+            context?.let { ctx ->
+                android.widget.Toast.makeText(ctx, "TTS voice engine is not downloaded yet. Please download it in Settings.", android.widget.Toast.LENGTH_LONG).show()
+            }
+            return
+        }
+
+        _isLiveVoiceActive.value = true
+        setVoiceStateInternal(VoiceState.LISTENING)
+
+        kokoroTtsService?.playWakeChime()
+
+        // Request Transient Audio Focus to duck background music and identify stream intent
+        context?.let { ctx ->
+            try {
+                val audioManager = ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                // GAIN_TRANSIENT (not MAY_DUCK): ducked background music would keep
+                // playing into the mic and false-trigger the VAD, so ask other apps to pause.
+                val focusRequest = android.media.AudioFocusRequest.Builder(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+                    .setAudioAttributes(
+                        android.media.AudioAttributes.Builder()
+                            .setUsage(android.media.AudioAttributes.USAGE_ASSISTANT)
+                            .setContentType(android.media.AudioAttributes.CONTENT_TYPE_SPEECH)
+                            .build()
+                    )
+                    .setAcceptsDelayedFocusGain(false)
+                    .setOnAudioFocusChangeListener(audioFocusChangeListener)
+                    .build()
+                audioFocusRequest = focusRequest
+                val result = audioManager.requestAudioFocus(focusRequest)
+                android.util.Log.i("DaexInference", "Requested Audio Focus: result=$result")
+            } catch (e: Exception) {
+                android.util.Log.e("DaexInference", "Failed to request Audio Focus", e)
+            }
+        }
+
+        // Note: We do NOT set AudioManager.mode to MODE_IN_COMMUNICATION or force speakerphone because
+        // on some devices (especially Samsung), VoIP call routing triggers aggressive system-level half-duplex
+        // echo suppression that completely silences/mutes the microphone input during active speaker playback.
+        // Keeping it at MODE_NORMAL keeps the mic open; echo is handled by the TTS gate in AudioRecorder
+        // (isSpeaking + cooldown), the RMS-scaled ducking floor, and hardware AEC where available.
+
+        if (_isTtsEnabled.value) {
+            kokoroTtsService?.initTts()
+        }
+
+        // Delay starting the recording segment by 300ms to allow the awake hum sound effect to finish playing.
+        // This prevents the microphone from capturing the hum and false-triggering a speech-start interruption.
+        viewModelScope.launch {
+            kotlinx.coroutines.delay(300L)
+            if (_isLiveVoiceActive.value) {
+                startNewRecordingSegment()
+            }
+        }
+    }
+
+    private val liveAudioFiles = mutableListOf<java.io.File>()
+    // Post-TTS cooldown consumed by the recorder's TTS gate: for 500ms after the
+    // speaker actually goes silent, the VAD stays in COOLDOWN (stricter detection)
+    // so the acoustic tail can't false-trigger a speech start.
+    @Volatile private var ttsCooldownUntilMs = 0L
+    // Debounce job for the SPEAKING → LISTENING state revert
+    private var speakingRevertJob: kotlinx.coroutines.Job? = null
+
+
+    private suspend fun startNewRecordingSegment() {
+        val ctx = context ?: return
+        val audioFile = java.io.File(ctx.cacheDir, "live_audio_${System.currentTimeMillis()}.wav")
+        liveAudioFiles.add(audioFile)
+
+        // Stop any active recorder
+        audioRecorder?.stop()
+
+        val recorder = AudioRecorder(audioFile)
+        audioRecorder = recorder
+
+        recorder.start(
+            scope = viewModelScope,
+            // Calibrated 2026-07-11: ambient floor measures ~0.001 on-device and
+            // conversational-distance speech was landing under the old 0.03 —
+            // users had to hold the phone to their face to be heard.
+            speechThreshold = 0.015f,
+            silenceThreshold = 0.008f,
+            silenceDurationMs = 1500L,
+            // Parked for now — see AudioRecorder.start. Re-enable once normal
+            // conversation flow is solid.
+            bargeInEnabled = false,
+            currentPlaybackRms = { kokoroTtsService?.currentPlaybackRms ?: 0f },
+            ttsGateState = {
+                val now = System.currentTimeMillis()
+                when {
+                    kokoroTtsService?.isSpeaking == true -> TtsGateState.SPEAKING
+                    // The wake/close chimes play via SoundPool, invisible to
+                    // isSpeaking/currentPlaybackRms — gate them like TTS.
+                    now < (kokoroTtsService?.chimeActiveUntilMs ?: 0L) -> TtsGateState.SPEAKING
+                    now < ttsCooldownUntilMs -> TtsGateState.COOLDOWN
+                    else -> TtsGateState.CLEAR
+                }
+            },
+            onSpeechStarted = {
+                handleUserSpeechStarted()
+            },
+            onBargeIn = {
+                handleBargeIn()
+            },
+            onSilenceDetected = { contaminatedByTts ->
+                handleUserSilenceDetected(audioFile, contaminatedByTts)
+            }
+        ) { amplitude ->
+            setVoiceAmplitude(amplitude)
+        }
+    }
+
+    private fun handleUserSpeechStarted() {
+        // Deliberately does NOT cancel generation: a speech-start is only ~160ms of
+        // signal and false-triggers on coughs/taps. Cancelling here made the model
+        // cut itself off mid-response (2026-07-10 field testing). Chunks that finish
+        // while generation is running are queued in submitAudioPrompt instead, and
+        // deliberate interruption goes through the sustained barge-in path.
+        android.util.Log.d("DaexInference", "VAD: Speech started")
+    }
+
+    private fun handleBargeIn() {
+        // Sustained user speech over active TTS: stop the voice and the generation
+        // feeding it so the user's chunk is submitted cleanly.
+        android.util.Log.i("DaexInference", "VAD: Barge-in — stopping TTS playback and generation")
+        cancelGeneration()
+    }
+
+    private fun handleUserSilenceDetected(audioFile: java.io.File, contaminatedByTts: Boolean) {
+        viewModelScope.launch {
+            // Finalize current chunk by calling stop() on its recorder
+            audioRecorder?.stop()
+
+            if (contaminatedByTts) {
+                // The chunk mostly overlapped TTS playback without qualifying as a
+                // barge-in — it is almost certainly the model's own voice. Submitting
+                // it would make the model answer itself, so drop it.
+                android.util.Log.w("DaexInference", "VAD: Discarding echo-contaminated chunk ${audioFile.name}")
+                liveAudioFiles.remove(audioFile)
+                audioFile.delete()
+                if (_isLiveVoiceActive.value) {
+                    startNewRecordingSegment()
+                }
+                return@launch
+            }
+
+            android.util.Log.i("DaexInference", "VAD: Silence detected. Finalizing chunk and submitting.")
+            setVoiceStateInternal(VoiceState.PROCESSING)
+
+            // Immediately start next segment to keep recording loop uninterrupted
+            if (_isLiveVoiceActive.value) {
+                startNewRecordingSegment()
+            }
+
+            if (audioFile.exists() && audioFile.length() > 44) {
+                submitAudioPrompt(audioFile.absolutePath)
+            } else {
+                if (_isLiveVoiceActive.value && _voiceState.value == VoiceState.PROCESSING) {
+                    setVoiceStateInternal(VoiceState.LISTENING)
+                }
+            }
+        }
+    }
+
+    fun stopLiveVoiceSession() {
+        _isLiveVoiceActive.value = false
+        setVoiceStateInternal(VoiceState.IDLE)
+        audioRecorder?.stopAsync()
+        audioRecorder = null
+        cancelGeneration()
+        pendingAudioPath = null
+        liveAudioFiles.clear()
+        kokoroTtsService?.stopPlayback()
+        kokoroTtsService?.releaseTts()
+
+        kokoroTtsService?.playCloseChime()
+
+        // Abandon Audio Focus
+        context?.let { ctx ->
+            try {
+                val audioManager = ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager
+                audioFocusRequest?.let { focusRequest ->
+                    val result = audioManager.abandonAudioFocusRequest(focusRequest)
+                    android.util.Log.i("DaexInference", "Abandoned Audio Focus: result=$result")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("DaexInference", "Failed to abandon Audio Focus", e)
+            } finally {
+                audioFocusRequest = null
+            }
+        }
     }
 
     fun toggleVoiceInput(onTextResult: (String) -> Unit) {
@@ -369,6 +696,20 @@ class DaexInferenceViewModel(
             speechManager?.stopListening()
         } else {
             speechManager?.startListening()
+        }
+    }
+
+    fun setTtsEnabled(enabled: Boolean) {
+        _isTtsEnabled.value = enabled
+        viewModelScope.launch {
+            preferences?.setTtsEnabled(enabled)
+        }
+    }
+
+    fun setTtsVoiceId(voiceId: Int) {
+        _ttsVoiceId.value = voiceId
+        viewModelScope.launch {
+            preferences?.setTtsVoiceId(voiceId)
         }
     }
 
@@ -597,6 +938,44 @@ class DaexInferenceViewModel(
         _downloadingModelId.value = null
         _modelStatus.value = ModelStatus.NOT_DOWNLOADED
         _downloadProgress.value = 0
+    }
+
+    fun downloadTtsModel() {
+        if (_isTtsDownloading.value || modelManager == null) return
+
+        _isTtsDownloading.value = true
+        _ttsDownloadProgress.value = 0
+        _errorMessage.value = null
+
+        viewModelScope.launch {
+            try {
+                modelManager.downloadKokoro { progress ->
+                    _ttsDownloadProgress.value = progress
+                }
+                _isTtsDownloaded.value = true
+                _isTtsDownloading.value = false
+                _ttsDownloadProgress.value = 100
+                refreshDownloadedModels()
+            } catch (e: Exception) {
+                _isTtsDownloading.value = false
+                _errorMessage.value = e.message ?: "TTS Download failed"
+                android.util.Log.e("DaexInferenceViewModel", "TTS model download failed", e)
+            }
+        }
+    }
+
+    fun deleteTtsModel() {
+        viewModelScope.launch {
+            if (modelManager == null) return@launch
+            try {
+                kokoroTtsService?.release()
+                modelManager.deleteKokoro()
+                _isTtsDownloaded.value = false
+                refreshDownloadedModels()
+            } catch (e: Exception) {
+                android.util.Log.e("DaexInferenceViewModel", "Failed to delete TTS model", e)
+            }
+        }
     }
 
     fun loadModel(model: Model) {
@@ -1082,10 +1461,290 @@ class DaexInferenceViewModel(
         }
     }
 
+    // A chunk that finished while the model was still generating; submitted as the
+    // next turn when the current generation completes, instead of being dropped.
+    @Volatile private var pendingAudioPath: String? = null
+
+    fun submitAudioPrompt(audioPath: String) {
+        if (_isGenerating.value) {
+            android.util.Log.i("DaexInference", "submitAudioPrompt: generation in progress — queueing chunk for next turn")
+            pendingAudioPath = audioPath
+            if (_isLiveVoiceActive.value && _voiceState.value == VoiceState.PROCESSING) {
+                setVoiceStateInternal(VoiceState.LISTENING)
+            }
+            return
+        }
+        if (_modelStatus.value != ModelStatus.READY || !daexService.isLoaded()) {
+            _errorMessage.value = "Model is not loaded yet."
+            // Reset voice states on failure
+            _isLiveVoiceActive.value = false
+            setVoiceStateInternal(VoiceState.IDLE)
+            return
+        }
+        curationJob?.cancel()
+
+        viewModelScope.launch {
+            var convId = _currentConversationId.value
+            if (convId == null) {
+                val modelId = _currentModel.value?.id ?: ModelBank.generativeModels.first().id
+                convId = daexMemory?.createConversation(modelId, "Audio Session")
+                _currentConversationId.value = convId
+                if (convId != null && _attachedFiles.value.isNotEmpty()) {
+                    daexMemory?.updateAttachedFiles(convId, _attachedFiles.value)
+                }
+                refreshConversations()
+            }
+
+            if (convId == null) {
+                _isLiveVoiceActive.value = false
+                setVoiceStateInternal(VoiceState.IDLE)
+                return@launch
+            }
+
+            val userMsgId = System.currentTimeMillis().toString()
+            val modelMsgId = (System.currentTimeMillis() + 1).toString()
+            
+            val userMsg = Message(id = userMsgId, role = "user", content = "[Live Audio]", audioPath = audioPath)
+            val modelMsg = Message(id = modelMsgId, role = "model", content = "")
+            
+            _messages.value = _messages.value + listOf(userMsg, modelMsg)
+            
+            daexMemory?.saveMessage(convId, userMsg)
+            daexMemory?.saveMessage(convId, modelMsg)
+            
+            _isGenerating.value = true
+            _tokenSpeed.value = 0.0
+            triggerHapticFeedback(type = HapticType.START_RESPONSE)
+
+            generationJob = viewModelScope.launch {
+                var lastSpokenIndex = 0
+                try {
+                    val fullHistory = (daexMemory?.getRecentHistory(convId) ?: emptyList())
+                        .filter { it.id != modelMsgId && it.role != "system" }
+                    
+                    var activeHistory = fullHistory.filter { !it.isCompacted }
+                    val maxContextLimit = _currentModel.value?.maxContextTokens ?: 8192
+                    
+                    val inferenceHistory = activeHistory.toMutableList()
+                    var rawText = ""
+                    val coreMemoryContent = daexCoreMemory?.getMemoryContent() ?: ""
+                    
+                    var systemContext = coreMemoryContent
+                    if (daexRag != null && daexRag.hasDocuments() && _attachedFiles.value.isNotEmpty()) {
+                        try {
+                            val relevantChunks = daexRag.queryDocuments(
+                                query = "Audio Input",
+                                activeFileNames = _attachedFiles.value
+                            )
+                            if (relevantChunks.isNotEmpty()) {
+                                val contextBlock = relevantChunks.joinToString("\n---\n")
+                                systemContext += "\n\n<uploaded_documents>\n$contextBlock\n</uploaded_documents>\n"
+                                systemContext += "Use the above document excerpts to help answer the user's query. If the excerpts are not relevant, ignore them.\n"
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("DaexInference", "RAG query failed", e)
+                        }
+                    }
+
+                    if (daexSkillManager != null) {
+                        systemContext += "\n\nYou have domain-specific \"skills\" (additional instructions/parameters) available. If you need a special skill or want to see what is available, call the listSkills() tool. If you find a matching skill, call the loadSkill(skillName) tool to retrieve its instructions.\n"
+                    }
+
+                    if (_isLiveVoiceActive.value) {
+                        systemContext += "\n\nIMPORTANT: You are in a live voice session. Keep your response conversational, friendly, and direct. Keep your response to around 1 to 3 sentences (under 60 words). Do not use lists, bullet points, or structured formatting."
+                    }
+
+                    val result = daexService.generateResponse(
+                        messages = inferenceHistory,
+                        systemContext = systemContext,
+                        isReasoningEnabled = if (_isLiveVoiceActive.value) false else _isReasoningEnabled.value,
+                        temperature = _inferenceTemperature.value,
+                        topK = _inferenceTopK.value,
+                        topP = _inferenceTopP.value,
+                        customSystemPrompt = _customSystemPrompt.value,
+                        isToolCallingEnabled = _isToolCallingEnabled.value,
+                        onRequestPermission = { toolName, description ->
+                            requestPermission(toolName, description)
+                        },
+                        onStatusUpdate = { status ->
+                            val updated = _messages.value.toMutableList()
+                            val idx = updated.indexOfFirst { it.id == modelMsgId }
+                            if (idx != -1) {
+                                updated[idx] = updated[idx].copy(toolStatus = status)
+                                _messages.value = updated
+                            }
+                        },
+                        maxTokens = _maxTokens.value,
+                        isLiveVoiceActive = _isLiveVoiceActive.value
+                    ) { token ->
+                        if (!isActive) return@generateResponse
+                        rawText += token
+                        
+                        var thought: String? = null
+                        var actual = rawText
+                        
+                        val thinkTags = listOf(
+                            Pair("<|think|>", "</think|>"),
+                            Pair("<think>", "</think>"),
+                            Pair("<|channel>", "<channel|>")
+                        )
+                        
+                        val extractedThoughts = mutableListOf<String>()
+                        val modifiedText = java.lang.StringBuilder()
+                        
+                        var i = 0
+                        while (i < rawText.length) {
+                            var foundTag = false
+                            for (tagPair in thinkTags) {
+                                if (rawText.startsWith(tagPair.first, i)) {
+                                    val startIdx = i + tagPair.first.length
+                                    val endIdx = rawText.indexOf(tagPair.second, startIdx)
+                                    if (endIdx != -1) {
+                                        val content = rawText.substring(startIdx, endIdx).trim()
+                                        if (content.isNotEmpty()) {
+                                            extractedThoughts.add(content)
+                                        }
+                                        i = endIdx + tagPair.second.length
+                                        foundTag = true
+                                        break
+                                    } else {
+                                        val content = rawText.substring(startIdx).trim()
+                                        if (content.isNotEmpty()) {
+                                            extractedThoughts.add(content)
+                                        }
+                                        i = rawText.length
+                                        foundTag = true
+                                        break
+                                    }
+                                }
+                            }
+                            if (!foundTag) {
+                                modifiedText.append(rawText[i])
+                                i++
+                            }
+                        }
+                        
+                        if (extractedThoughts.isNotEmpty()) {
+                            thought = extractedThoughts.joinToString("\n\n")
+                        }
+                        actual = modifiedText.toString()
+                        
+                        val updated = _messages.value.toMutableList()
+                        val idx = updated.indexOfFirst { it.id == modelMsgId }
+                        if (idx != -1) {
+                            updated[idx] = updated[idx].copy(content = actual.trimStart(), thoughtContent = thought)
+                            _messages.value = updated
+                        }
+
+                        if (_isLiveVoiceActive.value && _isTtsEnabled.value) {
+                            val currentText = actual.trimStart()
+                            if (currentText.length > lastSpokenIndex) {
+                                val searchSubstring = currentText.substring(lastSpokenIndex)
+                                // Split only on punctuation followed by whitespace so
+                                // decimals ("3.14") and abbreviations ("Dr. Smith")
+                                // don't become TTS fragments. The end-of-stream
+                                // remainder is flushed after generation completes.
+                                var splitIndex = -1
+                                for (i in searchSubstring.indices) {
+                                    val c = searchSubstring[i]
+                                    if (c == '\n') {
+                                        splitIndex = i
+                                        break
+                                    }
+                                    if ((c == '.' || c == '?' || c == '!') &&
+                                        searchSubstring.getOrNull(i + 1)?.isWhitespace() == true
+                                    ) {
+                                        splitIndex = i
+                                        break
+                                    }
+                                }
+                                if (splitIndex != -1) {
+                                    val sentence = searchSubstring.substring(0, splitIndex + 1).trim()
+                                    if (sentence.isNotEmpty()) {
+                                        kokoroTtsService?.speak(sentence, _ttsVoiceId.value)
+                                    }
+                                    lastSpokenIndex += splitIndex + 1
+                                }
+                            }
+                        }
+                    }
+
+                    if (_isLiveVoiceActive.value && _isTtsEnabled.value) {
+                        if (rawText.trimStart().length > lastSpokenIndex) {
+                            val remaining = rawText.trimStart().substring(lastSpokenIndex).trim()
+                            if (remaining.isNotEmpty()) {
+                                kokoroTtsService?.speak(remaining, _ttsVoiceId.value)
+                            }
+                        }
+                    }
+
+                    _tokenSpeed.value = result.tokensPerSecond
+                    triggerHapticFeedback(type = HapticType.SUCCESS_COMPLETION)
+                    
+                    val updatedList = _messages.value
+                    val finalMsg = updatedList.find { it.id == modelMsgId }
+                    if (finalMsg != null) {
+                        val finalModelMsg = finalMsg.copy(tokensPerSecond = result.tokensPerSecond)
+                        daexMemory?.saveMessage(convId, finalModelMsg)
+                    }
+                } catch (e: Exception) {
+                    val isCancellation = e is kotlinx.coroutines.CancellationException ||
+                                         e is java.util.concurrent.CancellationException ||
+                                         e.message?.contains("cancel", ignoreCase = true) == true
+                    
+                    val updated = _messages.value.toMutableList()
+                    val idx = updated.indexOfFirst { it.id == modelMsgId }
+                    if (idx != -1) {
+                        val messageToAppend = if (isCancellation) {
+                            "\n\n[Generation stopped by user]"
+                        } else {
+                            "\n[Error: ${e.message ?: "Generation failed"}]"
+                        }
+                        val errorContent = updated[idx].content + messageToAppend
+                        updated[idx] = updated[idx].copy(content = errorContent)
+                        _messages.value = updated
+                        daexMemory?.saveMessage(convId, updated[idx])
+                    }
+                } finally {
+                    _isGenerating.value = false
+                    if (!_isLiveVoiceActive.value) {
+                        setVoiceStateInternal(VoiceState.IDLE)
+                    } else {
+                        setVoiceStateInternal(VoiceState.LISTENING)
+                    }
+                    refreshConversations()
+
+                    // A chunk finished while this generation was running — submit it
+                    // now as the next turn so the user's speech isn't dropped.
+                    val queued = pendingAudioPath
+                    pendingAudioPath = null
+                    if (queued != null && _isLiveVoiceActive.value) {
+                        val queuedFile = java.io.File(queued)
+                        if (queuedFile.exists() && queuedFile.length() > 44) {
+                            android.util.Log.i("DaexInference", "Submitting queued audio chunk from during-generation speech")
+                            submitAudioPrompt(queued)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     fun cancelGeneration() {
-        generationJob?.cancel()
+        val job = generationJob
+        job?.cancel()
         (daexService as? DaexServiceImpl)?.cancelGeneration()
-        _isGenerating.value = false
+        kokoroTtsService?.stopPlayback()
+        // Do NOT set _isGenerating.value = false here when a job exists: cancel()
+        // only requests cancellation, it doesn't wait for the coroutine to unwind.
+        // submitPrompt/submitAudioPrompt gate new generations on _isGenerating, so
+        // clearing it early lets a new generation start into the same underlying
+        // conversation before the cancelled job's own finally block (which also
+        // resubmits any queued audio chunk) has actually finished. Only that job's
+        // finally clears the flag now — it always runs exactly once, cancelled or not.
+        if (job == null) {
+            _isGenerating.value = false
+        }
     }
 
     fun clearMessages() {
@@ -1402,5 +2061,6 @@ class DaexInferenceViewModel(
     override fun onCleared() {
         super.onCleared()
         speechManager?.destroy()
+        kokoroTtsService?.release()
     }
 }
