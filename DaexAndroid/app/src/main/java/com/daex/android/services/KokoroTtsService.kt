@@ -3,7 +3,6 @@ package com.daex.android.services
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.AudioFormat
-import android.media.AudioManager
 import android.media.AudioTrack
 import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
@@ -26,6 +25,19 @@ class KokoroTtsService(private val context: Context) {
     private var activeSpeakJob: Job? = null
     private val speakChannel = Channel<SpeakRequest>(Channel.UNLIMITED)
     @Volatile private var stopped = false
+
+    // Guards speak()/stopPlayback()'s state transitions (stopped, playbackEpoch,
+    // pendingUtterances, isSpeaking) so the two can't interleave into an
+    // inconsistent state when called from different threads (e.g. a stop racing
+    // an in-flight token callback that's about to queue another sentence).
+    private val stateLock = Any()
+
+    // Bumped by stopPlayback(). Each SpeakRequest/PlayItem captures the epoch that
+    // was current when it was created; the playback pipeline drops any item whose
+    // epoch has gone stale by the time it's processed — a straggler from an
+    // already-cancelled request — instead of letting it corrupt isSpeaking/
+    // pendingUtterances bookkeeping for whatever is playing now.
+    private val playbackEpoch = java.util.concurrent.atomic.AtomicInteger(0)
 
     // Speaking state callback
     var onSpeakingStateChanged: ((Boolean) -> Unit)? = null
@@ -50,13 +62,56 @@ class KokoroTtsService(private val context: Context) {
     @Volatile
     private var framesWritten = 0
 
-    @Volatile
-    var systemChimeStyle = 0
+    class SpeakRequest(val text: String, val voiceId: Int, val epoch: Int)
 
-    class SpeakRequest(val text: String, val voiceId: Int)
+    // Synthesis and playback are decoupled so sentence N+1's inference runs while
+    // sentence N is still playing. Kokoro's inference is ~1x real-time on-device
+    // (2026-07-11 field logs: ~4.5s to synthesize ~4.5s of audio), so the old
+    // serial synth→play→synth→play loop stalled for a full sentence-length between
+    // every sentence. Synthesized PCM flows through playbackChannel to a dedicated
+    // playback worker; UtteranceEnd markers keep the utterance count accurate.
+    private sealed interface PlayItem {
+        class Pcm(val samples: FloatArray, val epoch: Int) : PlayItem
+        class UtteranceEnd(val epoch: Int) : PlayItem
+    }
+    private val playbackChannel = Channel<PlayItem>(Channel.UNLIMITED)
+    private val pendingUtterances = java.util.concurrent.atomic.AtomicInteger(0)
+
+    // System chimes (session wake/close) are short premade assets played through
+    // SoundPool, which is built for exactly this: low trigger latency, decoded once
+    // at load time. No procedural synthesis involved. Declared here, above init{},
+    // because Kotlin runs property initializers and init blocks in textual order —
+    // loadChimes() (called from init{} below) would otherwise see chimePool as null.
+    private val chimePool = android.media.SoundPool.Builder()
+        .setMaxStreams(2)
+        .setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+        )
+        .build()
+    @Volatile private var wakeChimeId: Int = 0
+    @Volatile private var closeChimeId: Int = 0
+    // load() returns a sound ID synchronously but decoding happens async on a
+    // background thread; play() on a not-yet-decoded (or failed) sound is a silent
+    // no-op. These track real readiness so we don't drop the very first playback.
+    @Volatile private var wakeChimeReady = false
+    @Volatile private var closeChimeReady = false
+    // Real durations measured from the assets at load time (they're multi-second
+    // files, not the 250ms the old synth produced).
+    @Volatile private var wakeChimeDurationMs = 2500L
+    @Volatile private var closeChimeDurationMs = 3400L
+    // While now < this, the chime is audible on the speaker. The recorder's TTS
+    // gate treats it like TTS playback so it can't false-trigger a speech start —
+    // SoundPool audio is invisible to isSpeaking/currentPlaybackRms otherwise.
+    @Volatile var chimeActiveUntilMs = 0L
+        private set
 
     init {
         startSynthesisPipeline()
+        startPlaybackPipeline()
+        loadChimes()
     }
 
     fun initTts() {
@@ -147,18 +202,24 @@ class KokoroTtsService(private val context: Context) {
 
     fun speak(text: String, voiceId: Int) {
         if (text.isBlank()) return
-        stopped = false
+        val epoch: Int
+        synchronized(stateLock) {
+            stopped = false
+            // isSpeaking goes true at queue time so the mic gate covers the whole
+            // response — including the synthesis-only stretch before any audio plays.
+            pendingUtterances.incrementAndGet()
+            isSpeaking = true
+            epoch = playbackEpoch.get()
+        }
         android.util.Log.i("KokoroTtsService", "Queuing text: \"$text\"")
-        speakChannel.trySend(SpeakRequest(text, voiceId))
+        speakChannel.trySend(SpeakRequest(text, voiceId, epoch))
     }
 
     private fun startSynthesisPipeline() {
         ttsScope.launch {
             for (request in speakChannel) {
-                isSpeaking = true
+                val epoch = request.epoch
                 val job = launch {
-                    // Everything runs inside try/finally so isSpeaking can never get
-                    // stuck true when the engine is missing or synthesis fails.
                     try {
                         var activeTts = mutex.withLock { tts }
                         if (activeTts == null) {
@@ -176,37 +237,42 @@ class KokoroTtsService(private val context: Context) {
                         }
 
                         // The lock is held for the whole synthesis, but a stop request
-                        // aborts quickly because ttsCallback returns 0 once `stopped` is set.
+                        // aborts quickly: the callback returns 0 once `stopped` is set
+                        // or the request's epoch has been superseded by a newer stop.
                         mutex.withLock {
                             val currentTts = tts
-                            if (currentTts != null && currentTts == activeTts && !stopped) {
+                            if (currentTts != null && currentTts == activeTts && !stopped && epoch == playbackEpoch.get()) {
                                 withContext(Dispatchers.Default) {
                                     currentTts.generateWithCallback(
                                         text = request.text,
                                         sid = request.voiceId,
                                         speed = 1.0f,
                                         callback = TtsCallback { samples ->
-                                            ttsCallback(samples)
+                                            if (stopped || epoch != playbackEpoch.get()) {
+                                                0
+                                            } else {
+                                                // Copy: sherpa-onnx may reuse the
+                                                // buffer after the callback returns.
+                                                playbackChannel.trySend(PlayItem.Pcm(samples.copyOf(), epoch))
+                                                1
+                                            }
                                         } as (FloatArray) -> Int
                                     )
                                 }
                             }
-                        }
-
-                        // Wait for the AudioTrack to physically finish before this
-                        // utterance counts as done — isSpeaking and currentPlaybackRms
-                        // must reflect what the speaker is doing, not what was written.
-                        if (!stopped) {
-                            drainPlayback()
                         }
                     } catch (e: CancellationException) {
                         android.util.Log.i("KokoroTtsService", "Pipeline: Synthesis canceled")
                     } catch (e: Exception) {
                         android.util.Log.e("KokoroTtsService", "Pipeline: Synthesis failed", e)
                     } finally {
-                        if (speakChannel.isEmpty) {
-                            isSpeaking = false
-                        }
+                        // Exactly one end-marker per request — also on failure or
+                        // cancel — so the playback worker's utterance count stays
+                        // honest and isSpeaking can never get stuck true. Tagged
+                        // with this request's epoch so a marker that lands after a
+                        // stop (and a possible new speak()) can't be mistaken for
+                        // belonging to whatever plays next.
+                        playbackChannel.trySend(PlayItem.UtteranceEnd(epoch))
                     }
                 }
                 activeSpeakJob = job
@@ -215,12 +281,41 @@ class KokoroTtsService(private val context: Context) {
         }
     }
 
-    private fun ttsCallback(samples: FloatArray): Int {
-        // Returning 0 tells sherpa-onnx to abort synthesis of this utterance;
-        // without it a stop request leaves native synthesis running to completion.
-        if (stopped) return 0
-        playAudioSamples(samples)
-        return 1
+    // Consumes synthesized PCM. Runs concurrently with the synthesis worker: while
+    // one sentence plays here, the next is already being synthesized upstream.
+    private fun startPlaybackPipeline() {
+        ttsScope.launch {
+            for (item in playbackChannel) {
+                when (item) {
+                    is PlayItem.Pcm -> {
+                        if (!stopped && item.epoch == playbackEpoch.get()) {
+                            playAudioSamples(item.samples)
+                        }
+                    }
+                    is PlayItem.UtteranceEnd -> {
+                        if (item.epoch != playbackEpoch.get()) {
+                            // Straggler from a request that was already cancelled —
+                            // stopPlayback() already reset pendingUtterances/isSpeaking
+                            // for the current epoch, so this marker must not touch them.
+                            continue
+                        }
+                        val remaining = pendingUtterances.updateAndGet { if (it > 0) it - 1 else 0 }
+                        if (remaining == 0) {
+                            // Last queued utterance fully played: wait for the track
+                            // to physically drain before the mic gate opens.
+                            if (!stopped) {
+                                drainPlayback()
+                            } else {
+                                currentPlaybackRms = 0f
+                            }
+                            if (pendingUtterances.get() == 0) {
+                                isSpeaking = false
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private suspend fun drainPlayback() {
@@ -306,11 +401,20 @@ class KokoroTtsService(private val context: Context) {
 
     fun stopPlayback() {
         android.util.Log.i("KokoroTtsService", "Stopping playback and clearing TTS queue...")
-        stopped = true
+        synchronized(stateLock) {
+            stopped = true
+            // Invalidates the epoch any in-flight speak()/synthesis job captured —
+            // their PCM/end markers get ignored by the playback pipeline even if
+            // they land after this call returns (see startPlaybackPipeline).
+            playbackEpoch.incrementAndGet()
+            pendingUtterances.set(0)
+            isSpeaking = false
+        }
         activeSpeakJob?.cancel()
         activeSpeakJob = null
 
         while (speakChannel.tryReceive().isSuccess) {}
+        while (playbackChannel.tryReceive().isSuccess) {}
 
         synchronized(this) {
             try {
@@ -325,7 +429,6 @@ class KokoroTtsService(private val context: Context) {
             }
             // stop()/flush() reset playbackHeadPosition, so the write counter resets with it
             framesWritten = 0
-            isSpeaking = false
             currentPlaybackRms = 0f
         }
     }
@@ -342,219 +445,70 @@ class KokoroTtsService(private val context: Context) {
         }
     }
 
-    fun playSystemSound(startFreq: Float, endFreq: Float, durationMs: Long) {
-        ttsScope.launch {
-            try {
-                val sampleRate = 24000
-                val samples = synthesizeChirp(startFreq, endFreq, durationMs, sampleRate)
-                val bufferSize = AudioTrack.getMinBufferSize(sampleRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_FLOAT)
-                val track = AudioTrack.Builder()
-                    .setAudioAttributes(AudioAttributes.Builder().setUsage(AudioAttributes.USAGE_ASSISTANT).setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build())
-                    .setAudioFormat(AudioFormat.Builder().setEncoding(AudioFormat.ENCODING_PCM_FLOAT).setSampleRate(sampleRate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
-                    .setBufferSizeInBytes(bufferSize.coerceAtLeast(samples.size * 4))
-                    .setTransferMode(AudioTrack.MODE_STATIC)
-                    .build()
-
-                track.write(samples, 0, samples.size, AudioTrack.WRITE_BLOCKING)
-                track.play()
-                delay(durationMs + 300L) // Allow the 200ms tail to play out
-                track.stop()
-                track.release()
-            } catch (e: Exception) {
-                android.util.Log.e("KokoroTtsService", "Failed to play system sound", e)
-            }
-        }
-    }
-
-    private fun synthesizeChirp(startFreq: Float, endFreq: Float, durationMs: Long, sampleRate: Int): FloatArray {
-        val tailMs = 200L
-        val totalDurationMs = durationMs + tailMs
-        val durationSec = durationMs / 1000f
-        val totalDurationSec = totalDurationMs / 1000f
-        val numSamples = (sampleRate * totalDurationSec).toInt()
-        val samples = FloatArray(numSamples)
-        val twoPi = 2.0 * Math.PI
-        val isAscending = startFreq < endFreq
-
-        for (i in 0 until numSamples) {
-            val t = i.toDouble() / sampleRate
-            val progress = (t / durationSec).toFloat().coerceAtMost(1.0f)
-            val tailVolume = if (t <= durationSec) 1.0 else Math.exp(-22.0 * (t - durationSec))
-
-            var rawSample = 0.0
-
-            when (systemChimeStyle) {
-                0 -> { // Option 0: Cozy Ambient Glow (Lush Aura Pad)
-                    val fBase = if (isAscending) 320.0 else 240.0
-                    
-                    var combined = 0.0
-                    val ratios = doubleArrayOf(1.002, 1.503, 1.998, 2.505)
-                    val gains = doubleArrayOf(0.45, 0.25, 0.15, 0.10)
-                    for (idx in ratios.indices) {
-                        val phase = twoPi * fBase * ratios[idx] * t
-                        val wave = Math.sin(phase) * 0.6 + triangleWave(phase) * 0.4
-                        combined += wave * gains[idx]
-                    }
-                    
-                    val envelope = if (progress < 0.40f) progress / 0.40f else 1.0f
-                    rawSample = combined * 0.15 * envelope
+    private fun loadChimes() {
+        try {
+            chimePool.setOnLoadCompleteListener { _, sampleId, status ->
+                if (status != 0) {
+                    android.util.Log.e("KokoroTtsService", "Chime decode failed: sampleId=$sampleId status=$status")
+                    return@setOnLoadCompleteListener
                 }
-                1 -> { // Option 1: Crystal Prism (Cascading Glass Arpeggio)
-                    val f1 = if (isAscending) 440.0 else 659.25
-                    val f2 = 554.37 // C#5
-                    val f3 = if (isAscending) 659.25 else 440.0
-                    
-                    // Trigger note 1 at 0ms
-                    val tau1 = t
-                    if (tau1 >= 0.0) {
-                        val phase = twoPi * f1 * tau1
-                        val wave = Math.sin(phase) * 0.8 + triangleWave(phase) * 0.2
-                        val overtone1 = (Math.sin(phase * 1.96) * 0.8 + triangleWave(phase * 1.96) * 0.2) * 0.25 * Math.exp(-12.0 * tau1)
-                        val overtone2 = Math.sin(phase * 3.0) * 0.15 * Math.exp(-24.0 * tau1)
-                        val noteEnv = Math.exp(-6.0 * tau1)
-                        rawSample += (wave + overtone1 + overtone2) * noteEnv * 0.08
+                when (sampleId) {
+                    wakeChimeId -> {
+                        wakeChimeReady = true
+                        android.util.Log.i("KokoroTtsService", "Wake chime loaded (id=$sampleId)")
                     }
-                    
-                    // Trigger note 2 at 70ms
-                    val tau2 = t - 0.07
-                    if (tau2 >= 0.0) {
-                        val phase = twoPi * f2 * tau2
-                        val wave = Math.sin(phase) * 0.8 + triangleWave(phase) * 0.2
-                        val overtone1 = (Math.sin(phase * 1.96) * 0.8 + triangleWave(phase * 1.96) * 0.2) * 0.25 * Math.exp(-12.0 * tau2)
-                        val overtone2 = Math.sin(phase * 3.0) * 0.15 * Math.exp(-24.0 * tau2)
-                        val noteEnv = Math.exp(-6.0 * tau2)
-                        rawSample += (wave + overtone1 + overtone2) * noteEnv * 0.08
+                    closeChimeId -> {
+                        closeChimeReady = true
+                        android.util.Log.i("KokoroTtsService", "Close chime loaded (id=$sampleId)")
                     }
-                    
-                    // Trigger note 3 at 140ms
-                    val tau3 = t - 0.14
-                    if (tau3 >= 0.0) {
-                        val phase = twoPi * f3 * tau3
-                        val wave = Math.sin(phase) * 0.8 + triangleWave(phase) * 0.2
-                        val overtone1 = (Math.sin(phase * 1.96) * 0.8 + triangleWave(phase * 1.96) * 0.2) * 0.25 * Math.exp(-12.0 * tau3)
-                        val overtone2 = Math.sin(phase * 3.0) * 0.15 * Math.exp(-24.0 * tau3)
-                        val noteEnv = Math.exp(-6.0 * tau3)
-                        rawSample += (wave + overtone1 + overtone2) * noteEnv * 0.08
-                    }
-                }
-                2 -> { // Option 2: Cosmic Shimmer (AI Consciousness Swell)
-                    val fSub = if (isAscending) 160.0 else 130.0
-                    val subPhase1 = twoPi * fSub * t
-                    val subPhase2 = twoPi * fSub * 1.006 * t
-                    
-                    val sub1 = Math.sin(subPhase1) * 0.5 + triangleWave(subPhase1) * 0.5
-                    val sub2 = Math.sin(subPhase2) * 0.5 + triangleWave(subPhase2) * 0.5
-                    val subCombined = (sub1 + sub2 * 0.8) / 1.8
-                    val subEnv = if (progress < 0.35f) progress / 0.35f else 1.0f
-                    
-                    val fShim = 1100.0
-                    val shimPhase = twoPi * fShim * t + 1.2 * Math.sin(twoPi * 18.0 * t)
-                    val shimWave = Math.sin(shimPhase)
-                    val shimEnv = (Math.max(0.0, Math.sin(progress * Math.PI) - 0.2) / 0.8).toFloat()
-                    
-                    rawSample = subCombined * 0.14 * subEnv + shimWave * 0.03 * shimEnv
-                }
-                3 -> { // Option 3: Zen Breath (Meditation Bowl Strike)
-                    val fBase = 440.0
-                    val phase = twoPi * fBase * t - (2.5 / 4.0) * Math.cos(twoPi * 4.0 * t)
-                    
-                    val baseStrike = Math.sin(phase) * 0.7 + triangleWave(phase) * 0.3
-                    val overtone1 = (Math.sin(phase * 1.5) * 0.7 + triangleWave(phase * 1.5) * 0.3) * 0.25 * Math.exp(-5.0 * t)
-                    val overtone2 = Math.sin(phase * 2.0) * 0.12 * Math.exp(-10.0 * t)
-                    val combined = baseStrike + overtone1 + overtone2
-                    
-                    val envelope = if (progress < 0.02f) {
-                        progress / 0.02f
-                    } else {
-                        Math.exp(-4.0 * progress).toFloat()
-                    }
-                    rawSample = combined * 0.15 * envelope
-                }
-                4 -> { // Option 4: Siri Soothing Hum (Double sub-bass hum)
-                    val fBase = if (isAscending) 120.0 else 100.0
-                    var sampleVal = 0.0
-
-                    // First hum at 0ms
-                    val tau1 = t
-                    if (tau1 >= 0.0) {
-                        val phase1 = twoPi * fBase * 0.996 * tau1
-                        val phase2 = twoPi * fBase * 1.004 * tau1
-                        val osc = (Math.sin(phase1) + Math.sin(phase2)) * 0.5
-                        
-                        val attack = if (tau1 < 0.015) Math.sin((tau1 / 0.015) * Math.PI / 2) else 1.0
-                        val decay = Math.exp(-22.0 * tau1)
-                        sampleVal += osc * attack * decay * 0.5
-                    }
-
-                    // Second hum at 70ms (only for ascending/activation)
-                    if (isAscending) {
-                        val tau2 = t - 0.07
-                        if (tau2 >= 0.0) {
-                            val phase1 = twoPi * fBase * 0.996 * tau2
-                            val phase2 = twoPi * fBase * 1.004 * tau2
-                            val osc = (Math.sin(phase1) + Math.sin(phase2)) * 0.5
-                            
-                            val attack = if (tau2 < 0.015) Math.sin((tau2 / 0.015) * Math.PI / 2) else 1.0
-                            val decay = Math.exp(-22.0 * tau2)
-                            sampleVal += osc * attack * decay * 0.5
-                        }
-                    }
-                    
-                    rawSample = sampleVal
                 }
             }
-
-            samples[i] = (rawSample * tailVolume).toFloat()
+            wakeChimeId = chimePool.load(context, com.daex.android.R.raw.chime_wake, 1)
+            closeChimeId = chimePool.load(context, com.daex.android.R.raw.chime_close, 1)
+            wakeChimeDurationMs = measureRawDurationMs(com.daex.android.R.raw.chime_wake, wakeChimeDurationMs)
+            closeChimeDurationMs = measureRawDurationMs(com.daex.android.R.raw.chime_close, closeChimeDurationMs)
+        } catch (e: Exception) {
+            android.util.Log.e("KokoroTtsService", "Failed to load system chimes", e)
         }
-        return samples
     }
 
-    private fun vocalFormant(t: Double, fBase: Double, twoPi: Double): Double {
-        val f1 = 420.0; val w1 = 90.0
-        val f2 = 850.0; val w2 = 130.0
-        val f3 = 2200.0; val w3 = 220.0
-        var signal = 0.0
-        for (k in 1..8) {
-            val hFreq = fBase * k
-            val g1 = Math.exp(-((hFreq - f1) * (hFreq - f1)) / (w1 * w1))
-            val g2 = 0.6 * Math.exp(-((hFreq - f2) * (hFreq - f2)) / (w2 * w2))
-            val g3 = 0.3 * Math.exp(-((hFreq - f3) * (hFreq - f3)) / (w3 * w3))
-            val gain = g1 + g2 + g3
-            
-            val phase = twoPi * hFreq * t
-            val wave = Math.sin(phase) * 0.75 + triangleWave(phase) * 0.25
-            signal += gain * wave
+    private fun measureRawDurationMs(resId: Int, fallbackMs: Long): Long {
+        return try {
+            val retriever = android.media.MediaMetadataRetriever()
+            context.resources.openRawResourceFd(resId).use { afd ->
+                retriever.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+            }
+            val durationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
+            retriever.release()
+            durationMs ?: fallbackMs
+        } catch (e: Exception) {
+            android.util.Log.w("KokoroTtsService", "Failed to measure chime duration for res $resId", e)
+            fallbackMs
         }
-        return signal
     }
 
-    private fun triangleWave(phase: Double): Double {
-        val p = (phase / (2.0 * Math.PI)) % 1.0
-        val normalizedP = if (p < 0.0) p + 1.0 else p
-        return if (normalizedP < 0.25) {
-            normalizedP * 4.0
-        } else if (normalizedP < 0.75) {
-            2.0 - normalizedP * 4.0
+    fun playWakeChime() {
+        if (wakeChimeReady) {
+            chimeActiveUntilMs = System.currentTimeMillis() + wakeChimeDurationMs + 200L
+            chimePool.play(wakeChimeId, 1f, 1f, 1, 0, 1f)
         } else {
-            (normalizedP - 1.0) * 4.0
+            android.util.Log.w("KokoroTtsService", "playWakeChime: chime not loaded yet, skipping")
         }
     }
 
-    private fun normalizeSamples(samples: FloatArray, targetPeak: Float = 0.8f) {
-        var maxVal = 0f
-        for (s in samples) {
-            val absVal = Math.abs(s)
-            if (absVal > maxVal) maxVal = absVal
-        }
-        if (maxVal > 0f) {
-            val scale = targetPeak / maxVal
-            for (i in samples.indices) samples[i] *= scale
+    fun playCloseChime() {
+        if (closeChimeReady) {
+            chimeActiveUntilMs = System.currentTimeMillis() + closeChimeDurationMs + 200L
+            chimePool.play(closeChimeId, 1f, 1f, 1, 0, 1f)
+        } else {
+            android.util.Log.w("KokoroTtsService", "playCloseChime: chime not loaded yet, skipping")
         }
     }
 
     fun release() {
         releaseTts()
         ttsScope.cancel()
+        chimePool.release()
         synchronized(this) {
             try {
                 audioTrack?.release()

@@ -163,9 +163,6 @@ class DaexInferenceViewModel(
     private val _ttsVoiceId = MutableStateFlow(1) // Default to af_bella (1)
     val ttsVoiceId: StateFlow<Int> = _ttsVoiceId.asStateFlow()
 
-    private val _systemChimeStyle = MutableStateFlow(0) // Default to Option 0: Glass Bell
-    val systemChimeStyle: StateFlow<Int> = _systemChimeStyle.asStateFlow()
-
     private val _isTtsDownloaded = MutableStateFlow(false)
     val isTtsDownloaded: StateFlow<Boolean> = _isTtsDownloaded.asStateFlow()
 
@@ -316,13 +313,6 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             preferences?.ttsVoiceIdFlow?.collectLatest { voiceId ->
                 _ttsVoiceId.value = voiceId
-            }
-        }
-
-        viewModelScope.launch {
-            preferences?.systemChimeStyleFlow?.collectLatest { style ->
-                _systemChimeStyle.value = style
-                kokoroTtsService?.systemChimeStyle = style
             }
         }
 
@@ -503,8 +493,7 @@ class DaexInferenceViewModel(
         _isLiveVoiceActive.value = true
         setVoiceStateInternal(VoiceState.LISTENING)
 
-        // Play premium awake hum (120Hz to 180Hz sweep over 250ms)
-        kokoroTtsService?.playSystemSound(startFreq = 120f, endFreq = 180f, durationMs = 250L)
+        kokoroTtsService?.playWakeChime()
 
         // Request Transient Audio Focus to duck background music and identify stream intent
         context?.let { ctx ->
@@ -572,14 +561,24 @@ class DaexInferenceViewModel(
 
         recorder.start(
             scope = viewModelScope,
-            speechThreshold = 0.03f,
-            silenceThreshold = 0.015f,
+            // Calibrated 2026-07-11: ambient floor measures ~0.001 on-device and
+            // conversational-distance speech was landing under the old 0.03 —
+            // users had to hold the phone to their face to be heard.
+            speechThreshold = 0.015f,
+            silenceThreshold = 0.008f,
             silenceDurationMs = 1500L,
+            // Parked for now — see AudioRecorder.start. Re-enable once normal
+            // conversation flow is solid.
+            bargeInEnabled = false,
             currentPlaybackRms = { kokoroTtsService?.currentPlaybackRms ?: 0f },
             ttsGateState = {
+                val now = System.currentTimeMillis()
                 when {
                     kokoroTtsService?.isSpeaking == true -> TtsGateState.SPEAKING
-                    System.currentTimeMillis() < ttsCooldownUntilMs -> TtsGateState.COOLDOWN
+                    // The wake/close chimes play via SoundPool, invisible to
+                    // isSpeaking/currentPlaybackRms — gate them like TTS.
+                    now < (kokoroTtsService?.chimeActiveUntilMs ?: 0L) -> TtsGateState.SPEAKING
+                    now < ttsCooldownUntilMs -> TtsGateState.COOLDOWN
                     else -> TtsGateState.CLEAR
                 }
             },
@@ -598,15 +597,12 @@ class DaexInferenceViewModel(
     }
 
     private fun handleUserSpeechStarted() {
-        // If the model is still generating (e.g. the user replies during a pause
-        // between spoken sentences), treat new speech as an interruption — otherwise
-        // the recorded chunk would be dropped by the isGenerating guard on submission.
-        if (_isGenerating.value) {
-            android.util.Log.i("DaexInference", "VAD: Speech started while generating — interrupting")
-            cancelGeneration()
-        } else {
-            android.util.Log.d("DaexInference", "VAD: Speech started")
-        }
+        // Deliberately does NOT cancel generation: a speech-start is only ~160ms of
+        // signal and false-triggers on coughs/taps. Cancelling here made the model
+        // cut itself off mid-response (2026-07-10 field testing). Chunks that finish
+        // while generation is running are queued in submitAudioPrompt instead, and
+        // deliberate interruption goes through the sustained barge-in path.
+        android.util.Log.d("DaexInference", "VAD: Speech started")
     }
 
     private fun handleBargeIn() {
@@ -658,12 +654,12 @@ class DaexInferenceViewModel(
         audioRecorder?.stopAsync()
         audioRecorder = null
         cancelGeneration()
+        pendingAudioPath = null
         liveAudioFiles.clear()
         kokoroTtsService?.stopPlayback()
         kokoroTtsService?.releaseTts()
 
-        // Play premium close hum (180Hz to 100Hz sweep over 300ms)
-        kokoroTtsService?.playSystemSound(startFreq = 180f, endFreq = 100f, durationMs = 300L)
+        kokoroTtsService?.playCloseChime()
 
         // Abandon Audio Focus
         context?.let { ctx ->
@@ -715,15 +711,6 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             preferences?.setTtsVoiceId(voiceId)
         }
-    }
-
-    fun setSystemChimeStyle(style: Int) {
-        _systemChimeStyle.value = style
-        kokoroTtsService?.systemChimeStyle = style
-        viewModelScope.launch {
-            preferences?.setSystemChimeStyle(style)
-        }
-        kokoroTtsService?.playSystemSound(startFreq = 120f, endFreq = 180f, durationMs = 250L)
     }
 
     fun setSpeculativeDecodingEnabled(enabled: Boolean) {
@@ -1474,12 +1461,14 @@ class DaexInferenceViewModel(
         }
     }
 
+    // A chunk that finished while the model was still generating; submitted as the
+    // next turn when the current generation completes, instead of being dropped.
+    @Volatile private var pendingAudioPath: String? = null
+
     fun submitAudioPrompt(audioPath: String) {
         if (_isGenerating.value) {
-            // Should be rare: speech-start during generation cancels it (see
-            // handleUserSpeechStarted). If a race still lands here, don't strand
-            // the UI in PROCESSING.
-            android.util.Log.w("DaexInference", "submitAudioPrompt: dropped chunk — generation already in progress")
+            android.util.Log.i("DaexInference", "submitAudioPrompt: generation in progress — queueing chunk for next turn")
+            pendingAudioPath = audioPath
             if (_isLiveVoiceActive.value && _voiceState.value == VoiceState.PROCESSING) {
                 setVoiceStateInternal(VoiceState.LISTENING)
             }
@@ -1724,16 +1713,38 @@ class DaexInferenceViewModel(
                         setVoiceStateInternal(VoiceState.LISTENING)
                     }
                     refreshConversations()
+
+                    // A chunk finished while this generation was running — submit it
+                    // now as the next turn so the user's speech isn't dropped.
+                    val queued = pendingAudioPath
+                    pendingAudioPath = null
+                    if (queued != null && _isLiveVoiceActive.value) {
+                        val queuedFile = java.io.File(queued)
+                        if (queuedFile.exists() && queuedFile.length() > 44) {
+                            android.util.Log.i("DaexInference", "Submitting queued audio chunk from during-generation speech")
+                            submitAudioPrompt(queued)
+                        }
+                    }
                 }
             }
         }
     }
 
     fun cancelGeneration() {
-        generationJob?.cancel()
+        val job = generationJob
+        job?.cancel()
         (daexService as? DaexServiceImpl)?.cancelGeneration()
-        _isGenerating.value = false
         kokoroTtsService?.stopPlayback()
+        // Do NOT set _isGenerating.value = false here when a job exists: cancel()
+        // only requests cancellation, it doesn't wait for the coroutine to unwind.
+        // submitPrompt/submitAudioPrompt gate new generations on _isGenerating, so
+        // clearing it early lets a new generation start into the same underlying
+        // conversation before the cancelled job's own finally block (which also
+        // resubmits any queued audio chunk) has actually finished. Only that job's
+        // finally clears the flag now — it always runs exactly once, cancelled or not.
+        if (job == null) {
+            _isGenerating.value = false
+        }
     }
 
     fun clearMessages() {
