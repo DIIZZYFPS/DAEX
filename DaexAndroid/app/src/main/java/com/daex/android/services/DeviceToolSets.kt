@@ -40,7 +40,7 @@ object ToolRegistry {
         ToolRegistryEntry("launchApp", "Launch Apps", "Launch other installed applications", defaultEnabled = false),
         ToolRegistryEntry("sendEmail", "Send Email", "Open the email client with a prefilled message", defaultEnabled = false),
         ToolRegistryEntry("runIntent", "Run System Intents", "Trigger native system actions", defaultEnabled = false),
-        ToolRegistryEntry("recallMemory", "Recall Past Conversations", "Search conversation history for relevant context", defaultEnabled = false)
+        ToolRegistryEntry("recallMemory", "Recall Past Conversations", "Search conversation history for relevant context", defaultEnabled = true)
     )
 
     /** Short capability hint for the tool-aware system prompt line - only mentions tools that
