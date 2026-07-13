@@ -32,7 +32,9 @@ fun MessageLine(
     isLastModel: Boolean = false,
     isGenerating: Boolean = false,
     tokenSpeed: Double = 0.0,
-    activePermission: PermissionRequest? = null
+    activePermission: PermissionRequest? = null,
+    isSpeaking: Boolean = false,
+    onSpeak: (() -> Unit)? = null
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "ThinkingAnim")
     
@@ -251,6 +253,21 @@ fun MessageLine(
                 Markdown(
                     content = message.content,
                     modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            if (onSpeak != null && message.content.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                BasicText(
+                    text = if (isSpeaking) "■ STOP" else "▶ LISTEN",
+                    style = DaexTheme.typography.mono.copy(
+                        color = if (isSpeaking) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                        fontSize = 10.sp,
+                        letterSpacing = 0.5.sp
+                    ),
+                    modifier = Modifier
+                        .clickable { onSpeak() }
+                        .padding(vertical = 2.dp)
                 )
             }
 

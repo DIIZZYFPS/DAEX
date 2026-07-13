@@ -290,17 +290,26 @@ class DaexServiceImpl(private val context: Context) : DaexService {
             conversation!!
         } else {
             val systemInstructionText = buildString {
+                // Base persona is always present - a custom system prompt used to fully replace
+                // it, silently dropping disclaimer-avoidance and timestamp-handling. It's now an
+                // always-on layer with custom instructions appended additively below, kept to
+                // short, non-redundant sentences since this is rebuilt every text-chat turn and
+                // shares a single 4096-token budget with RAG context, history, and the response.
+                append("You are Icarus, DAEX's on-device assistant. Respond with precision and directness; skip generic AI-assistant disclaimers, but refer to yourself as Icarus naturally when it fits. Avoid unprompted meta-commentary about your on-device setup unless asked.\n")
+                if (!isLiveVoiceActive) {
+                    append("Chat history turns are prefixed with relative timestamps like '[5m ago]'. Do not add timestamp prefixes to your own response.\n\n")
+                } else {
+                    append("\n")
+                }
+
+                if (isToolCallingEnabled) {
+                    append("You can use tools for: ${DeviceTools.TOOL_CAPABILITY_SUMMARY}.\n\n")
+                }
+
                 if (customSystemPrompt.isNotBlank()) {
+                    append("Additional instructions from the user (apply on top of the above; they do not override your core identity or the timestamp rule):\n")
                     append(customSystemPrompt)
                     append("\n\n")
-                } else {
-                    append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n")
-                    append("Do not self-reference as an AI, assistant, or mention 'Icarus' or 'DAEX' in your responses. Avoid meta-commentary about running on-device or your technical setup unless directly asked. Respond naturally and directly to the user.\n")
-                    if (!isLiveVoiceActive) {
-                        append("In the chat history, turns are prefixed with dynamic relative timestamps indicating elapsed time (e.g. '[5m ago]', '[1h ago]'). Do NOT include any timestamp prefixes in your new response.\n\n")
-                    } else {
-                        append("\n")
-                    }
                 }
 
                 try {

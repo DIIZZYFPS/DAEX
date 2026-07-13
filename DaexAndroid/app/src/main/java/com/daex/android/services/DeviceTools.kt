@@ -28,6 +28,13 @@ class DeviceTools(
 
     companion object {
         private const val TAG = "DeviceTools"
+
+        // Short prose hint appended to the system prompt when tool calling is enabled - NOT a
+        // restatement of the full @Tool descriptions below (those are already sent to the model
+        // structurally via ConversationConfig.tools). Keep this a plain capability list, and
+        // update it whenever a @Tool method is added/removed from this class.
+        const val TOOL_CAPABILITY_SUMMARY =
+            "device time, battery, storage, and device info; launching apps; sending email; and loading/listing skills"
     }
 
     @Tool(description = "Get the current date and local system time")

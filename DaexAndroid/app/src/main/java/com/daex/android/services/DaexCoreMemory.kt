@@ -6,10 +6,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
+data class MemoryCurationResult(val learnedBullets: List<String> = emptyList())
+
 interface DaexCoreMemory {
     suspend fun getMemoryContent(): String
     suspend fun overwriteMemory(content: String)
-    suspend fun compactMemory(recentMessages: List<Message>, daexService: DaexService)
+    suspend fun compactMemory(recentMessages: List<Message>, daexService: DaexService): MemoryCurationResult
 }
 
 class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
@@ -44,7 +46,7 @@ class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
         Unit
     }
 
-    override suspend fun compactMemory(recentMessages: List<Message>, daexService: DaexService) {
+    override suspend fun compactMemory(recentMessages: List<Message>, daexService: DaexService): MemoryCurationResult {
         try {
             val currentMemory = getMemoryContent()
 
@@ -90,11 +92,22 @@ class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
             if (cleaned.contains("# Core Memory") && (cleaned.contains("## User Profile") || cleaned.contains("## Key Facts & Preferences"))) {
                 overwriteMemory(cleaned)
                 Log.d("DaexCoreMemory", "Memory compacted successfully (${cleaned.length} chars)")
+                val learned = (extractBullets(cleaned) - extractBullets(currentMemory)).take(3)
+                return MemoryCurationResult(learnedBullets = learned)
             } else {
                 Log.w("DaexCoreMemory", "Compactor output didn't look like valid markdown structure, skipping overwrite. Output: ${cleaned.take(200)}")
             }
         } catch (e: Exception) {
             Log.e("DaexCoreMemory", "Memory compaction failed", e)
         }
+        return MemoryCurationResult()
     }
+
+    /** Bullet lines ("- ...") from a core-memory markdown file, excluding "(No ... recorded yet)" placeholders. */
+    private fun extractBullets(markdown: String): Set<String> =
+        markdown.lineSequence()
+            .map { it.trim() }
+            .filter { it.startsWith("- ") && !it.startsWith("- (") }
+            .map { it.removePrefix("- ").trim() }
+            .toSet()
 }

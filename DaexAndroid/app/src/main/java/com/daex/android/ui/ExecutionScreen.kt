@@ -121,6 +121,7 @@ fun ExecutionScreen(
     val isVoiceSessionActive by viewModel.isLiveVoiceActive.collectAsState()
     val isTtsEnabled by viewModel.isTtsEnabled.collectAsState()
     val isTtsDownloaded by viewModel.isTtsDownloaded.collectAsState()
+    val speakingMessageId by viewModel.speakingMessageId.collectAsState()
     
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -691,7 +692,17 @@ fun ExecutionScreen(
                         ) {
                             itemsIndexed(visibleMessages) { index, msg ->
                                 val isLastModel = msg.role == "model" && visibleMessages.subList(index + 1, visibleMessages.size).none { it.role == "model" }
-                                MessageLine(message = msg, isLastModel = isLastModel, isGenerating = isGenerating, tokenSpeed = tokenSpeed, activePermission = if (isLastModel) activePermission else null)
+                                MessageLine(
+                                    message = msg,
+                                    isLastModel = isLastModel,
+                                    isGenerating = isGenerating,
+                                    tokenSpeed = tokenSpeed,
+                                    activePermission = if (isLastModel) activePermission else null,
+                                    isSpeaking = msg.id == speakingMessageId,
+                                    onSpeak = if (isVoiceSessionActive || msg.role != "model") null else {
+                                        { viewModel.speakMessage(msg) }
+                                    }
+                                )
                             }
                             item { Spacer(modifier = Modifier.height(1.dp).fillMaxWidth()) }
                         }

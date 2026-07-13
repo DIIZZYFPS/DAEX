@@ -178,6 +178,11 @@ class DaexInferenceViewModel(
     private val _ttsDownloadProgress = MutableStateFlow(0)
     val ttsDownloadProgress: StateFlow<Int> = _ttsDownloadProgress.asStateFlow()
 
+    // Id of the message currently being read aloud via the per-message read-aloud button
+    // (separate from live-voice TTS, which never sets this).
+    private val _speakingMessageId = MutableStateFlow<String?>(null)
+    val speakingMessageId: StateFlow<String?> = _speakingMessageId.asStateFlow()
+
     private var kokoroTtsService: KokoroTtsService? = null
 
     // Voice Mode State Flows
@@ -418,6 +423,9 @@ class DaexInferenceViewModel(
         if (ctx != null) {
             kokoroTtsService = KokoroTtsService(ctx)
             kokoroTtsService?.onSpeakingStateChanged = { speaking ->
+                if (!speaking) {
+                    _speakingMessageId.value = null
+                }
                 if (_isLiveVoiceActive.value) {
                     if (speaking) {
                         speakingRevertJob?.cancel()
@@ -912,6 +920,27 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             preferences?.setTtsVoiceId(voiceId)
         }
+    }
+
+    /** Reads a single past message aloud, independent of live-voice sessions. Tapping the same
+     * message again stops playback; tapping a different one interrupts and switches to it. */
+    fun speakMessage(message: Message) {
+        if (_isLiveVoiceActive.value) return
+
+        if (!_isTtsDownloaded.value) {
+            downloadTtsModel()
+            return
+        }
+
+        if (_speakingMessageId.value == message.id) {
+            kokoroTtsService?.stopPlayback()
+            _speakingMessageId.value = null
+            return
+        }
+
+        kokoroTtsService?.stopPlayback()
+        _speakingMessageId.value = message.id
+        kokoroTtsService?.speak(message.content, _ttsVoiceId.value)
     }
 
     fun setSpeculativeDecodingEnabled(enabled: Boolean) {
@@ -1571,8 +1600,12 @@ class DaexInferenceViewModel(
 
                             try {
                                 val recentMsgs = daexMemory?.getRecentHistory(convId, limit = 20) ?: emptyList()
-                                daexCoreMemory.compactMemory(recentMsgs, daexService)
-                                logMsg = logMsg.copy(content = "[SYSTEM_LOG]: GLOBAL MEMORY CURATED")
+                                val curationResult = daexCoreMemory.compactMemory(recentMsgs, daexService)
+                                logMsg = logMsg.copy(content = if (curationResult.learnedBullets.isNotEmpty()) {
+                                    "[SYSTEM_LOG]: MEMORY UPDATED — learned: " + curationResult.learnedBullets.joinToString("; ")
+                                } else {
+                                    "[SYSTEM_LOG]: GLOBAL MEMORY CURATED"
+                                })
                                 generateSuggestedPrompts()
                             } catch (e: Exception) {
                                 android.util.Log.e("DaexInference", "Memory curation failed", e)

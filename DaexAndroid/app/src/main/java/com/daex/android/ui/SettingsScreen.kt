@@ -252,7 +252,7 @@ fun SettingsScreen(
                                 )
                                 if (customSystemPrompt.isEmpty()) {
                                     BasicText(
-                                        text = "Override default instruction set...",
+                                        text = "Add instructions on top of the default persona...",
                                         style = DaexTheme.typography.body2.copy(color = DaexTheme.colors.onSurface.copy(alpha = 0.3f))
                                     )
                                 }
