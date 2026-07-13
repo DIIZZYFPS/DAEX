@@ -399,6 +399,88 @@ fun EmptyState(
     }
 }
 
+/**
+ * The live-voice waveform from the workspace input bar: three layered sine paths with
+ * edge-tapering envelopes and vertical-gradient fills. Shared between ExecutionScreen's
+ * input bar and the onboarding voice-mode preview so both render the identical effect.
+ * `phase` animates the wave motion, `amplitude` (0..1) scales wave height, `alpha`
+ * fades the whole waveform in/out.
+ */
+fun androidx.compose.ui.graphics.drawscope.DrawScope.drawVoiceWaveform(
+    phase: Float,
+    amplitude: Float,
+    color: Color,
+    alpha: Float
+) {
+    if (alpha <= 0f) return
+    val baseLineY = size.height * 0.5f
+    val widthF = size.width
+    val piF = kotlin.math.PI.toFloat()
+
+    val path1 = Path()
+    val amplitude1 = 4.dp.toPx() + (amplitude * 10.dp.toPx())
+    path1.moveTo(0f, size.height)
+    for (x in 0..size.width.toInt() step 10) {
+        val xf = x.toFloat()
+        val envelope = kotlin.math.sin(xf / widthF * piF)
+        val sineVal = kotlin.math.sin(xf * 0.01f + phase)
+        val y = baseLineY + sineVal * amplitude1 * 0.4f * envelope
+        path1.lineTo(xf, y)
+    }
+    path1.lineTo(size.width, size.height)
+    path1.close()
+    drawPath(
+        path = path1,
+        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+            colors = listOf(color.copy(alpha = alpha * 0.25f), Color.Transparent),
+            startY = baseLineY - amplitude1,
+            endY = size.height
+        )
+    )
+
+    val path2 = Path()
+    val amplitude2 = 6.dp.toPx() + (amplitude * 14.dp.toPx())
+    path2.moveTo(0f, size.height)
+    for (x in 0..size.width.toInt() step 10) {
+        val xf = x.toFloat()
+        val envelope = kotlin.math.sin(xf / widthF * piF)
+        val sineVal = kotlin.math.sin(xf * 0.015f - phase * 2.0f + 1.0f)
+        val y = baseLineY + sineVal * amplitude2 * 0.6f * envelope
+        path2.lineTo(xf, y)
+    }
+    path2.lineTo(size.width, size.height)
+    path2.close()
+    drawPath(
+        path = path2,
+        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+            colors = listOf(color.copy(alpha = alpha * 0.40f), Color.Transparent),
+            startY = baseLineY - amplitude2,
+            endY = size.height
+        )
+    )
+
+    val path3 = Path()
+    val amplitude3 = 8.dp.toPx() + (amplitude * 18.dp.toPx())
+    path3.moveTo(0f, size.height)
+    for (x in 0..size.width.toInt() step 10) {
+        val xf = x.toFloat()
+        val envelope = kotlin.math.sin(xf / widthF * piF)
+        val sineVal = kotlin.math.sin(xf * 0.02f + phase * 3.0f + 2.5f)
+        val y = baseLineY + sineVal * amplitude3 * 0.8f * envelope
+        path3.lineTo(xf, y)
+    }
+    path3.lineTo(size.width, size.height)
+    path3.close()
+    drawPath(
+        path = path3,
+        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+            colors = listOf(color.copy(alpha = alpha * 0.60f), Color.Transparent),
+            startY = baseLineY - amplitude3,
+            endY = size.height
+        )
+    )
+}
+
 @Composable
 fun AudioWaveformPulseRings(
     amplitude: Float,
