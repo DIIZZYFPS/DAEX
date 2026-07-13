@@ -1,9 +1,19 @@
 package com.daex.android
 
 import android.app.Application
+import com.daex.android.database.MyObjectBox
 import com.daex.android.services.CrashLogWriter
+import io.objectbox.BoxStore
 
 class DaexApplication : Application() {
+    // Scoped to the process lifetime, not the Activity lifetime - ObjectBox only allows
+    // one BoxStore open per database directory, and Android can recreate MainActivity
+    // (config changes, rapid relaunches) faster than a previous instance's BoxStore
+    // gets garbage-collected.
+    val boxStore: BoxStore by lazy {
+        MyObjectBox.builder().androidContext(this).build()
+    }
+
     override fun onCreate() {
         super.onCreate()
         installCrashHandler()

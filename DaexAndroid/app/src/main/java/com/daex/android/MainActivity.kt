@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.remember
-import com.daex.android.database.MyObjectBox
 import com.daex.android.services.DaexInferenceViewModel
 import com.daex.android.services.DaexMemory
 import com.daex.android.services.DeviceService
@@ -46,7 +45,7 @@ class MainActivity : ComponentActivity() {
             window.isNavigationBarContrastEnforced = false
         }
 
-        val boxStore = MyObjectBox.builder().androidContext(this.applicationContext).build()
+        val boxStore = (application as DaexApplication).boxStore
         val daexMemory = DaexMemory(boxStore)
         val deviceService = DeviceService(this)
         val daexService = com.daex.android.services.DaexServiceImpl(this)
