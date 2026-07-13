@@ -19,6 +19,9 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import android.os.VibrationEffect
 
+// ~30fps: fast enough that throttled streaming text looks continuous, far less often than per-token.
+private const val STREAM_UI_THROTTLE_MS = 33L
+
 enum class ModelStatus {
     NOT_DOWNLOADED, DOWNLOADING, LOADING, READY, ERROR
 }
@@ -211,6 +214,98 @@ class DaexInferenceViewModel(
 
     private var generationJob: Job? = null
     private var curationJob: Job? = null
+
+    /**
+     * Extracts <think>/<|think|>/<|channel> blocks from streamed text, returning
+     * (visibleText, thoughtText). Re-scans from the start of [rawText] every call by design -
+     * this is what lets a tag split across two token deliveries (e.g. "<th" then "ink>") still
+     * be recognized correctly. Kept as a single full-rescan (not an incremental parser) since
+     * StreamingUpdater below throttles how often it's called instead of rewriting the algorithm.
+     */
+    private fun parseThinkTags(rawText: String): Pair<String, String?> {
+        val thinkTags = listOf(
+            Pair("<|think|>", "</think|>"),
+            Pair("<think>", "</think>"),
+            Pair("<|channel>", "<channel|>")
+        )
+
+        val extractedThoughts = mutableListOf<String>()
+        val modifiedText = StringBuilder()
+
+        var i = 0
+        while (i < rawText.length) {
+            var foundTag = false
+            for (tagPair in thinkTags) {
+                if (rawText.startsWith(tagPair.first, i)) {
+                    val startIdx = i + tagPair.first.length
+                    val endIdx = rawText.indexOf(tagPair.second, startIdx)
+                    if (endIdx != -1) {
+                        val content = rawText.substring(startIdx, endIdx).trim()
+                        if (content.isNotEmpty()) {
+                            extractedThoughts.add(content)
+                        }
+                        i = endIdx + tagPair.second.length
+                        foundTag = true
+                        break
+                    } else {
+                        val content = rawText.substring(startIdx).trim()
+                        if (content.isNotEmpty()) {
+                            extractedThoughts.add(content)
+                        }
+                        i = rawText.length
+                        foundTag = true
+                        break
+                    }
+                }
+            }
+            if (!foundTag) {
+                modifiedText.append(rawText[i])
+                i++
+            }
+        }
+
+        val thought = if (extractedThoughts.isNotEmpty()) extractedThoughts.joinToString("\n\n") else null
+        return Pair(modifiedText.toString(), thought)
+    }
+
+    /**
+     * Accumulates streamed tokens and re-publishes the parsed message content to [_messages] at
+     * most every [STREAM_UI_THROTTLE_MS] - the tag-rescan + full message-list copy this triggers
+     * is O(n) / O(m) respectively, so doing it on every token is O(n^2) / O(tokens * messages)
+     * over a full generation. One instance per generation call; [finalFlush] guarantees the
+     * saved message reflects the complete text regardless of when the last throttled tick fell.
+     */
+    private inner class StreamingUpdater(private val modelMsgId: String) {
+        private val rawText = StringBuilder()
+        private var lastUpdateMs = 0L
+        var lastActual: String = ""
+            private set
+
+        /** Returns true if this call actually re-parsed and published (i.e. wasn't throttled). */
+        fun onToken(token: String): Boolean {
+            rawText.append(token)
+            val now = System.currentTimeMillis()
+            if (now - lastUpdateMs < STREAM_UI_THROTTLE_MS) return false
+            lastUpdateMs = now
+            publish()
+            return true
+        }
+
+        fun finalFlush() {
+            publish()
+        }
+
+        private fun publish() {
+            val (actual, thought) = parseThinkTags(rawText.toString())
+            lastActual = actual.trimStart()
+            val updated = _messages.value.toMutableList()
+            val idx = updated.indexOfFirst { it.id == modelMsgId }
+            if (idx != -1) {
+                updated[idx] = updated[idx].copy(content = lastActual, thoughtContent = thought)
+                _messages.value = updated
+            }
+        }
+    }
 
     init {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
@@ -1354,8 +1449,8 @@ class DaexInferenceViewModel(
                     }
 
                     val inferenceHistory = activeHistory.toMutableList()
-                    
-                    var rawText = ""
+
+                    val streamingUpdater = StreamingUpdater(modelMsgId)
                     val coreMemoryContent = daexCoreMemory?.getMemoryContent() ?: ""
 
                     // --- FILE RAG CONTEXT INJECTION ---
@@ -1436,68 +1531,12 @@ class DaexInferenceViewModel(
                         maxTokens = _maxTokens.value
                     ) { token ->
                         if (!isActive) return@generateResponse
-                        rawText += token
-                        
-                        var thought: String? = null
-                        var actual = rawText
-                        
-                        // Parse think/channel tags only — support multiple blocks dynamically
-                        val thinkTags = listOf(
-                            Pair("<|think|>", "</think|>"),
-                            Pair("<think>", "</think>"),
-                            Pair("<|channel>", "<channel|>")
-                        )
-                        
-                        val extractedThoughts = mutableListOf<String>()
-                        val modifiedText = java.lang.StringBuilder()
-                        
-                        var i = 0
-                        while (i < rawText.length) {
-                            var foundTag = false
-                            for (tagPair in thinkTags) {
-                                if (rawText.startsWith(tagPair.first, i)) {
-                                    val startIdx = i + tagPair.first.length
-                                    val endIdx = rawText.indexOf(tagPair.second, startIdx)
-                                    if (endIdx != -1) {
-                                        val content = rawText.substring(startIdx, endIdx).trim()
-                                        if (content.isNotEmpty()) {
-                                            extractedThoughts.add(content)
-                                        }
-                                        i = endIdx + tagPair.second.length
-                                        foundTag = true
-                                        break
-                                    } else {
-                                        val content = rawText.substring(startIdx).trim()
-                                        if (content.isNotEmpty()) {
-                                            extractedThoughts.add(content)
-                                        }
-                                        i = rawText.length
-                                        foundTag = true
-                                        break
-                                    }
-                                }
-                            }
-                            if (!foundTag) {
-                                modifiedText.append(rawText[i])
-                                i++
-                            }
-                        }
-                        
-                        if (extractedThoughts.isNotEmpty()) {
-                            thought = extractedThoughts.joinToString("\n\n")
-                        }
-                        actual = modifiedText.toString()
-                        
-                        val updated = _messages.value.toMutableList()
-                        val idx = updated.indexOfFirst { it.id == modelMsgId }
-                        if (idx != -1) {
-                            updated[idx] = updated[idx].copy(content = actual.trimStart(), thoughtContent = thought)
-                            _messages.value = updated
-                        }
+                        streamingUpdater.onToken(token)
                     }
+                    streamingUpdater.finalFlush()
                     _tokenSpeed.value = result.tokensPerSecond
                     triggerHapticFeedback(type = HapticType.SUCCESS_COMPLETION)
-                    
+
                     // Save final result to DB
                     val updatedList = _messages.value
                     val finalMsg = updatedList.find { it.id == modelMsgId }
@@ -1632,9 +1671,9 @@ class DaexInferenceViewModel(
                     val maxContextLimit = _currentModel.value?.maxContextTokens ?: 8192
                     
                     val inferenceHistory = activeHistory.toMutableList()
-                    var rawText = ""
+                    val streamingUpdater = StreamingUpdater(modelMsgId)
                     val coreMemoryContent = daexCoreMemory?.getMemoryContent() ?: ""
-                    
+
                     var systemContext = coreMemoryContent
                     if (daexRag != null && daexRag.hasDocuments() && _attachedFiles.value.isNotEmpty()) {
                         try {
@@ -1681,69 +1720,13 @@ class DaexInferenceViewModel(
                             }
                         },
                         maxTokens = _maxTokens.value,
-                        isLiveVoiceActive = _isLiveVoiceActive.value
+                        isLiveVoiceActive = _isLiveVoiceActive.value,
+                        conversationId = convId
                     ) { token ->
                         if (!isActive) return@generateResponse
-                        rawText += token
-                        
-                        var thought: String? = null
-                        var actual = rawText
-                        
-                        val thinkTags = listOf(
-                            Pair("<|think|>", "</think|>"),
-                            Pair("<think>", "</think>"),
-                            Pair("<|channel>", "<channel|>")
-                        )
-                        
-                        val extractedThoughts = mutableListOf<String>()
-                        val modifiedText = java.lang.StringBuilder()
-                        
-                        var i = 0
-                        while (i < rawText.length) {
-                            var foundTag = false
-                            for (tagPair in thinkTags) {
-                                if (rawText.startsWith(tagPair.first, i)) {
-                                    val startIdx = i + tagPair.first.length
-                                    val endIdx = rawText.indexOf(tagPair.second, startIdx)
-                                    if (endIdx != -1) {
-                                        val content = rawText.substring(startIdx, endIdx).trim()
-                                        if (content.isNotEmpty()) {
-                                            extractedThoughts.add(content)
-                                        }
-                                        i = endIdx + tagPair.second.length
-                                        foundTag = true
-                                        break
-                                    } else {
-                                        val content = rawText.substring(startIdx).trim()
-                                        if (content.isNotEmpty()) {
-                                            extractedThoughts.add(content)
-                                        }
-                                        i = rawText.length
-                                        foundTag = true
-                                        break
-                                    }
-                                }
-                            }
-                            if (!foundTag) {
-                                modifiedText.append(rawText[i])
-                                i++
-                            }
-                        }
-                        
-                        if (extractedThoughts.isNotEmpty()) {
-                            thought = extractedThoughts.joinToString("\n\n")
-                        }
-                        actual = modifiedText.toString()
-                        
-                        val updated = _messages.value.toMutableList()
-                        val idx = updated.indexOfFirst { it.id == modelMsgId }
-                        if (idx != -1) {
-                            updated[idx] = updated[idx].copy(content = actual.trimStart(), thoughtContent = thought)
-                            _messages.value = updated
-                        }
-
-                        if (_isLiveVoiceActive.value && _isTtsEnabled.value) {
-                            val currentText = actual.trimStart()
+                        val didUpdate = streamingUpdater.onToken(token)
+                        if (didUpdate && _isLiveVoiceActive.value && _isTtsEnabled.value) {
+                            val currentText = streamingUpdater.lastActual
                             if (currentText.length > lastSpokenIndex) {
                                 val searchSubstring = currentText.substring(lastSpokenIndex)
                                 // Split only on punctuation followed by whitespace so
@@ -1775,9 +1758,12 @@ class DaexInferenceViewModel(
                         }
                     }
 
+                    streamingUpdater.finalFlush()
+
                     if (_isLiveVoiceActive.value && _isTtsEnabled.value) {
-                        if (rawText.trimStart().length > lastSpokenIndex) {
-                            val remaining = rawText.trimStart().substring(lastSpokenIndex).trim()
+                        val currentText = streamingUpdater.lastActual
+                        if (currentText.length > lastSpokenIndex) {
+                            val remaining = currentText.substring(lastSpokenIndex).trim()
                             if (remaining.isNotEmpty()) {
                                 kokoroTtsService?.speak(remaining, _ttsVoiceId.value)
                             }

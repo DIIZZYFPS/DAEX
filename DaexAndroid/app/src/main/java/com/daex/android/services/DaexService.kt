@@ -52,6 +52,7 @@ interface DaexService {
         onStatusUpdate: ((String?) -> Unit)? = null,
         maxTokens: Int = 1024,
         isLiveVoiceActive: Boolean = false,
+        conversationId: String? = null,
         onToken: (String) -> Unit
     ): GenerationResult
     suspend fun generateSilent(prompt: String, maxTokens: Int = 512): String
@@ -68,9 +69,27 @@ class DaexServiceImpl(private val context: Context) : DaexService {
     private var conversation: Conversation? = null
     private var isLoaded = false
 
+    /**
+     * Everything about [conversation] that's baked into it at creation time via
+     * ConversationConfig (system instruction, sampler config, channels, tools) and can't be
+     * changed on a live Conversation - if any of it differs from the next call's request, the
+     * conversation must be recreated rather than reused.
+     */
+    private data class ConversationSignature(
+        val conversationId: String,
+        val isLiveVoiceActive: Boolean,
+        val isReasoningEnabled: Boolean,
+        val isToolCallingEnabled: Boolean,
+        val temperature: Float,
+        val topK: Int,
+        val topP: Float
+    )
+
+    private var conversationSignature: ConversationSignature? = null
+
     companion object {
         private const val TAG = "DaexService"
-        
+
     }
 
     override suspend fun initContext(modelPath: String, backendType: BackendType, isSpeculativeDecodingEnabled: Boolean): BackendType {
@@ -169,6 +188,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 Log.e("DaexService", "Error closing conversation", e)
             } finally {
                 conversation = null
+                conversationSignature = null
             }
 
             try {
@@ -184,6 +204,9 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         }
     }
 
+    /** Thrown when a reused conversation fails before any token arrived - see [generateResponse]. */
+    private class ReuseFailedException(cause: Throwable) : Exception(cause)
+
     override suspend fun generateResponse(
         messages: List<Message>,
         systemContext: String,
@@ -197,128 +220,193 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         onStatusUpdate: ((String?) -> Unit)?,
         maxTokens: Int,
         isLiveVoiceActive: Boolean,
+        conversationId: String?,
+        onToken: (String) -> Unit
+    ): GenerationResult {
+        return try {
+            generateResponseAttempt(
+                messages, systemContext, isReasoningEnabled, temperature, topK, topP,
+                customSystemPrompt, isToolCallingEnabled, onRequestPermission, onStatusUpdate,
+                maxTokens, isLiveVoiceActive, conversationId, allowReuse = true, onToken
+            )
+        } catch (e: ReuseFailedException) {
+            // The reused conversation didn't work (e.g. left unusable by a prior cancelProcess()
+            // call - not something confirmable from the library's compiled API alone). No tokens
+            // reached the caller yet, so retrying from scratch is safe and invisible to the user.
+            Log.w(TAG, "Reused conversation failed before producing any tokens, retrying with a fresh one", e.cause)
+            generateResponseAttempt(
+                messages, systemContext, isReasoningEnabled, temperature, topK, topP,
+                customSystemPrompt, isToolCallingEnabled, onRequestPermission, onStatusUpdate,
+                maxTokens, isLiveVoiceActive, conversationId, allowReuse = false, onToken
+            )
+        }
+    }
+
+    private suspend fun generateResponseAttempt(
+        messages: List<Message>,
+        systemContext: String,
+        isReasoningEnabled: Boolean,
+        temperature: Float,
+        topK: Int,
+        topP: Float,
+        customSystemPrompt: String,
+        isToolCallingEnabled: Boolean,
+        onRequestPermission: (suspend (String, String) -> Boolean)?,
+        onStatusUpdate: ((String?) -> Unit)?,
+        maxTokens: Int,
+        isLiveVoiceActive: Boolean,
+        conversationId: String?,
+        allowReuse: Boolean,
         onToken: (String) -> Unit
     ): GenerationResult {
         Log.i(TAG, "generateResponse: isToolCallingEnabled=$isToolCallingEnabled, temperature=$temperature, topK=$topK, topP=$topP, customPromptLength=${customSystemPrompt.length}")
         val activeEngine = engine ?: throw Exception("Model not loaded.")
-        
-        val systemInstructionText = buildString {
-            if (customSystemPrompt.isNotBlank()) {
-                append(customSystemPrompt)
-                append("\n\n")
-            } else {
-                append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n")
-                append("Do not self-reference as an AI, assistant, or mention 'Icarus' or 'DAEX' in your responses. Avoid meta-commentary about running on-device or your technical setup unless directly asked. Respond naturally and directly to the user.\n")
-                if (!isLiveVoiceActive) {
-                    append("In the chat history, turns are prefixed with dynamic relative timestamps indicating elapsed time (e.g. '[5m ago]', '[1h ago]'). Do NOT include any timestamp prefixes in your new response.\n\n")
-                } else {
-                    append("\n")
-                }
-            }
-            
-            try {
-                val formatter = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy, h:mm a", java.util.Locale.getDefault())
-                val currentDateTimeStr = formatter.format(java.util.Date())
-                append("Current Reference Time: $currentDateTimeStr\n\n")
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to format current date time for system prompt", e)
-            }
 
-            if (systemContext.isNotBlank()) {
-                append("<global_memory>\n")
-                append(systemContext)
-                append("\n</global_memory>\n\n")
-                append("The above is your persistent memory. Use it to personalize your responses. Do NOT mention your memory or refer to it, and do NOT attempt to update it yourself.\n")
-            }
-
-            if (maxTokens <= 256) {
-                append("\nIMPORTANT CONSTRAINT: The user has requested an extremely brief response. Keep both your internal thinking/reasoning and final response very short, concise, and direct (under 50 words).\n")
-            } else if (maxTokens <= 512) {
-                append("\nIMPORTANT CONSTRAINT: The user has requested a concise response. Keep your reasoning and final response relatively brief.\n")
-            }
-        }
-
-        // Separate user's latest prompt from the conversation history
-        val history = messages.dropLast(1)
         val activePrompt = messages.lastOrNull()?.content ?: ""
 
-        val now = System.currentTimeMillis()
-        val initialLiteRtMessages = history.map { msg ->
-            val contentWithTime = if (isLiveVoiceActive) {
-                msg.content
-            } else {
-                val diffSec = (now - msg.timestamp) / 1000
-                val relativeTime = when {
-                    diffSec < 0 -> "just now"
-                    diffSec < 60 -> "just now"
-                    diffSec < 3600 -> "${diffSec / 60}m ago"
-                    diffSec < 86400 -> "${diffSec / 3600}h ago"
-                    else -> "${diffSec / 86400}d ago"
-                }
-                "[$relativeTime] ${msg.content}"
-            }
+        val requestedSignature = conversationId?.let {
+            ConversationSignature(
+                conversationId = it,
+                isLiveVoiceActive = isLiveVoiceActive,
+                isReasoningEnabled = isReasoningEnabled,
+                isToolCallingEnabled = isToolCallingEnabled,
+                temperature = temperature,
+                topK = topK,
+                topP = topP
+            )
+        }
 
-            when (msg.role) {
-                "user" -> {
-                    if (msg.audioPath != null) {
-                        val file = java.io.File(msg.audioPath)
-                        if (file.exists() && file.length() > 44) {
-                            val audioContent = com.google.ai.edge.litertlm.Content.AudioFile(msg.audioPath)
-                            val contents = if (msg.content.isNotBlank()) {
-                                val textContent = com.google.ai.edge.litertlm.Content.Text(msg.content)
-                                LiteRtContents.of(audioContent, textContent)
-                            } else {
-                                LiteRtContents.of(audioContent)
-                            }
-                            LiteRtMessage.user(contents)
-                        } else {
-                            val fallbackText = if (msg.content.isNotBlank()) msg.content else "[Voice Audio Unavailable]"
-                            LiteRtMessage.user(fallbackText)
-                        }
+        // Only live-voice turns are eligible for reuse today - text chat carries more state
+        // (RAG context, per-message relative timestamps) that can legitimately change turn to
+        // turn and would need more invalidation logic than this covers.
+        val usedReuse = allowReuse &&
+            isLiveVoiceActive &&
+            requestedSignature != null &&
+            requestedSignature == conversationSignature &&
+            conversation?.isAlive == true
+
+        val activeConversation: Conversation = if (usedReuse) {
+            Log.d(TAG, "Reusing existing conversation (id=$conversationId) - skipping full history re-prefill")
+            conversation!!
+        } else {
+            val systemInstructionText = buildString {
+                if (customSystemPrompt.isNotBlank()) {
+                    append(customSystemPrompt)
+                    append("\n\n")
+                } else {
+                    append("You are Icarus, running inside the Daedalus Execution Engine (DAEX). You are a high-performance AI assistant running directly on device hardware. You respond with precision and speed.\n")
+                    append("Do not self-reference as an AI, assistant, or mention 'Icarus' or 'DAEX' in your responses. Avoid meta-commentary about running on-device or your technical setup unless directly asked. Respond naturally and directly to the user.\n")
+                    if (!isLiveVoiceActive) {
+                        append("In the chat history, turns are prefixed with dynamic relative timestamps indicating elapsed time (e.g. '[5m ago]', '[1h ago]'). Do NOT include any timestamp prefixes in your new response.\n\n")
                     } else {
-                        LiteRtMessage.user(contentWithTime)
+                        append("\n")
                     }
                 }
-                "model" -> LiteRtMessage.model(LiteRtContents.of(contentWithTime))
-                else -> LiteRtMessage.user(contentWithTime)
+
+                try {
+                    val formatter = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy, h:mm a", java.util.Locale.getDefault())
+                    val currentDateTimeStr = formatter.format(java.util.Date())
+                    append("Current Reference Time: $currentDateTimeStr\n\n")
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to format current date time for system prompt", e)
+                }
+
+                if (systemContext.isNotBlank()) {
+                    append("<global_memory>\n")
+                    append(systemContext)
+                    append("\n</global_memory>\n\n")
+                    append("The above is your persistent memory. Use it to personalize your responses. Do NOT mention your memory or refer to it, and do NOT attempt to update it yourself.\n")
+                }
+
+                if (maxTokens <= 256) {
+                    append("\nIMPORTANT CONSTRAINT: The user has requested an extremely brief response. Keep both your internal thinking/reasoning and final response very short, concise, and direct (under 50 words).\n")
+                } else if (maxTokens <= 512) {
+                    append("\nIMPORTANT CONSTRAINT: The user has requested a concise response. Keep your reasoning and final response relatively brief.\n")
+                }
             }
+
+            // Separate user's latest prompt from the conversation history
+            val history = messages.dropLast(1)
+            val now = System.currentTimeMillis()
+            val initialLiteRtMessages = history.map { msg ->
+                val contentWithTime = if (isLiveVoiceActive) {
+                    msg.content
+                } else {
+                    val diffSec = (now - msg.timestamp) / 1000
+                    val relativeTime = when {
+                        diffSec < 0 -> "just now"
+                        diffSec < 60 -> "just now"
+                        diffSec < 3600 -> "${diffSec / 60}m ago"
+                        diffSec < 86400 -> "${diffSec / 3600}h ago"
+                        else -> "${diffSec / 86400}d ago"
+                    }
+                    "[$relativeTime] ${msg.content}"
+                }
+
+                when (msg.role) {
+                    "user" -> {
+                        if (msg.audioPath != null) {
+                            val file = java.io.File(msg.audioPath)
+                            if (file.exists() && file.length() > 44) {
+                                val audioContent = com.google.ai.edge.litertlm.Content.AudioFile(msg.audioPath)
+                                val contents = if (msg.content.isNotBlank()) {
+                                    val textContent = com.google.ai.edge.litertlm.Content.Text(msg.content)
+                                    LiteRtContents.of(audioContent, textContent)
+                                } else {
+                                    LiteRtContents.of(audioContent)
+                                }
+                                LiteRtMessage.user(contents)
+                            } else {
+                                val fallbackText = if (msg.content.isNotBlank()) msg.content else "[Voice Audio Unavailable]"
+                                LiteRtMessage.user(fallbackText)
+                            }
+                        } else {
+                            LiteRtMessage.user(contentWithTime)
+                        }
+                    }
+                    "model" -> LiteRtMessage.model(LiteRtContents.of(contentWithTime))
+                    else -> LiteRtMessage.user(contentWithTime)
+                }
+            }
+
+            val channels = if (isReasoningEnabled) {
+                listOf(Channel(channelName = "thinking", start = "<|think|>", end = "\n"))
+            } else {
+                emptyList()
+            }
+
+            val samplerConfig = SamplerConfig(
+                topK = topK,
+                topP = topP.toDouble(),
+                temperature = temperature.toDouble(),
+                seed = 0
+            )
+
+            val tools = if (isToolCallingEnabled) {
+                listOf(tool(DeviceTools(context, onRequestPermission, onStatusUpdate)))
+            } else {
+                emptyList()
+            }
+
+            val conversationConfig = ConversationConfig(
+                systemInstruction = LiteRtContents.of(systemInstructionText),
+                initialMessages = initialLiteRtMessages,
+                channels = channels,
+                samplerConfig = samplerConfig,
+                automaticToolCalling = isToolCallingEnabled,
+                tools = tools
+            )
+
+            // Close the previous conversation to start fresh with new history
+            try {
+                conversation?.close()
+            } catch (e: Exception) {}
+
+            val created = activeEngine.createConversation(conversationConfig)
+            conversation = created
+            conversationSignature = requestedSignature
+            created
         }
-
-        val channels = if (isReasoningEnabled) {
-            listOf(Channel(channelName = "thinking", start = "<|think|>", end = "\n"))
-        } else {
-            emptyList()
-        }
-
-        val samplerConfig = SamplerConfig(
-            topK = topK,
-            topP = topP.toDouble(),
-            temperature = temperature.toDouble(),
-            seed = 0
-        )
-
-        val tools = if (isToolCallingEnabled) {
-            listOf(tool(DeviceTools(context, onRequestPermission, onStatusUpdate)))
-        } else {
-            emptyList()
-        }
-
-        val conversationConfig = ConversationConfig(
-            systemInstruction = LiteRtContents.of(systemInstructionText),
-            initialMessages = initialLiteRtMessages,
-            channels = channels,
-            samplerConfig = samplerConfig,
-            automaticToolCalling = isToolCallingEnabled,
-            tools = tools
-        )
-
-        // Close the previous conversation to start fresh with new history
-        try {
-            conversation?.close()
-        } catch (e: Exception) {}
-
-        val activeConversation = activeEngine.createConversation(conversationConfig)
-        conversation = activeConversation
 
         var decodeStartTime = 0L
         var responseTokenCount = 0
@@ -394,6 +482,10 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                                  e.message?.contains("cancel", ignoreCase = true) == true
             if (isLimitReached || isCancellation) {
                 Log.d(TAG, "Generation stopped. isLimitReached=$isLimitReached, isCancellation=$isCancellation")
+            } else if (usedReuse && decodeStartTime == 0L) {
+                conversation = null
+                conversationSignature = null
+                throw ReuseFailedException(e)
             } else {
                 throw e
             }
