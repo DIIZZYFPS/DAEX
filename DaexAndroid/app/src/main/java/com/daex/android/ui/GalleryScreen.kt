@@ -288,9 +288,14 @@ private fun FamilyModelCard(
 
     val modelStatus by viewModel.modelStatus.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
-    
+    val downloadingModelId by viewModel.downloadingModelId.collectAsState()
+
     val isCurrent = currentModel?.id == activeModel.id
     val isThisDownloading = isCurrent && modelStatus == ModelStatus.DOWNLOADING
+    // Blocks starting a second download/deploy while a different model's download is
+    // already in flight - loadModel() has no such guard itself, it would just overwrite
+    // the shared currentModel/engine state mid-download.
+    val isOtherDownloadInFlight = downloadingModelId != null && downloadingModelId != activeModel.id
 
     var isDownloaded by remember(activeModel) { mutableStateOf(false) }
     var hasEnoughRAM by remember(activeModel) { mutableStateOf(true) }
@@ -513,8 +518,8 @@ private fun FamilyModelCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(if (canDownload) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.05f))
-                                .clickable(enabled = canDownload) {
+                                .background(if (canDownload && !isOtherDownloadInFlight) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.05f))
+                                .clickable(enabled = canDownload && !isOtherDownloadInFlight) {
                                     if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
                                         ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
                                     ) {
@@ -537,14 +542,14 @@ private fun FamilyModelCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .border(1.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .clickable { viewModel.loadModel(activeModel) }
+                                .border(1.dp, DaexTheme.colors.primary.copy(alpha = if (isOtherDownloadInFlight) 0.1f else 0.3f), RoundedCornerShape(10.dp))
+                                .clickable(enabled = !isOtherDownloadInFlight) { viewModel.loadModel(activeModel) }
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             BasicText(
                                 text = if (isCurrent) "RE-INITIALIZE" else "DEPLOY",
                                 style = DaexTheme.typography.mono.copy(
-                                    color = DaexTheme.colors.primary,
+                                    color = if (isOtherDownloadInFlight) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.primary,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp
                                 )

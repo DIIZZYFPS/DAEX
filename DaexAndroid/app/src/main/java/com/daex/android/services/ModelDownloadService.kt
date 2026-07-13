@@ -93,9 +93,20 @@ class ModelDownloadService : Service() {
             ACTION_DOWNLOAD_MODEL -> {
                 val modelId = intent.getStringExtra(EXTRA_MODEL_ID)
                 val model = ModelBank.models.find { it.id == modelId }
-                if (model != null && requestId != null) startGenerativeDownload(model, requestId)
+                if (model != null && requestId != null) {
+                    startGenerativeDownload(model, requestId)
+                } else {
+                    // Started via startForegroundService but there's nothing to actually
+                    // download - must not leave the service started-but-never-foregrounded,
+                    // or the system can kill the app for not promoting in time. maybeStop()
+                    // only stops if no other lane is genuinely active, so this can't cut off
+                    // an unrelated in-progress Kokoro download.
+                    maybeStop()
+                }
             }
-            ACTION_DOWNLOAD_KOKORO -> if (requestId != null) startKokoroDownloadInternal(requestId)
+            ACTION_DOWNLOAD_KOKORO -> {
+                if (requestId != null) startKokoroDownloadInternal(requestId) else maybeStop()
+            }
             ACTION_CANCEL_MODEL -> modelManager.cancelDownload()
             ACTION_CANCEL_KOKORO -> modelManager.cancelKokoroDownload()
         }
@@ -103,57 +114,61 @@ class ModelDownloadService : Service() {
     }
 
     private fun startGenerativeDownload(model: Model, requestId: String) {
-        if (generativeJob?.isActive == true) {
-            ModelDownloadState.updateGenerative(
-                GenerativeDownloadStatus(requestId, model.id, DownloadPhase.ERROR, error = "A model download is already in progress.")
-            )
-            return
-        }
-        ensureForeground(model.name)
-        lastNotifiedGenerativePercent = -1
-        generativeJob = serviceScope.launch {
-            ModelDownloadState.updateGenerative(GenerativeDownloadStatus(requestId, model.id, DownloadPhase.DOWNLOADING, 0))
-            try {
-                modelManager.downloadModel(model) { progress ->
-                    ModelDownloadState.updateGenerative(
-                        GenerativeDownloadStatus(requestId, model.id, DownloadPhase.DOWNLOADING, progress.percent)
-                    )
-                    maybeUpdateNotification(model.name, progress.percent, kokoro = false)
+        synchronized(this) {
+            if (generativeJob?.isActive == true) {
+                ModelDownloadState.updateGenerative(
+                    GenerativeDownloadStatus(requestId, model.id, DownloadPhase.ERROR, error = "A model download is already in progress.")
+                )
+                return
+            }
+            ensureForeground(model.name)
+            lastNotifiedGenerativePercent = -1
+            generativeJob = serviceScope.launch {
+                ModelDownloadState.updateGenerative(GenerativeDownloadStatus(requestId, model.id, DownloadPhase.DOWNLOADING, 0))
+                try {
+                    modelManager.downloadModel(model) { progress ->
+                        ModelDownloadState.updateGenerative(
+                            GenerativeDownloadStatus(requestId, model.id, DownloadPhase.DOWNLOADING, progress.percent)
+                        )
+                        maybeUpdateNotification(model.name, progress.percent, kokoro = false)
+                    }
+                    ModelDownloadState.updateGenerative(GenerativeDownloadStatus(requestId, model.id, DownloadPhase.COMPLETED, 100))
+                } catch (e: Exception) {
+                    val phase = if (e.message == "Download cancelled") DownloadPhase.CANCELLED else DownloadPhase.ERROR
+                    ModelDownloadState.updateGenerative(GenerativeDownloadStatus(requestId, model.id, phase, error = e.message))
+                } finally {
+                    generativeJob = null
+                    maybeStop()
                 }
-                ModelDownloadState.updateGenerative(GenerativeDownloadStatus(requestId, model.id, DownloadPhase.COMPLETED, 100))
-            } catch (e: Exception) {
-                val phase = if (e.message == "Download cancelled") DownloadPhase.CANCELLED else DownloadPhase.ERROR
-                ModelDownloadState.updateGenerative(GenerativeDownloadStatus(requestId, model.id, phase, error = e.message))
-            } finally {
-                generativeJob = null
-                maybeStop()
             }
         }
     }
 
     private fun startKokoroDownloadInternal(requestId: String) {
-        if (kokoroJob?.isActive == true) {
-            ModelDownloadState.updateKokoro(
-                KokoroDownloadStatus(requestId, DownloadPhase.ERROR, error = "A TTS download is already in progress.")
-            )
-            return
-        }
-        ensureForeground("Kokoro TTS Voice")
-        lastNotifiedKokoroPercent = -1
-        kokoroJob = serviceScope.launch {
-            ModelDownloadState.updateKokoro(KokoroDownloadStatus(requestId, DownloadPhase.DOWNLOADING, 0))
-            try {
-                modelManager.downloadKokoro { percent ->
-                    ModelDownloadState.updateKokoro(KokoroDownloadStatus(requestId, DownloadPhase.DOWNLOADING, percent))
-                    maybeUpdateNotification("Kokoro TTS Voice", percent, kokoro = true)
+        synchronized(this) {
+            if (kokoroJob?.isActive == true) {
+                ModelDownloadState.updateKokoro(
+                    KokoroDownloadStatus(requestId, DownloadPhase.ERROR, error = "A TTS download is already in progress.")
+                )
+                return
+            }
+            ensureForeground("Kokoro TTS Voice")
+            lastNotifiedKokoroPercent = -1
+            kokoroJob = serviceScope.launch {
+                ModelDownloadState.updateKokoro(KokoroDownloadStatus(requestId, DownloadPhase.DOWNLOADING, 0))
+                try {
+                    modelManager.downloadKokoro { percent ->
+                        ModelDownloadState.updateKokoro(KokoroDownloadStatus(requestId, DownloadPhase.DOWNLOADING, percent))
+                        maybeUpdateNotification("Kokoro TTS Voice", percent, kokoro = true)
+                    }
+                    ModelDownloadState.updateKokoro(KokoroDownloadStatus(requestId, DownloadPhase.COMPLETED, 100))
+                } catch (e: Exception) {
+                    val phase = if (e.message == "Download cancelled") DownloadPhase.CANCELLED else DownloadPhase.ERROR
+                    ModelDownloadState.updateKokoro(KokoroDownloadStatus(requestId, phase, error = e.message))
+                } finally {
+                    kokoroJob = null
+                    maybeStop()
                 }
-                ModelDownloadState.updateKokoro(KokoroDownloadStatus(requestId, DownloadPhase.COMPLETED, 100))
-            } catch (e: Exception) {
-                val phase = if (e.message == "Download cancelled") DownloadPhase.CANCELLED else DownloadPhase.ERROR
-                ModelDownloadState.updateKokoro(KokoroDownloadStatus(requestId, phase, error = e.message))
-            } finally {
-                kokoroJob = null
-                maybeStop()
             }
         }
     }

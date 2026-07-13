@@ -114,6 +114,14 @@ class ModelManager(private val context: Context) {
         }
 
         client.newCall(requestBuilder.build()).execute().use { response ->
+            if (response.code == 416) {
+                // Range Not Satisfiable: our resume offset no longer matches the remote file
+                // (e.g. a mutable URL now points at a different-sized file). Resuming from this
+                // offset can never succeed - discard the stale .part so the next attempt starts
+                // clean instead of replaying the same invalid offset forever.
+                partFile.delete()
+                throw DownloadCorruptException("Resume offset no longer valid for $url (416)")
+            }
             if (!response.isSuccessful) throw Exception("Failed to download from $url: ${response.code}")
 
             val body = response.body ?: throw Exception("Empty response body from $url")

@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -1166,7 +1167,10 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             if (modelManager == null) return@launch
             try {
-                kokoroTtsService?.release()
+                // releaseTts() only releases the native OfflineTts object, not the whole
+                // service's coroutine scope/pipelines - release() would permanently kill TTS
+                // for the rest of this singleton's lifetime, since nothing ever recreates it.
+                kokoroTtsService?.releaseTts()
                 modelManager.deleteKokoro()
                 _isTtsDownloaded.value = false
                 refreshDownloadedModels()
@@ -1343,9 +1347,14 @@ class DaexInferenceViewModel(
             _errorMessage.value = "Model is not loaded yet."
             return
         }
-        curationJob?.cancel()
 
         viewModelScope.launch {
+            // Wait for any in-flight background memory curation to fully stop before starting a
+            // new generation - both drive the same DaexServiceImpl engine/conversation, and a
+            // bare cancel() (without join) only requests cancellation, it doesn't guarantee
+            // curation has actually stopped touching the engine by the time generation starts.
+            curationJob?.cancelAndJoin()
+
             var convId = _currentConversationId.value
             if (convId == null) {
                 val modelId = _currentModel.value?.id ?: ModelBank.generativeModels.first().id
@@ -1626,9 +1635,11 @@ class DaexInferenceViewModel(
             setVoiceStateInternal(VoiceState.IDLE)
             return
         }
-        curationJob?.cancel()
 
         viewModelScope.launch {
+            // See submitPrompt() for why this needs to be a joined cancellation, not fire-and-forget.
+            curationJob?.cancelAndJoin()
+
             var convId = _currentConversationId.value
             if (convId == null) {
                 val modelId = _currentModel.value?.id ?: ModelBank.generativeModels.first().id
@@ -1954,6 +1965,7 @@ class DaexInferenceViewModel(
                 }
             } catch (e: Exception) {
                 android.util.Log.e("DaexInference", "File deletion failed", e)
+                _errorMessage.value = "Delete may be incomplete for \"$fileName\" - please try again."
             }
         }
     }

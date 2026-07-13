@@ -480,14 +480,27 @@ class DaexServiceImpl(private val context: Context) : DaexService {
             val isCancellation = e is java.util.concurrent.CancellationException ||
                                  e is kotlinx.coroutines.CancellationException ||
                                  e.message?.contains("cancel", ignoreCase = true) == true
-            if (isLimitReached || isCancellation) {
-                Log.d(TAG, "Generation stopped. isLimitReached=$isLimitReached, isCancellation=$isCancellation")
-            } else if (usedReuse && decodeStartTime == 0L) {
-                conversation = null
-                conversationSignature = null
-                throw ReuseFailedException(e)
-            } else {
-                throw e
+            when {
+                isLimitReached -> {
+                    // Our own maxTokens auto-stop: package up what was generated as a normal
+                    // successful result rather than an error.
+                    Log.d(TAG, "Generation stopped: max token limit reached.")
+                }
+                isCancellation -> {
+                    // A genuine external cancel (user tapped stop, or a live-voice barge-in) -
+                    // this used to be swallowed the same as the maxTokens case above, which
+                    // made every user-initiated stop look like a normal completion: the
+                    // "[Generation stopped by user]" marker never appeared, and barge-in never
+                    // actually silenced the assistant. Propagate it so the caller's existing
+                    // cancellation handling actually runs.
+                    throw e
+                }
+                usedReuse && decodeStartTime == 0L -> {
+                    conversation = null
+                    conversationSignature = null
+                    throw ReuseFailedException(e)
+                }
+                else -> throw e
             }
         }
 

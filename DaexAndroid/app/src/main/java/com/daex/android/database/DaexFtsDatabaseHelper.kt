@@ -13,40 +13,73 @@ class DaexFtsDatabaseHelper(private val context: Context) {
     companion object {
         private const val DATABASE_NAME = "daex_fts5.db"
         private const val TABLE_FTS = "document_chunks_fts"
-        
+
         // FTS5 virtual table fields
         private const val COLUMN_DOC_ID = "documentId"
         private const val COLUMN_FILE_NAME = "fileName"
         private const val COLUMN_CHUNK_INDEX = "chunkIndex"
         private const val COLUMN_CONTENT = "content"
+
+        // v2: documentId/fileName/chunkIndex were previously indexed (searchable) FTS5 columns,
+        // so filename/chunk-index text polluted content search matches. Bumping this drops and
+        // recreates the table with those columns marked UNINDEXED; DaexRagImpl.initRag()
+        // repopulates it from ObjectBox (the source of truth) afterward via needsRebuild.
+        private const val SCHEMA_VERSION = 2L
     }
 
     private val driver = BundledSQLiteDriver()
     private val dbFile: File by lazy { context.getDatabasePath(DATABASE_NAME) }
     private val mutex = Mutex()
     private var connection: SQLiteConnection? = null
+    @Volatile private var needsRebuild = false
 
     private fun getOrOpenConnection(): SQLiteConnection {
         var conn = connection
         if (conn == null) {
             dbFile.parentFile?.mkdirs()
             conn = driver.open(dbFile.absolutePath)
-            
+
+            val currentVersion = conn.prepare("PRAGMA user_version").use {
+                if (it.step()) it.getLong(0) else 0L
+            }
+            if (currentVersion < SCHEMA_VERSION) {
+                conn.prepare("DROP TABLE IF EXISTS $TABLE_FTS").use { it.step() }
+                needsRebuild = true
+            }
+
             // Create FTS5 virtual table if it doesn't exist
             conn.prepare("""
                 CREATE VIRTUAL TABLE IF NOT EXISTS $TABLE_FTS USING fts5(
-                    $COLUMN_DOC_ID,
-                    $COLUMN_FILE_NAME,
-                    $COLUMN_CHUNK_INDEX,
+                    $COLUMN_DOC_ID UNINDEXED,
+                    $COLUMN_FILE_NAME UNINDEXED,
+                    $COLUMN_CHUNK_INDEX UNINDEXED,
                     $COLUMN_CONTENT,
                     tokenize='unicode61'
                 )
             """).use { it.step() }
-            
+
+            if (currentVersion < SCHEMA_VERSION) {
+                // PRAGMA statements don't support bound parameters; SCHEMA_VERSION is a
+                // compile-time constant, not user input, so inlining it here is safe.
+                conn.prepare("PRAGMA user_version = $SCHEMA_VERSION").use { it.step() }
+            }
+
             connection = conn
             Log.d("DaexFtsDatabaseHelper", "Successfully opened and initialized Bundled SQLite connection at: ${dbFile.absolutePath}")
         }
         return conn
+    }
+
+    /**
+     * Returns true (once) if the schema was just migrated and the caller should repopulate the
+     * index from the source of truth (ObjectBox). Opens the connection if needed, which runs
+     * the migration check.
+     */
+    suspend fun consumeNeedsRebuild(): Boolean = mutex.withLock {
+        getOrOpenConnection()
+        val result = needsRebuild
+        needsRebuild = false
+        result
     }
 
     suspend fun insertChunk(documentId: String, fileName: String, chunkIndex: Int, content: String) = mutex.withLock {
@@ -100,6 +133,9 @@ class DaexFtsDatabaseHelper(private val context: Context) {
         }
     }
 
+    // Delete failures are logged AND rethrown (unlike insert/search elsewhere in this class) so
+    // callers removing the same chunks from ObjectBox can detect a partial delete instead of
+    // reporting success while stale FTS rows are left behind.
     suspend fun deleteChunksByDocumentId(documentId: String) = mutex.withLock {
         try {
             val conn = getOrOpenConnection()
@@ -109,6 +145,7 @@ class DaexFtsDatabaseHelper(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.e("DaexFtsDatabaseHelper", "Failed to delete FTS5 chunks for documentId '$documentId'", e)
+            throw e
         }
     }
 
@@ -121,6 +158,7 @@ class DaexFtsDatabaseHelper(private val context: Context) {
             }
         } catch (e: Exception) {
             Log.e("DaexFtsDatabaseHelper", "Failed to delete FTS5 chunks for fileName '$fileName'", e)
+            throw e
         }
     }
 

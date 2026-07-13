@@ -32,6 +32,31 @@ class DaexRagImpl(
 
     override suspend fun initRag() {
         embedder.initEmbeddingContext()
+        if (ftsDbHelper.consumeNeedsRebuild()) {
+            rebuildFtsIndex()
+        }
+    }
+
+    /** Repopulates the FTS5 index from ObjectBox (the source of truth) after a schema migration. */
+    private suspend fun rebuildFtsIndex() = withContext(Dispatchers.IO) {
+        try {
+            val allChunks = chunkBox.all
+            if (allChunks.isNotEmpty()) {
+                val ftsChunks = allChunks.map {
+                    com.daex.android.database.DaexFtsDatabaseHelper.FtsMatch(
+                        documentId = it.documentId,
+                        fileName = it.fileName,
+                        chunkIndex = it.chunkIndex,
+                        content = it.content,
+                        score = 0.0
+                    )
+                }
+                ftsDbHelper.insertChunks(ftsChunks)
+            }
+            Log.d("DaexRag", "Rebuilt FTS5 index from ${allChunks.size} ObjectBox chunks after schema migration")
+        } catch (e: Exception) {
+            Log.e("DaexRag", "Failed to rebuild FTS5 index after schema migration", e)
+        }
     }
 
     override suspend fun ingestFile(fileName: String, content: String, onProgress: (Int, Int) -> Unit) {
@@ -195,32 +220,27 @@ class DaexRagImpl(
     }
 
     override suspend fun deleteFile(documentId: String) {
+        // ObjectBox removal and the FTS delete are two separate stores, not one transaction;
+        // if the FTS delete throws, that's allowed to propagate (not swallowed here) so the
+        // caller knows the delete may be incomplete rather than reporting success either way.
         withContext(Dispatchers.IO) {
-            try {
-                val chunks = chunkBox.query {
-                    equal(DocumentChunkEntity_.documentId, documentId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
-                }.find()
-                chunkBox.remove(chunks)
-                ftsDbHelper.deleteChunksByDocumentId(documentId)
-                Log.d("DaexRag", "Deleted ${chunks.size} chunks for document $documentId")
-            } catch (e: Exception) {
-                Log.e("DaexRag", "Failed to delete file", e)
-            }
+            val chunks = chunkBox.query {
+                equal(DocumentChunkEntity_.documentId, documentId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+            }.find()
+            chunkBox.remove(chunks)
+            ftsDbHelper.deleteChunksByDocumentId(documentId)
+            Log.d("DaexRag", "Deleted ${chunks.size} chunks for document $documentId")
         }
     }
 
     override suspend fun deleteFileByName(fileName: String) {
         withContext(Dispatchers.IO) {
-            try {
-                val chunks = chunkBox.query {
-                    equal(DocumentChunkEntity_.fileName, fileName, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
-                }.find()
-                chunkBox.remove(chunks)
-                ftsDbHelper.deleteChunksByFileName(fileName)
-                Log.d("DaexRag", "Deleted ${chunks.size} chunks for file $fileName")
-            } catch (e: Exception) {
-                Log.e("DaexRag", "Failed to delete file by name $fileName", e)
-            }
+            val chunks = chunkBox.query {
+                equal(DocumentChunkEntity_.fileName, fileName, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+            }.find()
+            chunkBox.remove(chunks)
+            ftsDbHelper.deleteChunksByFileName(fileName)
+            Log.d("DaexRag", "Deleted ${chunks.size} chunks for file $fileName")
         }
     }
 

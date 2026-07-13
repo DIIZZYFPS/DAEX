@@ -73,7 +73,7 @@ fun MessageLine(
         label = "DotCount"
     )
     val dotCount = dotCountFloat.toInt().coerceIn(0, 3)
-    if (message.role == "system" || message.content.startsWith("[SYSTEM_LOG]:")) {
+    if (message.role == "system") {
         val logText = message.content.removePrefix("[SYSTEM_LOG]:").trim()
         val isInProgress = logText.endsWith("...")
         Row(

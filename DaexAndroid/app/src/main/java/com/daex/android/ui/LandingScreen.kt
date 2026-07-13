@@ -821,8 +821,12 @@ private fun OnboardingFamilyCard(
                                     ) {
                                         notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                                     }
-                                    viewModel.downloadModel(activeModel)
                                 }
+                                // loadModel() downloads first if needed, then loads the engine,
+                                // and sets it as the current/last-used model either way - unlike
+                                // downloadModel() alone, which only downloaded the file and never
+                                // set it as current, so onboarding's choice was forgotten.
+                                viewModel.loadModel(activeModel)
                                 onSelectAndNext()
                             }
                             .padding(horizontal = 14.dp, vertical = 6.dp)

@@ -56,41 +56,45 @@ class DaexEmbedder(
         }
     }
 
+    /**
+     * Throws on any failure (model unavailable, inference error, empty result) instead of
+     * returning a placeholder vector - a silent zero-vector fallback would get embedded into
+     * ObjectBox as if it were real, permanently corrupting that chunk's retrieval with no sign
+     * anything went wrong. Callers (DaexRag's per-chunk ingest loop and query path) already
+     * catch and handle failures explicitly.
+     */
     suspend fun generateEmbedding(text: String, isQuery: Boolean = false): FloatArray {
         return withContext(Dispatchers.IO) {
             initEmbeddingContext()
 
             synchronized(this@DaexEmbedder) {
                 val embedder = textEmbedder
-                if (embedder != null) {
-                    try {
-                        val result = embedder.embed(text)
-                        val embeddings = result.embeddingResult().embeddings()
-                        if (embeddings.isNotEmpty()) {
-                            val floatArray = embeddings[0].floatEmbedding()
-                            if (floatArray != null) {
-                                var sum = 0.0f
-                                for (v in floatArray) {
-                                    sum += v * v
-                                }
-                                val norm = kotlin.math.sqrt(sum)
-                                if (com.daex.android.BuildConfig.DEBUG) {
-                                    Log.d("DaexEmbedder", "Embedding text='${text.take(30).replace("\n", " ")}' -> raw norm=$norm, size=${floatArray.size}, first 5=[${floatArray.take(5).joinToString(", ")}]")
-                                }
-                                if (norm > 1e-9f) {
-                                    for (i in floatArray.indices) {
-                                        floatArray[i] /= norm
-                                    }
-                                }
-                                return@withContext floatArray
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e("DaexEmbedder", "Embedding inference failed", e)
+                    ?: throw IllegalStateException("Embedding model is not available (not downloaded or failed to initialize).")
+
+                try {
+                    val result = embedder.embed(text)
+                    val embeddings = result.embeddingResult().embeddings()
+                    val floatArray = embeddings.firstOrNull()?.floatEmbedding()
+                        ?: throw IllegalStateException("Embedder returned no embedding for input text.")
+
+                    var sum = 0.0f
+                    for (v in floatArray) {
+                        sum += v * v
                     }
+                    val norm = kotlin.math.sqrt(sum)
+                    if (com.daex.android.BuildConfig.DEBUG) {
+                        Log.d("DaexEmbedder", "Embedding text='${text.take(30).replace("\n", " ")}' -> raw norm=$norm, size=${floatArray.size}, first 5=[${floatArray.take(5).joinToString(", ")}]")
+                    }
+                    if (norm > 1e-9f) {
+                        for (i in floatArray.indices) {
+                            floatArray[i] /= norm
+                        }
+                    }
+                    floatArray
+                } catch (e: Exception) {
+                    Log.e("DaexEmbedder", "Embedding inference failed", e)
+                    throw e
                 }
-                Log.w("DaexEmbedder", "Falling back to 512-dimensional zero-vector")
-                FloatArray(512) { 0.0f }
             }
         }
     }
