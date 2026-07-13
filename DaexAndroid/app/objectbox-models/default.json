@@ -119,7 +119,7 @@
     },
     {
       "id": "3:2228447766859977220",
-      "lastPropertyId": "8:1544963357994103087",
+      "lastPropertyId": "9:8041403220950123077",
       "name": "DocumentChunkEntity",
       "properties": [
         {
@@ -159,6 +159,11 @@
           "id": "8:1544963357994103087",
           "name": "fileName",
           "type": 9
+        },
+        {
+          "id": "9:8041403220950123077",
+          "name": "isSystem",
+          "type": 1
         }
       ],
       "relations": []

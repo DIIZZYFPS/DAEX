@@ -113,6 +113,8 @@ fun ExecutionScreen(
     val attachedFiles by viewModel.attachedFiles.collectAsState()
     val downloadedModelIds by viewModel.downloadedModelIds.collectAsState()
     var documentLibraryVisible by remember { mutableStateOf(false) }
+    var savedPromptLibraryVisible by remember { mutableStateOf(false) }
+    val pinnedMessages by viewModel.pinnedMessages.collectAsState()
     val isAuraEnabled by viewModel.isAuraEnabled.collectAsState()
     val voiceState by viewModel.voiceState.collectAsState()
     val voiceAmplitude by viewModel.voiceAmplitude.collectAsState()
@@ -121,6 +123,7 @@ fun ExecutionScreen(
     val isVoiceSessionActive by viewModel.isLiveVoiceActive.collectAsState()
     val isTtsEnabled by viewModel.isTtsEnabled.collectAsState()
     val isTtsDownloaded by viewModel.isTtsDownloaded.collectAsState()
+    val speakingMessageId by viewModel.speakingMessageId.collectAsState()
     
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -691,7 +694,20 @@ fun ExecutionScreen(
                         ) {
                             itemsIndexed(visibleMessages) { index, msg ->
                                 val isLastModel = msg.role == "model" && visibleMessages.subList(index + 1, visibleMessages.size).none { it.role == "model" }
-                                MessageLine(message = msg, isLastModel = isLastModel, isGenerating = isGenerating, tokenSpeed = tokenSpeed, activePermission = if (isLastModel) activePermission else null)
+                                MessageLine(
+                                    message = msg,
+                                    isLastModel = isLastModel,
+                                    isGenerating = isGenerating,
+                                    tokenSpeed = tokenSpeed,
+                                    activePermission = if (isLastModel) activePermission else null,
+                                    isSpeaking = msg.id == speakingMessageId,
+                                    onSpeak = if (isVoiceSessionActive || msg.role != "model") null else {
+                                        { viewModel.speakMessage(msg) }
+                                    },
+                                    onTogglePin = if (msg.role == "user" || msg.role == "model") {
+                                        { viewModel.togglePin(msg) }
+                                    } else null
+                                )
                             }
                             item { Spacer(modifier = Modifier.height(1.dp).fillMaxWidth()) }
                         }
@@ -1111,7 +1127,28 @@ fun ExecutionScreen(
             onNewConversation = { sidebarVisible = false; viewModel.clearMessages() },
             onOpenSettings = { sidebarVisible = false; onOpenSettings() },
             onOpenGallery = onOpenGallery,
+            onOpenSavedPrompts = {
+                viewModel.refreshPinnedMessages()
+                savedPromptLibraryVisible = true
+            },
             viewModel = viewModel
+        )
+
+        SavedPromptLibraryModal(
+            visible = savedPromptLibraryVisible,
+            onClose = { savedPromptLibraryVisible = false },
+            pinnedMessages = pinnedMessages,
+            onUsePrompt = { msg ->
+                savedPromptLibraryVisible = false
+                viewModel.triggerHapticFeedback(context)
+                if (isModelReady && !isGenerating) {
+                    viewModel.clearMessages()
+                    viewModel.submitPrompt(msg.content)
+                } else if (!isModelReady) {
+                    (currentModel ?: selectedModel).let { model -> viewModel.loadModel(model) }
+                }
+            },
+            onUnpin = { msg -> viewModel.togglePin(msg) }
         )
 
         MemoryEditorModal(

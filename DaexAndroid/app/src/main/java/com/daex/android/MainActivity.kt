@@ -46,11 +46,11 @@ class MainActivity : ComponentActivity() {
         }
 
         val boxStore = (application as DaexApplication).boxStore
-        val daexMemory = DaexMemory(boxStore)
         val deviceService = DeviceService(this)
-        val daexService = com.daex.android.services.DaexServiceImpl(this)
         val modelManager = ModelManager(this)
         val daexEmbedder = DaexEmbedder(this, modelManager)
+        val daexMemory = DaexMemory(boxStore, daexEmbedder, this.applicationContext)
+        val daexService = com.daex.android.services.DaexServiceImpl(this, daexMemory)
         val daexCoreMemory = com.daex.android.services.DaexCoreMemoryImpl(this)
         val daexRag = DaexRagImpl(this.applicationContext, boxStore, daexEmbedder)
         val daexSkillManager = com.daex.android.services.DaexSkillManagerImpl(this)

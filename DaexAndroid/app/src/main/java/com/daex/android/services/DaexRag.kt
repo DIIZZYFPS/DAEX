@@ -13,7 +13,7 @@ import java.util.UUID
 
 interface DaexRag {
     suspend fun initRag()
-    suspend fun ingestFile(fileName: String, content: String, onProgress: (Int, Int) -> Unit = { _, _ -> })
+    suspend fun ingestFile(fileName: String, content: String, isSystem: Boolean = false, onProgress: (Int, Int) -> Unit = { _, _ -> })
     suspend fun queryDocuments(query: String, maxResults: Int = 5, activeFileNames: List<String> = emptyList()): List<String>
     suspend fun getUploadedFiles(): List<String>
     suspend fun deleteFileByName(fileName: String)
@@ -59,7 +59,7 @@ class DaexRagImpl(
         }
     }
 
-    override suspend fun ingestFile(fileName: String, content: String, onProgress: (Int, Int) -> Unit) {
+    override suspend fun ingestFile(fileName: String, content: String, isSystem: Boolean, onProgress: (Int, Int) -> Unit) {
         withContext(Dispatchers.Default) {
             val documentId = UUID.randomUUID().toString()
             
@@ -92,6 +92,7 @@ class DaexRagImpl(
                             fileName = fileName,
                             chunkIndex = index,
                             content = chunkText,
+                            isSystem = isSystem,
                             embedding = vector
                         )
                     )
@@ -208,7 +209,9 @@ class DaexRagImpl(
     @Suppress("DEPRECATION")
     override suspend fun getUploadedFiles(): List<String> = withContext(Dispatchers.IO) {
         try {
-            chunkBox.query().build()
+            chunkBox.query {
+                equal(DocumentChunkEntity_.isSystem, false)
+            }
                 .property(DocumentChunkEntity_.fileName)
                 .distinct()
                 .findStrings()
@@ -246,7 +249,9 @@ class DaexRagImpl(
 
     override suspend fun hasDocuments(): Boolean = withContext(Dispatchers.IO) {
         try {
-            chunkBox.count() > 0
+            chunkBox.query {
+                equal(DocumentChunkEntity_.isSystem, false)
+            }.count() > 0
         } catch (e: Exception) {
             false
         }

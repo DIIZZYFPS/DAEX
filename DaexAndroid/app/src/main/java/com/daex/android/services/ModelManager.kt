@@ -41,6 +41,7 @@ class ModelManager(private val context: Context) {
     private val client = OkHttpClient()
     @Volatile private var activeGenerativeDownloadId: String? = null
     @Volatile private var activeKokoroDownloadId: String? = null
+    @Volatile private var activeEmbeddingDownloadId: String? = null
 
     fun getModelPath(model: Model): String {
         return File(context.filesDir, "${model.id}.${model.extension}").absolutePath
@@ -238,6 +239,69 @@ class ModelManager(private val context: Context) {
              activeGenerativeDownloadId = null
          }
      }
+
+    /**
+     * Downloads the embedding model on its own independent single-flight guard (separate from
+     * [activeGenerativeDownloadId]), so it can run concurrently with a mandatory chat-model
+     * download instead of waiting for the shared generative slot to free up - mirrors
+     * [downloadKokoro]'s independent lane.
+     */
+    suspend fun downloadEmbeddingModel(
+        model: Model,
+        onProgress: ((DownloadProgress) -> Unit)? = null
+    ): String = withContext(Dispatchers.IO) {
+        val destPath = getModelPath(model)
+        val file = File(destPath)
+        val partFile = partFileFor(file)
+
+        if (file.exists()) {
+            if (isFileValid(file, model.size)) {
+                return@withContext destPath
+            }
+            file.delete()
+        }
+
+        val downloadId = java.util.UUID.randomUUID().toString()
+        synchronized(this) {
+            if (activeEmbeddingDownloadId != null) {
+                throw IllegalStateException("downloadEmbeddingModel is already active.")
+            }
+            activeEmbeddingDownloadId = downloadId
+        }
+
+        try {
+            downloadWithResume(
+                url = model.downloadUrl,
+                partFile = partFile,
+                finalFile = file,
+                fallbackSize = model.size,
+                isActive = { activeEmbeddingDownloadId == downloadId }
+            ) { written, total ->
+                val percent = if (total > 0) ((written.toDouble() / total) * 100).toInt() else 0
+                onProgress?.invoke(DownloadProgress(written, total, percent))
+            }
+        } catch (e: DownloadCancelledException) {
+            partFile.delete()
+            throw e
+        } catch (e: DownloadCorruptException) {
+            partFile.delete()
+            throw e
+        } finally {
+            synchronized(this) {
+                if (activeEmbeddingDownloadId == downloadId) {
+                    activeEmbeddingDownloadId = null
+                }
+            }
+        }
+
+        destPath
+    }
+
+    fun cancelEmbeddingDownload() {
+        synchronized(this) {
+            activeEmbeddingDownloadId = null
+        }
+    }
 
     suspend fun deleteModel(model: Model) = withContext(Dispatchers.IO) {
         val file = File(getModelPath(model))

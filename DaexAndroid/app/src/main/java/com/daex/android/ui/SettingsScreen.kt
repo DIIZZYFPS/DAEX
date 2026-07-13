@@ -32,6 +32,7 @@ import com.daex.android.services.ModelBank
 import com.daex.android.services.ModelManager
 import com.daex.android.services.ModelStatus
 import com.daex.android.services.HapticType
+import com.daex.android.services.ToolRegistry
 import com.daex.android.ui.components.ConfirmDialog
 import com.daex.android.ui.components.DaexSwitch
 import com.daex.android.ui.theme.DaexTheme
@@ -58,6 +59,7 @@ fun SettingsScreen(
     val inferenceTopP by viewModel.inferenceTopP.collectAsState()
     val customSystemPrompt by viewModel.customSystemPrompt.collectAsState()
     val isToolCallingEnabled by viewModel.isToolCallingEnabled.collectAsState()
+    val disabledToolIds by viewModel.disabledToolIds.collectAsState()
     val uploadedFiles by viewModel.uploadedFiles.collectAsState()
     val downloadProgress by viewModel.downloadProgress.collectAsState()
     val maxTokens by viewModel.maxTokens.collectAsState()
@@ -252,7 +254,7 @@ fun SettingsScreen(
                                 )
                                 if (customSystemPrompt.isEmpty()) {
                                     BasicText(
-                                        text = "Override default instruction set...",
+                                        text = "Add instructions on top of the default persona...",
                                         style = DaexTheme.typography.body2.copy(color = DaexTheme.colors.onSurface.copy(alpha = 0.3f))
                                     )
                                 }
@@ -352,6 +354,44 @@ fun SettingsScreen(
                                     checked = isToolCallingEnabled,
                                     onCheckedChange = { viewModel.setToolCallingEnabled(it) }
                                 )
+                            }
+
+                            if (isToolCallingEnabled) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(DaexTheme.colors.onSurface.copy(alpha = 0.08f)))
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                ToolRegistry.ALL.forEach { toolEntry ->
+                                    val enabled = toolEntry.id !in disabledToolIds
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            BasicText(
+                                                text = toolEntry.label,
+                                                style = DaexTheme.typography.mono.copy(
+                                                    color = DaexTheme.colors.onSurface.copy(alpha = if (enabled) 0.9f else 0.4f),
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            )
+                                            BasicText(
+                                                text = toolEntry.description,
+                                                style = DaexTheme.typography.mono.copy(
+                                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.35f),
+                                                    fontSize = 10.sp
+                                                ),
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            )
+                                        }
+                                        DaexSwitch(
+                                            checked = enabled,
+                                            onCheckedChange = { viewModel.setToolEnabled(toolEntry.id, it) }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }

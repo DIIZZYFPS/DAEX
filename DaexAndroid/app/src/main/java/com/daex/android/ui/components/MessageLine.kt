@@ -32,7 +32,10 @@ fun MessageLine(
     isLastModel: Boolean = false,
     isGenerating: Boolean = false,
     tokenSpeed: Double = 0.0,
-    activePermission: PermissionRequest? = null
+    activePermission: PermissionRequest? = null,
+    isSpeaking: Boolean = false,
+    onSpeak: (() -> Unit)? = null,
+    onTogglePin: (() -> Unit)? = null
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "ThinkingAnim")
     
@@ -114,8 +117,22 @@ fun MessageLine(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 6.dp),
-            horizontalArrangement = Arrangement.End
+            horizontalArrangement = Arrangement.End,
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            if (onTogglePin != null) {
+                BasicText(
+                    text = if (message.isPinned) "◆ PINNED" else "◇ PIN",
+                    style = DaexTheme.typography.mono.copy(
+                        color = if (message.isPinned) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.25f),
+                        fontSize = 9.sp,
+                        letterSpacing = 0.5.sp
+                    ),
+                    modifier = Modifier
+                        .clickable { onTogglePin() }
+                        .padding(8.dp)
+                )
+            }
             Box(
                 modifier = Modifier
                     .fillMaxWidth(0.8f)
@@ -252,6 +269,41 @@ fun MessageLine(
                     content = message.content,
                     modifier = Modifier.fillMaxWidth()
                 )
+            }
+
+            if ((onSpeak != null || onTogglePin != null) && message.content.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (onSpeak != null) {
+                        BasicText(
+                            text = if (isSpeaking) "■ STOP" else "▶ LISTEN",
+                            style = DaexTheme.typography.mono.copy(
+                                color = if (isSpeaking) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                fontSize = 10.sp,
+                                letterSpacing = 0.5.sp
+                            ),
+                            modifier = Modifier
+                                .clickable { onSpeak() }
+                                .padding(vertical = 2.dp)
+                        )
+                    }
+                    if (onTogglePin != null) {
+                        BasicText(
+                            text = if (message.isPinned) "◆ PINNED" else "◇ PIN",
+                            style = DaexTheme.typography.mono.copy(
+                                color = if (message.isPinned) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                fontSize = 10.sp,
+                                letterSpacing = 0.5.sp
+                            ),
+                            modifier = Modifier
+                                .clickable { onTogglePin() }
+                                .padding(vertical = 2.dp)
+                        )
+                    }
+                }
             }
 
             activePermission?.let { request ->

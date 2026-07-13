@@ -6,10 +6,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
 
+data class MemoryCurationResult(val learnedBullets: List<String> = emptyList())
+
 interface DaexCoreMemory {
     suspend fun getMemoryContent(): String
     suspend fun overwriteMemory(content: String)
-    suspend fun compactMemory(recentMessages: List<Message>, daexService: DaexService)
+    suspend fun compactMemory(recentMessages: List<Message>, daexService: DaexService): MemoryCurationResult
 }
 
 class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
@@ -44,7 +46,7 @@ class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
         Unit
     }
 
-    override suspend fun compactMemory(recentMessages: List<Message>, daexService: DaexService) {
+    override suspend fun compactMemory(recentMessages: List<Message>, daexService: DaexService): MemoryCurationResult {
         try {
             val currentMemory = getMemoryContent()
 
@@ -54,14 +56,22 @@ class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
 
             val compactorPrompt = buildString {
                 append("<bos><|turn>system\n")
-                append("You are a memory curator. Your ONLY job is to maintain a clean markdown file of important facts.\n")
+                append("You are a memory curator. Your ONLY job is to maintain a clean markdown file of durable facts about the USER — the human on the other end of the conversation, never the AI assistant itself.\n")
                 append("You will receive the current memory file and a recent conversation segment.\n")
                 append("Output ONLY the updated markdown file — nothing else. No preamble, no explanation, no commentary.\n")
+                append("CRITICAL: Only record facts about who the user IS (name, traits, circumstances, routines, opinions, life details they shared about themselves). ")
+                append("Never record facts about DAEX, Icarus, or how the app works, even if that was the topic of conversation — the assistant explaining its own features is not a fact about the user. ")
+                append("The TOPIC of a question is never itself a fact — do not write bullets like 'User asked about X', 'User inquired about Y', or 'User wanted to know Z'. ")
+                append("Only note something if the user stated it about themselves directly (e.g. 'I'm a nurse', 'I love hiking'), or the same personal detail comes up across multiple turns.\n")
+                append("If the conversation reveals no new durable fact about the user, output the CURRENT MEMORY FILE unchanged, verbatim — that is the correct and expected outcome most of the time, not a failure. Do not force a new bullet just because compaction ran.\n")
+                append("Examples of conversations with NOTHING to record, because they're about the app, not the user:\n")
+                append("  1) user: \"do you remember things between conversations?\" / assistant explains its own memory and search features → unchanged, not 'user asked about memory'.\n")
+                append("  2) user: \"what tools can you use on my device?\" / assistant lists its own tools → unchanged, not 'user inquired about available tools'.\n")
                 append("Rules:\n")
                 append("- Keep all existing facts that are still relevant.\n")
                 append("- Classify new facts into the correct sections:\n")
-                append("  * '## User Profile' for name, personal traits, communication habits, and persistent preferences.\n")
-                append("  * '## Key Facts & Preferences' for durable facts, details about the user's routine, hobbies, device settings, or general preferences.\n")
+                append("  * '## User Profile' for the user's name, personal traits, communication habits, and persistent preferences.\n")
+                append("  * '## Key Facts & Preferences' for durable facts about the user's routine, hobbies, device settings, or general preferences.\n")
                 append("- Remove placeholder bullets like '(No... recorded yet)' once real facts exist in a section.\n")
                 append("- Merge duplicate facts and keep information highly concise.\n")
                 append("- Keep the entire markdown file strictly under a 2,000-character budget. If the list is getting long, aggressively merge related bullets and prune older/completed or less relevant details.\n")
@@ -69,6 +79,8 @@ class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
                 append("- DO NOT record tool availability, MCP servers, or system commands (e.g. \"saive-finance MCP is available\").\n")
                 append("- DO NOT record the fact that you were asked or forced to update your memory, or that a memory compaction occurred.\n")
                 append("- DO NOT record temporary debug sessions, transient tasks, or ephemeral conversation history.\n")
+                append("- DO NOT record what DAEX/Icarus can do or how its features work (RAG, memory, tools, voice, etc.) — that describes the app, not the user.\n")
+                append("- DO NOT record the subject/topic of a question the user asked — only standalone facts the user stated about themselves.\n")
                 append("<turn|>\n")
                 append("<|turn>user\n")
                 append("CURRENT MEMORY FILE:\n")
@@ -79,6 +91,7 @@ class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
                 append("```\n")
                 append(conversationBlock)
                 append("\n```\n")
+                append("Reminder: if this conversation was about DAEX/Icarus itself rather than the user's own life, output the current memory file unchanged. Do not log the topic of a question as a fact.\n")
                 append("<turn|>\n")
                 append("<|turn>model\n")
             }
@@ -90,11 +103,22 @@ class DaexCoreMemoryImpl(private val context: Context) : DaexCoreMemory {
             if (cleaned.contains("# Core Memory") && (cleaned.contains("## User Profile") || cleaned.contains("## Key Facts & Preferences"))) {
                 overwriteMemory(cleaned)
                 Log.d("DaexCoreMemory", "Memory compacted successfully (${cleaned.length} chars)")
+                val learned = (extractBullets(cleaned) - extractBullets(currentMemory)).take(3)
+                return MemoryCurationResult(learnedBullets = learned)
             } else {
                 Log.w("DaexCoreMemory", "Compactor output didn't look like valid markdown structure, skipping overwrite. Output: ${cleaned.take(200)}")
             }
         } catch (e: Exception) {
             Log.e("DaexCoreMemory", "Memory compaction failed", e)
         }
+        return MemoryCurationResult()
     }
+
+    /** Bullet lines ("- ...") from a core-memory markdown file, excluding "(No ... recorded yet)" placeholders. */
+    private fun extractBullets(markdown: String): Set<String> =
+        markdown.lineSequence()
+            .map { it.trim() }
+            .filter { it.startsWith("- ") && !it.startsWith("- (") }
+            .map { it.removePrefix("- ").trim() }
+            .toSet()
 }
