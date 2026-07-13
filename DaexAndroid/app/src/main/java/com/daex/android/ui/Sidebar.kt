@@ -36,6 +36,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daex.android.services.DaexInferenceViewModel
+import com.daex.android.ui.components.EmptyChatIcon
+import com.daex.android.ui.components.EmptyState
 import com.daex.android.ui.theme.DaexTheme
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -172,6 +174,23 @@ fun Sidebar(
                 }
 
                 // Conversation List
+                if (searchResults == null && conversations.isEmpty()) {
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        EmptyState(
+                            icon = { color -> EmptyChatIcon(color = color, modifier = Modifier.size(40.dp)) },
+                            title = "No conversations yet",
+                            subtitle = "Start a session to begin",
+                            actionLabel = "New Session",
+                            onAction = {
+                                onNewConversation()
+                                onClose()
+                            }
+                        )
+                    }
+                } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -233,7 +252,8 @@ fun Sidebar(
                         }
                     }
                 }
-                
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 SidebarItem(label = "Saved Prompts", icon = "◆") {

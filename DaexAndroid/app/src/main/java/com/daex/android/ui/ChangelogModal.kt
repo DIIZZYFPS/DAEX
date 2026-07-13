@@ -22,10 +22,45 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.daex.android.ui.theme.DaexTheme
 
+// Compares dot-separated numeric version strings segment by segment (e.g. "0.4.0" > "0.3.5").
+// Non-numeric or missing segments are treated as 0, so uneven lengths compare sensibly.
+fun compareSemVer(a: String, b: String): Int {
+    val partsA = a.split(".").map { it.toIntOrNull() ?: 0 }
+    val partsB = b.split(".").map { it.toIntOrNull() ?: 0 }
+    for (i in 0 until maxOf(partsA.size, partsB.size)) {
+        val x = partsA.getOrElse(i) { 0 }
+        val y = partsB.getOrElse(i) { 0 }
+        if (x != y) return x.compareTo(y)
+    }
+    return 0
+}
+
+// Keeps only "## [version](...)" sections newer than sinceVersion, plus the top "# " title line.
+fun filterChangelogSince(fullText: String, sinceVersion: String): String {
+    val result = StringBuilder()
+    var includeCurrentSection = true
+    for (line in fullText.split("\n")) {
+        val trimmed = line.trim()
+        if (trimmed.startsWith("## ")) {
+            val version = if (trimmed.contains("[") && trimmed.contains("]")) {
+                trimmed.substringAfter("[").substringBefore("]")
+            } else {
+                trimmed.substring(3).trim()
+            }
+            includeCurrentSection = compareSemVer(version, sinceVersion) > 0
+        }
+        if (trimmed.startsWith("# ") || includeCurrentSection) {
+            result.append(line).append("\n")
+        }
+    }
+    return result.toString()
+}
+
 @Composable
 fun ChangelogModal(
     visible: Boolean,
-    onClose: () -> Unit
+    onClose: () -> Unit,
+    sinceVersion: String? = null
 ) {
     if (!visible) return
 
@@ -35,7 +70,8 @@ fun ChangelogModal(
     LaunchedEffect(visible) {
         if (visible) {
             changelogText = try {
-                context.assets.open("CHANGELOG.md").bufferedReader().use { it.readText() }
+                val fullText = context.assets.open("CHANGELOG.md").bufferedReader().use { it.readText() }
+                if (sinceVersion != null) filterChangelogSince(fullText, sinceVersion) else fullText
             } catch (e: Exception) {
                 "Failed to read changelog: ${e.message}"
             }
@@ -78,7 +114,7 @@ fun ChangelogModal(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         BasicText(
-                            text = "CHANGELOG",
+                            text = if (sinceVersion != null) "WHAT'S NEW" else "CHANGELOG",
                             style = DaexTheme.typography.h2.copy(
                                 color = DaexTheme.colors.primary,
                                 letterSpacing = 1.5.sp

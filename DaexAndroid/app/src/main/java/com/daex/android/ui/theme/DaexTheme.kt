@@ -9,6 +9,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -118,9 +119,19 @@ object DaexTheme {
                 Color(0xFF3B82F6) -> Color(0xFF1D4ED8) // Blue -> Dark Blue
                 Color(0xFFF59E0B) -> Color(0xFFD97706) // Amber -> Dark Amber
                 Color(0xFFFF003C) -> Color(0xFFD6002F) // Cyber Red -> Crimson Red
-                else -> color
+                else -> computeLightVariant(color)
             }
         }
+    }
+
+    // Fallback for custom-picked colors not in the hand-tuned table above: darken and
+    // slightly boost saturation so arbitrary hues stay legible against a light background.
+    private fun computeLightVariant(color: Color): Color {
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(color.toArgb(), hsv)
+        hsv[1] = (hsv[1] * 1.1f).coerceAtMost(1f)
+        hsv[2] = (hsv[2] * 0.75f).coerceAtLeast(0.35f)
+        return Color(android.graphics.Color.HSVToColor(hsv))
     }
 }
 

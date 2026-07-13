@@ -51,7 +51,8 @@ fun LandingScreen(
     onContinue: () -> Unit,
     daexPreferences: DaexPreferences,
     viewModel: DaexInferenceViewModel,
-    modelManager: ModelManager
+    modelManager: ModelManager,
+    isReplay: Boolean = false
 ) {
     val pagerState = rememberPagerState(pageCount = { 6 })
     val coroutineScope = rememberCoroutineScope()
@@ -63,31 +64,46 @@ fun LandingScreen(
             .background(DaexTheme.colors.background)
             .windowInsetsPadding(WindowInsets.safeDrawing)
     ) {
-        // Main Horizontal Pager (Locked swiping to control user onboarding steps)
-        HorizontalPager(
-            state = pagerState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            userScrollEnabled = false
-        ) { page ->
-            when (page) {
-                0 -> WelcomeSlide {
-                    coroutineScope.launch { pagerState.animateScrollToPage(1) }
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            // Main Horizontal Pager (Locked swiping to control user onboarding steps)
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = false
+            ) { page ->
+                when (page) {
+                    0 -> WelcomeSlide {
+                        coroutineScope.launch { pagerState.animateScrollToPage(1) }
+                    }
+                    1 -> PhilosophySlide {
+                        coroutineScope.launch { pagerState.animateScrollToPage(2) }
+                    }
+                    2 -> DiagnosticsSlide(deviceSpecs, isVisible = pagerState.currentPage == 2) {
+                        coroutineScope.launch { pagerState.animateScrollToPage(3) }
+                    }
+                    3 -> IcarusShowcaseSlide {
+                        coroutineScope.launch { pagerState.animateScrollToPage(4) }
+                    }
+                    4 -> EngineSelectorSlide(viewModel, modelManager, deviceSpecs) {
+                        coroutineScope.launch { pagerState.animateScrollToPage(5) }
+                    }
+                    5 -> TutorialSlide(viewModel, daexPreferences, onContinue)
                 }
-                1 -> PhilosophySlide {
-                    coroutineScope.launch { pagerState.animateScrollToPage(2) }
-                }
-                2 -> DiagnosticsSlide(deviceSpecs, isVisible = pagerState.currentPage == 2) {
-                    coroutineScope.launch { pagerState.animateScrollToPage(3) }
-                }
-                3 -> IcarusShowcaseSlide {
-                    coroutineScope.launch { pagerState.animateScrollToPage(4) }
-                }
-                4 -> EngineSelectorSlide(viewModel, modelManager, deviceSpecs) {
-                    coroutineScope.launch { pagerState.animateScrollToPage(5) }
-                }
-                5 -> TutorialSlide(viewModel, daexPreferences, onContinue)
+            }
+
+            if (isReplay) {
+                BasicText(
+                    text = "SKIP",
+                    style = DaexTheme.typography.mono.copy(
+                        color = Color.White.copy(alpha = 0.4f),
+                        fontSize = 11.sp,
+                        letterSpacing = 1.sp
+                    ),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .clickable { onContinue() }
+                        .padding(16.dp)
+                )
             }
         }
 
@@ -880,7 +896,8 @@ private fun TutorialSlide(
     val tutorialCards = listOf(
         Pair("CHAIN OF THOUGHT REASONING", "DAEX displays real-time execution thoughts. You can see the neural model processing concepts inside the <|think|> channel before outputting the response."),
         Pair("LOCAL RAG KNOWLEDGE BASES", "Vectorize local PDF or text files offline. The local Nomic embedder references context from your local document index during live conversation."),
-        Pair("SECURE SYSTEM CALLS", "Local models can secure execution triggers on your device. Launch applications or query disk specifications via secure sandbox tools.")
+        Pair("SECURE SYSTEM CALLS", "Local models can secure execution triggers on your device. Launch applications or query disk specifications via secure sandbox tools."),
+        Pair("LIVE VOICE MODE", "Speak naturally and Icarus responds with real-time synthesized voice via the on-device Kokoro engine. Live transcription and barge-in let you interrupt and redirect mid-response.")
     )
 
     LaunchedEffect(Unit) {
@@ -1252,6 +1269,73 @@ private fun TutorialVisualPreview(pageIndex: Int) {
                             )
                         }
                     }
+                }
+            }
+            3 -> {
+                // Mock Live Voice Mode UI
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DaexTheme.colors.success.copy(alpha = 0.05f))
+                            .border(0.5.dp, DaexTheme.colors.success.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(DaexTheme.colors.success)
+                            )
+                            BasicText(
+                                text = "LISTENING",
+                                style = DaexTheme.typography.mono.copy(
+                                    color = DaexTheme.colors.success,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+                        BasicText(
+                            text = "KOKORO TTS",
+                            style = DaexTheme.typography.mono.copy(color = Color.White.copy(alpha = 0.4f), fontSize = 8.sp)
+                        )
+                    }
+
+                    // Mock waveform bars
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(36.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color.White.copy(alpha = 0.02f))
+                            .padding(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        listOf(8, 16, 24, 14, 20, 10, 18, 12, 22, 9).forEach { barHeight ->
+                            Box(
+                                modifier = Modifier
+                                    .width(3.dp)
+                                    .height(barHeight.dp)
+                                    .clip(RoundedCornerShape(2.dp))
+                                    .background(DaexTheme.colors.primary.copy(alpha = 0.6f))
+                            )
+                        }
+                    }
+
+                    BasicText(
+                        text = "\"Interrupt me anytime — I'll stop and listen.\"",
+                        style = DaexTheme.typography.body2.copy(
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 10.sp,
+                            lineHeight = 14.sp
+                        )
+                    )
                 }
             }
         }

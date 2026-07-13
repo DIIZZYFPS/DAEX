@@ -37,6 +37,7 @@ class DaexPreferences(private val context: Context) {
         val TTS_VOICE_ID = intPreferencesKey("tts_voice_id")
         val ABOUT_DOC_VERSION = intPreferencesKey("about_doc_version")
         val MESSAGE_BACKFILL_DONE = booleanPreferencesKey("message_backfill_done")
+        val LAST_SEEN_VERSION = stringPreferencesKey("last_seen_version")
 
         // Bundled system document (assets/about_daex.md) used to ground cold-start suggested
         // prompts in real RAG retrieval instead of a blind, context-less model guess. Bump
@@ -172,6 +173,16 @@ class DaexPreferences(private val context: Context) {
     suspend fun setMessageBackfillDone() {
         context.dataStore.edit { preferences ->
             preferences[MESSAGE_BACKFILL_DONE] = true
+        }
+    }
+
+    val lastSeenVersionFlow: Flow<String?> = context.dataStore.data.map { preferences ->
+        preferences[LAST_SEEN_VERSION]
+    }
+
+    suspend fun setLastSeenVersion(version: String) {
+        context.dataStore.edit { preferences ->
+            preferences[LAST_SEEN_VERSION] = version
         }
     }
 

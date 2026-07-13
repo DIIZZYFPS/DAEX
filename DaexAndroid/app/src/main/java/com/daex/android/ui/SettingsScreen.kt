@@ -2,6 +2,10 @@ package com.daex.android.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,8 +23,10 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -42,7 +48,8 @@ fun SettingsScreen(
     viewModel: DaexInferenceViewModel,
     modelManager: ModelManager,
     onBack: () -> Unit,
-    onOpenGallery: () -> Unit
+    onOpenGallery: () -> Unit,
+    onReplayOnboarding: () -> Unit
 ) {
     val context = LocalContext.current
 
@@ -222,14 +229,23 @@ fun SettingsScreen(
                     }
 
                     item {
-                        SectionHeader("SYSTEM PROMPT OVERRIDE")
+                        SectionHeader("YOUR INSTRUCTIONS")
                         SettingsCard {
                             BasicText(
-                                text = "CUSTOM SYSTEM PROMPT",
+                                text = "ADD TO ICARUS'S PERSONALITY",
                                 style = DaexTheme.typography.mono.copy(
                                     color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
                                     fontSize = 10.sp,
                                     letterSpacing = 1.sp
+                                ),
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                            BasicText(
+                                text = "Icarus has a fixed core personality — instructions here are appended on top, not a replacement.",
+                                style = DaexTheme.typography.body2.copy(
+                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
                                 ),
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
@@ -254,7 +270,7 @@ fun SettingsScreen(
                                 )
                                 if (customSystemPrompt.isEmpty()) {
                                     BasicText(
-                                        text = "Add instructions on top of the default persona...",
+                                        text = "e.g. \"Always answer in bullet points\"",
                                         style = DaexTheme.typography.body2.copy(color = DaexTheme.colors.onSurface.copy(alpha = 0.3f))
                                     )
                                 }
@@ -630,6 +646,15 @@ fun SettingsScreen(
                                 Color(0xFFF59E0B), // Amber
                                 Color(0xFFFF003C)  // Cyber Red
                             )
+                            val isCustomActive = themeColors.none { it == primaryColor }
+                            var customPickerExpanded by remember { mutableStateOf(false) }
+                            val initialHsv = remember {
+                                FloatArray(3).also { android.graphics.Color.colorToHSV(primaryColor.toArgb(), it) }
+                            }
+                            var hue by remember { mutableStateOf(initialHsv[0]) }
+                            var saturation by remember { mutableStateOf(initialHsv[1]) }
+                            var brightness by remember { mutableStateOf(initialHsv[2]) }
+                            val pickedColor = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness)))
 
                             LazyRow(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -648,7 +673,14 @@ fun SettingsScreen(
                                                 color = if (isDark) Color.White else Color.Black,
                                                 shape = CircleShape
                                             )
-                                            .clickable { viewModel.setThemeColor(color) },
+                                            .clickable {
+                                                viewModel.setThemeColor(color)
+                                                val hsv = FloatArray(3)
+                                                android.graphics.Color.colorToHSV(color.toArgb(), hsv)
+                                                hue = hsv[0]
+                                                saturation = hsv[1]
+                                                brightness = hsv[2]
+                                            },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (isSelected) {
@@ -661,6 +693,136 @@ fun SettingsScreen(
                                             )
                                         }
                                     }
+                                }
+                                item {
+                                    val customDisplayColor = if (isCustomActive) DaexTheme.getAdjustedColor(primaryColor, isDark) else Color.Transparent
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(customDisplayColor)
+                                            .border(
+                                                width = if (isCustomActive) 3.dp else 1.dp,
+                                                color = if (isCustomActive) {
+                                                    if (isDark) Color.White else Color.Black
+                                                } else {
+                                                    DaexTheme.colors.onSurface.copy(alpha = 0.3f)
+                                                },
+                                                shape = CircleShape
+                                            )
+                                            .clickable { customPickerExpanded = !customPickerExpanded },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        BasicText(
+                                            text = if (isCustomActive) "✓" else "+",
+                                            style = DaexTheme.typography.body1.copy(
+                                                color = if (isCustomActive) {
+                                                    if (customDisplayColor == Color.White) Color.Black else Color.White
+                                                } else {
+                                                    DaexTheme.colors.onSurface.copy(alpha = 0.5f)
+                                                },
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+
+                            AnimatedVisibility(
+                                visible = customPickerExpanded,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
+                                Column(modifier = Modifier.padding(top = 16.dp)) {
+                                    BasicText(
+                                        text = "#%06X".format(0xFFFFFF and pickedColor.toArgb()),
+                                        style = DaexTheme.typography.mono.copy(
+                                            color = pickedColor,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 1.sp
+                                        ),
+                                        modifier = Modifier.padding(bottom = 12.dp)
+                                    )
+
+                                    fun applyPickedColor() {
+                                        viewModel.setThemeColor(
+                                            Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness)))
+                                        )
+                                    }
+
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            BasicText(
+                                                text = "HUE",
+                                                style = DaexTheme.typography.mono.copy(
+                                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.5f),
+                                                    fontSize = 11.sp
+                                                )
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(24.dp)
+                                                .padding(top = 6.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(
+                                                    Brush.horizontalGradient(
+                                                        listOf(
+                                                            Color.Red, Color.Yellow, Color.Green,
+                                                            Color.Cyan, Color.Blue, Color.Magenta, Color.Red
+                                                        )
+                                                    )
+                                                )
+                                        ) {
+                                            Slider(
+                                                value = hue,
+                                                onValueChange = {
+                                                    hue = it
+                                                    applyPickedColor()
+                                                },
+                                                valueRange = 0f..360f,
+                                                colors = SliderDefaults.colors(
+                                                    thumbColor = Color.White,
+                                                    activeTrackColor = Color.Transparent,
+                                                    inactiveTrackColor = Color.Transparent
+                                                ),
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    SliderParameter(
+                                        label = "Saturation",
+                                        value = saturation,
+                                        valueRange = 0f..1f,
+                                        valueFormatter = { "${(it * 100).toInt()}%" },
+                                        onValueChange = {
+                                            saturation = it
+                                            applyPickedColor()
+                                        },
+                                        primaryColor = pickedColor,
+                                        viewModel = viewModel
+                                    )
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    SliderParameter(
+                                        label = "Brightness",
+                                        value = brightness,
+                                        valueRange = 0f..1f,
+                                        valueFormatter = { "${(it * 100).toInt()}%" },
+                                        onValueChange = {
+                                            brightness = it
+                                            applyPickedColor()
+                                        },
+                                        primaryColor = pickedColor,
+                                        viewModel = viewModel
+                                    )
                                 }
                             }
 
@@ -852,6 +1014,12 @@ fun SettingsScreen(
                                 text = "Display changelog history",
                                 color = DaexTheme.colors.primary,
                                 onClick = { changelogVisible = true }
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            ActionButton(
+                                text = "Replay onboarding tour",
+                                color = DaexTheme.colors.primary,
+                                onClick = onReplayOnboarding
                             )
                         }
                     }
