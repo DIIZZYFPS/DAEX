@@ -33,8 +33,10 @@ class ModelDownloadService : Service() {
         private const val NOTIFICATION_ID = 4201
         private const val ACTION_DOWNLOAD_MODEL = "com.daex.android.action.DOWNLOAD_MODEL"
         private const val ACTION_DOWNLOAD_KOKORO = "com.daex.android.action.DOWNLOAD_KOKORO"
+        private const val ACTION_DOWNLOAD_EMBEDDING = "com.daex.android.action.DOWNLOAD_EMBEDDING"
         private const val ACTION_CANCEL_MODEL = "com.daex.android.action.CANCEL_MODEL_DOWNLOAD"
         private const val ACTION_CANCEL_KOKORO = "com.daex.android.action.CANCEL_KOKORO_DOWNLOAD"
+        private const val ACTION_CANCEL_EMBEDDING = "com.daex.android.action.CANCEL_EMBEDDING_DOWNLOAD"
         private const val EXTRA_MODEL_ID = "model_id"
         private const val EXTRA_REQUEST_ID = "request_id"
 
@@ -64,6 +66,21 @@ class ModelDownloadService : Service() {
             return requestId
         }
 
+        /**
+         * Downloads the embedding model on its own independent lane (see [ModelDownloadState]),
+         * so it can run concurrently with a mandatory chat-model download rather than waiting
+         * for that slot to free up. See [startModelDownload] for why callers must filter on the
+         * returned request id.
+         */
+        fun startEmbeddingDownload(context: Context): String {
+            val requestId = java.util.UUID.randomUUID().toString()
+            val intent = Intent(context, ModelDownloadService::class.java)
+                .setAction(ACTION_DOWNLOAD_EMBEDDING)
+                .putExtra(EXTRA_REQUEST_ID, requestId)
+            ContextCompat.startForegroundService(context, intent)
+            return requestId
+        }
+
         fun cancelModelDownload(context: Context) {
             context.startService(Intent(context, ModelDownloadService::class.java).setAction(ACTION_CANCEL_MODEL))
         }
@@ -71,14 +88,20 @@ class ModelDownloadService : Service() {
         fun cancelKokoroDownload(context: Context) {
             context.startService(Intent(context, ModelDownloadService::class.java).setAction(ACTION_CANCEL_KOKORO))
         }
+
+        fun cancelEmbeddingDownload(context: Context) {
+            context.startService(Intent(context, ModelDownloadService::class.java).setAction(ACTION_CANCEL_EMBEDDING))
+        }
     }
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val modelManager by lazy { ModelManager(applicationContext) }
     @Volatile private var generativeJob: Job? = null
     @Volatile private var kokoroJob: Job? = null
+    @Volatile private var embeddingJob: Job? = null
     private var lastNotifiedGenerativePercent = -1
     private var lastNotifiedKokoroPercent = -1
+    private var lastNotifiedEmbeddingPercent = -1
 
     override fun onCreate() {
         super.onCreate()
@@ -107,8 +130,12 @@ class ModelDownloadService : Service() {
             ACTION_DOWNLOAD_KOKORO -> {
                 if (requestId != null) startKokoroDownloadInternal(requestId) else maybeStop()
             }
+            ACTION_DOWNLOAD_EMBEDDING -> {
+                if (requestId != null) startEmbeddingDownloadInternal(requestId) else maybeStop()
+            }
             ACTION_CANCEL_MODEL -> modelManager.cancelDownload()
             ACTION_CANCEL_KOKORO -> modelManager.cancelKokoroDownload()
+            ACTION_CANCEL_EMBEDDING -> modelManager.cancelEmbeddingDownload()
         }
         return START_NOT_STICKY
     }
@@ -173,6 +200,41 @@ class ModelDownloadService : Service() {
         }
     }
 
+    private fun startEmbeddingDownloadInternal(requestId: String) {
+        synchronized(this) {
+            if (embeddingJob?.isActive == true) {
+                ModelDownloadState.updateEmbedding(
+                    GenerativeDownloadStatus(requestId, ModelBank.embeddingModel.id, DownloadPhase.ERROR, error = "An embedding model download is already in progress.")
+                )
+                return
+            }
+            // Don't steal the shared foreground notification from a more user-relevant download
+            // already in progress (the chat model itself, or Kokoro) - just ride along on it.
+            if (generativeJob?.isActive != true && kokoroJob?.isActive != true) {
+                ensureForeground(ModelBank.embeddingModel.name)
+            }
+            lastNotifiedEmbeddingPercent = -1
+            embeddingJob = serviceScope.launch {
+                ModelDownloadState.updateEmbedding(GenerativeDownloadStatus(requestId, ModelBank.embeddingModel.id, DownloadPhase.DOWNLOADING, 0))
+                try {
+                    modelManager.downloadEmbeddingModel(ModelBank.embeddingModel) { progress ->
+                        ModelDownloadState.updateEmbedding(
+                            GenerativeDownloadStatus(requestId, ModelBank.embeddingModel.id, DownloadPhase.DOWNLOADING, progress.percent)
+                        )
+                        maybeUpdateEmbeddingNotification(progress.percent)
+                    }
+                    ModelDownloadState.updateEmbedding(GenerativeDownloadStatus(requestId, ModelBank.embeddingModel.id, DownloadPhase.COMPLETED, 100))
+                } catch (e: Exception) {
+                    val phase = if (e.message == "Download cancelled") DownloadPhase.CANCELLED else DownloadPhase.ERROR
+                    ModelDownloadState.updateEmbedding(GenerativeDownloadStatus(requestId, ModelBank.embeddingModel.id, phase, error = e.message))
+                } finally {
+                    embeddingJob = null
+                    maybeStop()
+                }
+            }
+        }
+    }
+
     private fun ensureForeground(label: String) {
         startForeground(NOTIFICATION_ID, buildNotification(label, 0))
     }
@@ -181,7 +243,8 @@ class ModelDownloadService : Service() {
     private fun maybeStop() {
         val generativeActive = generativeJob?.isActive == true
         val kokoroActive = kokoroJob?.isActive == true
-        if (!generativeActive && !kokoroActive) {
+        val embeddingActive = embeddingJob?.isActive == true
+        if (!generativeActive && !kokoroActive && !embeddingActive) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
         }
@@ -197,6 +260,16 @@ class ModelDownloadService : Service() {
         }
         val manager = getSystemService(NotificationManager::class.java) ?: return
         manager.notify(NOTIFICATION_ID, buildNotification(label, percent))
+    }
+
+    private fun maybeUpdateEmbeddingNotification(percent: Int) {
+        if (percent == lastNotifiedEmbeddingPercent) return
+        lastNotifiedEmbeddingPercent = percent
+        // Only worth surfacing in the shared notification if nothing more user-relevant
+        // (the chat model itself, or Kokoro) is also downloading right now.
+        if (generativeJob?.isActive == true || kokoroJob?.isActive == true) return
+        val manager = getSystemService(NotificationManager::class.java) ?: return
+        manager.notify(NOTIFICATION_ID, buildNotification(ModelBank.embeddingModel.name, percent))
     }
 
     private fun buildNotification(label: String, percent: Int): Notification {

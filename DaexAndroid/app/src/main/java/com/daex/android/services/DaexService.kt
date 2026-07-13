@@ -48,6 +48,7 @@ interface DaexService {
         topP: Float = 0.9f,
         customSystemPrompt: String = "",
         isToolCallingEnabled: Boolean = false,
+        disabledToolIds: Set<String> = emptySet(),
         onRequestPermission: (suspend (String, String) -> Boolean)? = null,
         onStatusUpdate: ((String?) -> Unit)? = null,
         maxTokens: Int = 1024,
@@ -64,7 +65,7 @@ data class GenerationResult(
     val tokensPerSecond: Double
 )
 
-class DaexServiceImpl(private val context: Context) : DaexService {
+class DaexServiceImpl(private val context: Context, private val daexMemory: DaexMemory? = null) : DaexService {
     private var engine: Engine? = null
     private var conversation: Conversation? = null
     private var isLoaded = false
@@ -80,6 +81,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         val isLiveVoiceActive: Boolean,
         val isReasoningEnabled: Boolean,
         val isToolCallingEnabled: Boolean,
+        val disabledToolIds: Set<String>,
         val temperature: Float,
         val topK: Int,
         val topP: Float
@@ -216,6 +218,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         topP: Float,
         customSystemPrompt: String,
         isToolCallingEnabled: Boolean,
+        disabledToolIds: Set<String>,
         onRequestPermission: (suspend (String, String) -> Boolean)?,
         onStatusUpdate: ((String?) -> Unit)?,
         maxTokens: Int,
@@ -226,7 +229,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         return try {
             generateResponseAttempt(
                 messages, systemContext, isReasoningEnabled, temperature, topK, topP,
-                customSystemPrompt, isToolCallingEnabled, onRequestPermission, onStatusUpdate,
+                customSystemPrompt, isToolCallingEnabled, disabledToolIds, onRequestPermission, onStatusUpdate,
                 maxTokens, isLiveVoiceActive, conversationId, allowReuse = true, onToken
             )
         } catch (e: ReuseFailedException) {
@@ -236,7 +239,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
             Log.w(TAG, "Reused conversation failed before producing any tokens, retrying with a fresh one", e.cause)
             generateResponseAttempt(
                 messages, systemContext, isReasoningEnabled, temperature, topK, topP,
-                customSystemPrompt, isToolCallingEnabled, onRequestPermission, onStatusUpdate,
+                customSystemPrompt, isToolCallingEnabled, disabledToolIds, onRequestPermission, onStatusUpdate,
                 maxTokens, isLiveVoiceActive, conversationId, allowReuse = false, onToken
             )
         }
@@ -251,6 +254,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
         topP: Float,
         customSystemPrompt: String,
         isToolCallingEnabled: Boolean,
+        disabledToolIds: Set<String>,
         onRequestPermission: (suspend (String, String) -> Boolean)?,
         onStatusUpdate: ((String?) -> Unit)?,
         maxTokens: Int,
@@ -270,6 +274,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 isLiveVoiceActive = isLiveVoiceActive,
                 isReasoningEnabled = isReasoningEnabled,
                 isToolCallingEnabled = isToolCallingEnabled,
+                disabledToolIds = disabledToolIds,
                 temperature = temperature,
                 topK = topK,
                 topP = topP
@@ -295,7 +300,7 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 // always-on layer with custom instructions appended additively below, kept to
                 // short, non-redundant sentences since this is rebuilt every text-chat turn and
                 // shares a single 4096-token budget with RAG context, history, and the response.
-                append("You are Icarus, DAEX's on-device assistant. Respond with precision and directness; skip generic AI-assistant disclaimers, but refer to yourself as Icarus naturally when it fits. Avoid unprompted meta-commentary about your on-device setup unless asked.\n")
+                append("Your name is Icarus. You are DAEX's on-device assistant. Respond with precision and directness; avoid all meta-commentary unless asked.\n")
                 if (!isLiveVoiceActive) {
                     append("Chat history turns are prefixed with relative timestamps like '[5m ago]'. Do not add timestamp prefixes to your own response.\n\n")
                 } else {
@@ -303,7 +308,10 @@ class DaexServiceImpl(private val context: Context) : DaexService {
                 }
 
                 if (isToolCallingEnabled) {
-                    append("You can use tools for: ${DeviceTools.TOOL_CAPABILITY_SUMMARY}.\n\n")
+                    val summary = ToolRegistry.capabilitySummary(disabledToolIds)
+                    if (summary.isNotBlank()) {
+                        append("You can use tools for: $summary.\n\n")
+                    }
                 }
 
                 if (customSystemPrompt.isNotBlank()) {
@@ -392,7 +400,17 @@ class DaexServiceImpl(private val context: Context) : DaexService {
             )
 
             val tools = if (isToolCallingEnabled) {
-                listOf(tool(DeviceTools(context, onRequestPermission, onStatusUpdate)))
+                buildList {
+                    if ("deviceTime" !in disabledToolIds) add(tool(DeviceTimeTool(onStatusUpdate)))
+                    if ("batteryStatus" !in disabledToolIds) add(tool(BatteryStatusTool(context, onStatusUpdate)))
+                    if ("storageStatus" !in disabledToolIds) add(tool(StorageStatusTool(context, onStatusUpdate)))
+                    if ("deviceInfo" !in disabledToolIds) add(tool(DeviceInfoTool(onStatusUpdate)))
+                    if ("skills" !in disabledToolIds) add(tool(SkillTools(context, onStatusUpdate)))
+                    if ("launchApp" !in disabledToolIds) add(tool(LaunchAppTool(context, onRequestPermission, onStatusUpdate)))
+                    if ("sendEmail" !in disabledToolIds) add(tool(SendEmailTool(context, onStatusUpdate)))
+                    if ("runIntent" !in disabledToolIds) add(tool(RunIntentTool(onStatusUpdate)))
+                    if ("recallMemory" !in disabledToolIds && daexMemory != null) add(tool(RecallMemoryTool(daexMemory, onStatusUpdate)))
+                }
             } else {
                 emptyList()
             }

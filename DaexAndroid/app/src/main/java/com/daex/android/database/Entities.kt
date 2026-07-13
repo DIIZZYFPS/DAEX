@@ -41,6 +41,10 @@ data class DocumentChunkEntity(
     var chunkIndex: Int = 0,
     var content: String = "",
     var createdAt: Long = System.currentTimeMillis(),
+    // Bundled reference documents (e.g. the about-DAEX doc used for cold-start prompts) are
+    // ingested through the same pipeline as user uploads but marked isSystem so they never show
+    // up in the user-facing document list or "REMOVE" button.
+    var isSystem: Boolean = false,
 
     @HnswIndex(dimensions = 512)
     var embedding: FloatArray? = null

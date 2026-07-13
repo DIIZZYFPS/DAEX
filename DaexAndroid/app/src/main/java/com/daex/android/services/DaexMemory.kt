@@ -1,7 +1,9 @@
 package com.daex.android.services
 
+import android.content.Context
 import com.daex.android.database.ConversationEntity
 import com.daex.android.database.ConversationEntity_
+import com.daex.android.database.DaexMessageFtsHelper
 import com.daex.android.database.MessageEntity
 import com.daex.android.database.MessageEntity_
 import io.objectbox.BoxStore
@@ -23,11 +25,30 @@ data class Conversation(
     val attachedFileNames: List<String> = emptyList()
 )
 
+/** A message-level search hit, carrying which conversation it belongs to for navigation. */
+data class MessageSearchResult(
+    val conversationId: String,
+    val message: Message
+)
+
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
-class DaexMemory(private val boxStore: BoxStore) {
+class DaexMemory(
+    private val boxStore: BoxStore,
+    private val embedder: DaexEmbedder? = null,
+    context: Context? = null
+) {
     private val conversationBox = boxStore.boxFor(ConversationEntity::class.java)
     private val messageBox = boxStore.boxFor(MessageEntity::class.java)
     private val saveMutex = Mutex()
+    private val messageFtsHelper = context?.let { DaexMessageFtsHelper(it) }
+
+    // Only user/model messages with real content are worth searching - system logs, tool
+    // status noise, and empty streaming placeholders would just pollute results.
+    private fun isSearchable(message: Message): Boolean =
+        (message.role == "user" || message.role == "model") &&
+            message.content.isNotBlank() &&
+            !message.content.startsWith("[SYSTEM_LOG]") &&
+            !message.content.startsWith("[CONTEXT COMPACTION]")
 
     suspend fun getAllConversationsList(): List<Conversation> = withContext(Dispatchers.IO) {
         android.util.Log.d("DaexMemory", "getAllConversationsList called")
@@ -113,6 +134,149 @@ class DaexMemory(private val boxStore: BoxStore) {
                 }
             }
             messageBox.put(entity)
+        }
+    }
+
+    /**
+     * Like [saveMessage], but also computes and stores an embedding for cross-conversation
+     * search (see [searchMessages]) - intended for the *final*, stable save of a message (the
+     * user's own message, or a model reply once generation is complete), not intermediate
+     * streaming updates or system-log noise, since embedding is comparatively expensive and
+     * would otherwise get recomputed on every partial save.
+     */
+    suspend fun saveMessageWithEmbedding(conversationId: String, message: Message) {
+        val searchable = isSearchable(message)
+        val vector = if (embedder != null && searchable) {
+            try {
+                embedder.generateEmbedding(message.content, isQuery = false)
+            } catch (e: Exception) {
+                android.util.Log.w("DaexMemory", "Failed to embed message ${message.id}, saving without it", e)
+                null
+            }
+        } else null
+        saveMessage(conversationId, message, vector)
+        if (searchable) {
+            messageFtsHelper?.indexMessage(conversationId, message.id, message.content)
+        }
+    }
+
+    /**
+     * Hybrid vector+BM25 search across every conversation's messages (RRF fusion, same approach
+     * as DaexRagImpl.queryDocuments for RAG chunks). Purely user-initiated (Sidebar search box,
+     * or the agentic recall tool) - never called automatically per-turn, so nothing from this
+     * ever gets silently injected into a conversation's context.
+     */
+    suspend fun searchMessages(query: String, maxResults: Int = 8): List<MessageSearchResult> = withContext(Dispatchers.IO) {
+        if (query.isBlank()) return@withContext emptyList()
+        try {
+            val vectorResults: List<MessageEntity> = if (embedder != null && messageBox.count() > 0) {
+                try {
+                    val queryVector = embedder.generateEmbedding(query, isQuery = true)
+                    messageBox
+                        .query(MessageEntity_.embedding.nearestNeighbors(queryVector, (maxResults * 10).coerceAtLeast(50)))
+                        .build()
+                        .findWithScores()
+                        .map { it.get() }
+                } catch (e: Exception) {
+                    android.util.Log.w("DaexMemory", "Vector search failed, falling back to keyword-only", e)
+                    emptyList()
+                }
+            } else emptyList()
+
+            val ftsResults = messageFtsHelper?.searchMessages(query, 50) ?: emptyList()
+
+            // Reciprocal Rank Fusion, same formula/weights as DaexRagImpl.queryDocuments.
+            val rrfScores = mutableMapOf<String, Double>()
+            val byMessageId = mutableMapOf<String, MessageEntity>()
+
+            vectorResults.forEachIndexed { index, entity ->
+                val key = entity.uuid
+                rrfScores[key] = (rrfScores[key] ?: 0.0) + 1.0 / (60.0 + index + 1)
+                byMessageId.putIfAbsent(key, entity)
+            }
+
+            if (ftsResults.isNotEmpty()) {
+                var idCond: io.objectbox.query.QueryCondition<MessageEntity>? = null
+                for (match in ftsResults) {
+                    val cond = MessageEntity_.uuid.equal(match.messageId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+                    idCond = if (idCond == null) cond else idCond.or(cond)
+                }
+                val ftsEntities = if (idCond != null) {
+                    messageBox.query(idCond).build().find().associateBy { it.uuid }
+                } else emptyMap()
+
+                ftsResults.forEachIndexed { index, match ->
+                    val entity = ftsEntities[match.messageId] ?: return@forEachIndexed
+                    val key = entity.uuid
+                    rrfScores[key] = (rrfScores[key] ?: 0.0) + 2.0 / (60.0 + index + 1)
+                    byMessageId.putIfAbsent(key, entity)
+                }
+            }
+
+            rrfScores.entries
+                .sortedByDescending { it.value }
+                .take(maxResults)
+                .mapNotNull { (key, _) ->
+                    byMessageId[key]?.let { entity ->
+                        MessageSearchResult(conversationId = entity.conversationId, message = entity.toDomain())
+                    }
+                }
+        } catch (e: Exception) {
+            android.util.Log.e("DaexMemory", "searchMessages failed", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * One-time background backfill for messages saved before cross-conversation search shipped
+     * (no embedding/FTS entry yet). Safe to call repeatedly - already-embedded messages are
+     * skipped by the isNull() filter, so re-running it is a cheap no-op.
+     */
+    suspend fun backfillMissingEmbeddings() = withContext(Dispatchers.IO) {
+        if (embedder == null) return@withContext
+        try {
+            val candidates = messageBox.query {
+                isNull(MessageEntity_.embedding)
+            }.find().filter { isSearchable(it.toDomain()) }
+
+            android.util.Log.d("DaexMemory", "Backfilling embeddings for ${candidates.size} existing messages")
+            for (entity in candidates) {
+                try {
+                    val vector = embedder.generateEmbedding(entity.content, isQuery = false)
+                    entity.embedding = vector
+                    messageBox.put(entity)
+                    messageFtsHelper?.indexMessage(entity.conversationId, entity.uuid, entity.content)
+                } catch (e: Exception) {
+                    android.util.Log.w("DaexMemory", "Failed to backfill embedding for message ${entity.uuid}", e)
+                }
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("DaexMemory", "Embedding backfill failed", e)
+        }
+    }
+
+    /** All pinned messages across every conversation, newest first - backs the saved-prompt library. */
+    suspend fun getPinnedMessages(): List<Message> = withContext(Dispatchers.IO) {
+        try {
+            messageBox.query {
+                equal(MessageEntity_.isPinned, true)
+                orderDesc(MessageEntity_.timestamp)
+            }.find().map { it.toDomain() }
+        } catch (e: Exception) {
+            android.util.Log.e("DaexMemory", "Failed to get pinned messages", e)
+            emptyList()
+        }
+    }
+
+    suspend fun setPinned(messageId: String, isPinned: Boolean) = withContext(Dispatchers.IO) {
+        saveMutex.withLock {
+            val entity = messageBox.query {
+                equal(MessageEntity_.uuid, messageId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+            }.findFirst()
+            if (entity != null) {
+                entity.isPinned = isPinned
+                messageBox.put(entity)
+            }
         }
     }
 

@@ -83,6 +83,9 @@ class DaexInferenceViewModel(
     private val _uploadedFiles = MutableStateFlow<List<String>>(emptyList())
     val uploadedFiles: StateFlow<List<String>> = _uploadedFiles.asStateFlow()
 
+    private val _pinnedMessages = MutableStateFlow<List<Message>>(emptyList())
+    val pinnedMessages: StateFlow<List<Message>> = _pinnedMessages.asStateFlow()
+
     private val _attachedFiles = MutableStateFlow<List<String>>(emptyList())
     val attachedFiles: StateFlow<List<String>> = _attachedFiles.asStateFlow()
 
@@ -116,6 +119,13 @@ class DaexInferenceViewModel(
     private val _conversations = MutableStateFlow<List<Conversation>>(emptyList())
     val conversations: StateFlow<List<Conversation>> = _conversations.asStateFlow()
 
+    // Sidebar cross-conversation search - null means "no search active, show the full list";
+    // an empty list means "searched, nothing matched". Purely user-initiated (see searchConversations).
+    private val _conversationSearchResults = MutableStateFlow<List<Conversation>?>(null)
+    val conversationSearchResults: StateFlow<List<Conversation>?> = _conversationSearchResults.asStateFlow()
+
+    private var searchJob: Job? = null
+
     // Theme Settings
     private val _primaryColor = MutableStateFlow(Color(0xFF00FFFF)) // Default Cyan
     val primaryColor: StateFlow<Color> = _primaryColor.asStateFlow()
@@ -144,6 +154,11 @@ class DaexInferenceViewModel(
 
     private val _isToolCallingEnabled = MutableStateFlow(false)
     val isToolCallingEnabled: StateFlow<Boolean> = _isToolCallingEnabled.asStateFlow()
+
+    private val _disabledToolIds = MutableStateFlow<Set<String>>(
+        ToolRegistry.ALL.filter { !it.defaultEnabled }.map { it.id }.toSet()
+    )
+    val disabledToolIds: StateFlow<Set<String>> = _disabledToolIds.asStateFlow()
 
     private val _maxTokens = MutableStateFlow(1024)
     val maxTokens: StateFlow<Int> = _maxTokens.asStateFlow()
@@ -384,6 +399,12 @@ class DaexInferenceViewModel(
         }
 
         viewModelScope.launch {
+            preferences?.disabledToolIdsFlow?.collectLatest { ids ->
+                _disabledToolIds.value = ids
+            }
+        }
+
+        viewModelScope.launch {
             preferences?.maxTokensFlow?.collectLatest { maxTokens ->
                 _maxTokens.value = maxTokens
             }
@@ -487,30 +508,14 @@ class DaexInferenceViewModel(
                 _downloadingModelId.value = existing.modelId
                 _modelStatus.value = ModelStatus.DOWNLOADING
                 _downloadProgress.value = existing.percent
-                if (existing.modelId == ModelBank.embeddingModel.id) {
-                    _embeddingDownloadProgress.value = existing.percent
-                }
                 viewModelScope.launch {
                     val status = awaitGenerativeDownload(existing.requestId) { percent ->
                         _downloadProgress.value = percent
-                        if (existing.modelId == ModelBank.embeddingModel.id) {
-                            _embeddingDownloadProgress.value = percent
-                        }
                     }
                     _downloadingModelId.value = null
-                    if (existing.modelId == ModelBank.embeddingModel.id) {
-                        _embeddingDownloadProgress.value = null
-                    }
                     if (status.phase == DownloadPhase.COMPLETED) {
                         _modelStatus.value = ModelStatus.NOT_DOWNLOADED
                         refreshDownloadedModels()
-                        if (status.modelId == ModelBank.embeddingModel.id) {
-                            try {
-                                daexRag?.initRag()
-                            } catch (e: Exception) {
-                                // Handle potential load failures
-                            }
-                        }
                     } else {
                         _modelStatus.value = ModelStatus.ERROR
                         _errorMessage.value = status.error ?: "Download failed"
@@ -539,34 +544,78 @@ class DaexInferenceViewModel(
             }
         }
 
-        // Silent Background Initialization of the Embedding Model
-        viewModelScope.launch {
-            if (modelManager != null && daexRag != null && context != null) {
-                val embedModel = ModelBank.embeddingModel
-                val isDownloaded = modelManager.isModelDownloaded(embedModel)
-                // Skip if a generative download is already running - either it's this same
-                // embedding model (the reconnect block above already handles it), or it's a
-                // different model occupying the single generative-download slot, in which case
-                // this falls back to trying again next launch, same as ModelManager's pre-existing
-                // single-slot behavior for concurrent generative downloads.
-                if (!isDownloaded && ModelDownloadState.generative.value?.phase != DownloadPhase.DOWNLOADING) {
-                    val requestId = ModelDownloadService.startModelDownload(context, embedModel.id)
-                    val status = awaitGenerativeDownload(requestId) { percent ->
+        // Reconnect to an in-progress embedding-model download the same way - see comment above.
+        run {
+            val existing = ModelDownloadState.embedding.value
+            if (existing != null && existing.phase == DownloadPhase.DOWNLOADING) {
+                _embeddingDownloadProgress.value = existing.percent
+                viewModelScope.launch {
+                    val status = awaitEmbeddingDownload(existing.requestId) { percent ->
                         _embeddingDownloadProgress.value = percent
                     }
                     _embeddingDownloadProgress.value = null
-                    if (status.phase == DownloadPhase.COMPLETED) {
+                    if (status.phase == DownloadPhase.COMPLETED && daexRag != null) {
+                        refreshDownloadedModels()
                         try {
-                            daexRag.initRag() // Initialize after download finishes
+                            daexRag.initRag()
+                            ingestAboutDocIfNeeded(daexRag)
+                            seedColdStartPromptsIfNeeded()
                         } catch (e: Exception) {
                             // Handle potential load failures
                         }
                     }
-                } else if (isDownloaded) {
+                }
+            }
+        }
+
+        // Silent Background Initialization of the Embedding Model. Runs on its own independent
+        // download lane (ModelDownloadState.embedding / ModelManager.downloadEmbeddingModel),
+        // separate from the chat-model generative lane, so it downloads concurrently with a
+        // mandatory first-run chat model download instead of waiting for that slot to free up -
+        // that wait would otherwise defer it past the exact moment cold-start grounding (see
+        // ingestAboutDocIfNeeded) needs it: the user's very first interaction.
+        viewModelScope.launch {
+            if (modelManager != null && daexRag != null && context != null) {
+                val embedModel = ModelBank.embeddingModel
+                val isDownloaded = modelManager.isModelDownloaded(embedModel)
+
+                if (isDownloaded) {
                     try {
-                        daexRag.initRag() // Initialize immediately if already downloaded
+                        daexRag.initRag()
+                        ingestAboutDocIfNeeded(daexRag)
+                        seedColdStartPromptsIfNeeded()
                     } catch (e: Exception) {
                         // Handle potential load failures
+                    }
+                } else if (ModelDownloadState.embedding.value?.phase != DownloadPhase.DOWNLOADING) {
+                    val requestId = ModelDownloadService.startEmbeddingDownload(context)
+                    val status = awaitEmbeddingDownload(requestId) { percent ->
+                        _embeddingDownloadProgress.value = percent
+                    }
+                    _embeddingDownloadProgress.value = null
+                    if (status.phase == DownloadPhase.COMPLETED) {
+                        refreshDownloadedModels()
+                        try {
+                            daexRag.initRag()
+                            ingestAboutDocIfNeeded(daexRag)
+                            // Ingestion just completed - if the user is still looking at a
+                            // brand-new, empty conversation, refresh the seeded suggestions so
+                            // grounding is available by the time they act on one.
+                            seedColdStartPromptsIfNeeded()
+                        } catch (e: Exception) {
+                            // Handle potential load failures
+                        }
+                    }
+                }
+
+                // One-time backfill: embed/index messages saved before cross-conversation search
+                // shipped, so old conversations become searchable too, not just new ones.
+                if (daexMemory != null && preferences?.messageBackfillDoneFlow?.first() == false) {
+                    try {
+                        daexMemory.backfillMissingEmbeddings()
+                        preferences.setMessageBackfillDone()
+                    } catch (e: Exception) {
+                        android.util.Log.e("DaexInference", "Message embedding backfill failed", e)
                     }
                 }
             }
@@ -630,6 +679,20 @@ class DaexInferenceViewModel(
         terminal
     }
 
+    private suspend fun awaitEmbeddingDownload(requestId: String, onProgress: (Int) -> Unit): GenerativeDownloadStatus = coroutineScope {
+        val mirrorJob = launch {
+            ModelDownloadState.embedding.collect { status ->
+                if (status?.requestId == requestId && status.phase == DownloadPhase.DOWNLOADING) {
+                    onProgress(status.percent)
+                }
+            }
+        }
+        val terminal = ModelDownloadState.embedding
+            .first { it?.requestId == requestId && it.phase != DownloadPhase.DOWNLOADING }!!
+        mirrorJob.cancel()
+        terminal
+    }
+
     fun refreshDownloadedModels() {
         viewModelScope.launch {
             if (modelManager == null) return@launch
@@ -645,6 +708,26 @@ class DaexInferenceViewModel(
     fun refreshConversations() {
         viewModelScope.launch {
             _conversations.value = daexMemory?.getAllConversationsList() ?: emptyList()
+        }
+    }
+
+    /**
+     * Debounced Sidebar search across every conversation's messages (hybrid vector+BM25 -
+     * see DaexMemory.searchMessages). Blank query clears back to the normal full list.
+     */
+    fun searchConversations(query: String) {
+        searchJob?.cancel()
+        if (query.isBlank()) {
+            _conversationSearchResults.value = null
+            return
+        }
+        searchJob = viewModelScope.launch {
+            delay(250)
+            val hits = daexMemory?.searchMessages(query) ?: emptyList()
+            val byId = _conversations.value.associateBy { it.id }
+            _conversationSearchResults.value = hits
+                .mapNotNull { byId[it.conversationId] }
+                .distinct()
         }
     }
 
@@ -1007,6 +1090,14 @@ class DaexInferenceViewModel(
         }
     }
 
+    fun setToolEnabled(toolId: String, enabled: Boolean) {
+        val updated = if (enabled) _disabledToolIds.value - toolId else _disabledToolIds.value + toolId
+        _disabledToolIds.value = updated
+        viewModelScope.launch {
+            preferences?.setDisabledToolIds(updated)
+        }
+    }
+
     fun setMaxTokens(maxTokens: Int) {
         _maxTokens.value = maxTokens
         viewModelScope.launch {
@@ -1278,7 +1369,14 @@ class DaexInferenceViewModel(
                     "Plan a 3-day trip to Lisbon"
                 )
                 if (currentSuggestions == defaultList) {
-                    generateSuggestedPrompts()
+                    if (_conversations.value.isNotEmpty()) {
+                        generateSuggestedPrompts()
+                    } else {
+                        // No history anywhere yet - a blind generateSuggestedPrompts() call here
+                        // just produces mediocre generic output; seed from the fixed cold-start
+                        // pool instead (see seedColdStartPromptsIfNeeded).
+                        seedColdStartPromptsIfNeeded()
+                    }
                 }
             } catch (e: Exception) {
                 _modelStatus.value = ModelStatus.ERROR
@@ -1424,7 +1522,7 @@ class DaexInferenceViewModel(
                 updated[lastModelIdx] = modelMsg
                 _messages.value = updated
                 
-                daexMemory?.saveMessage(convId, userMsg)
+                daexMemory?.saveMessageWithEmbedding(convId, userMsg)
                 daexMemory?.saveMessage(convId, modelMsg)
             } else {
                 // Create new message turn
@@ -1436,7 +1534,7 @@ class DaexInferenceViewModel(
                 
                 _messages.value = _messages.value + listOf(userMsg, modelMsg)
                 
-                daexMemory?.saveMessage(convId, userMsg)
+                daexMemory?.saveMessageWithEmbedding(convId, userMsg)
                 daexMemory?.saveMessage(convId, modelMsg)
             }
             
@@ -1509,6 +1607,28 @@ class DaexInferenceViewModel(
                         }
                     }
 
+                    // --- COLD-START ABOUT-DAEX GROUNDING ---
+                    // First-ever turn, matching one of the bundled cold-start starter questions
+                    // (see seedColdStartPromptsIfNeeded): pull RAG context from the bundled
+                    // about-DAEX system document explicitly, since it's hidden from the
+                    // user-facing document list and so never appears in _attachedFiles / the
+                    // gate above.
+                    if (daexRag != null && fullHistory.size <= 1 && prompt.trim() in DaexPreferences.COLD_START_QUESTIONS) {
+                        try {
+                            val aboutChunks = daexRag.queryDocuments(
+                                query = prompt,
+                                activeFileNames = listOf(DaexPreferences.ABOUT_DAEX_FILENAME)
+                            )
+                            if (aboutChunks.isNotEmpty()) {
+                                val contextBlock = aboutChunks.joinToString("\n---\n")
+                                systemContext += "\n\n<about_daex>\n$contextBlock\n</about_daex>\n"
+                                systemContext += "Use the above excerpts to answer the user's question about your own capabilities accurately.\n"
+                            }
+                        } catch (e: Exception) {
+                            android.util.Log.e("DaexInference", "About-DAEX RAG query failed, continuing without it", e)
+                        }
+                    }
+
                     // --- MODULAR SKILLS INFO INJECTION ---
                     if (daexSkillManager != null) {
                         systemContext += "\n\nYou have domain-specific \"skills\" (additional instructions/parameters) available. If you need a special skill or want to see what is available, call the listSkills() tool. If you find a matching skill, call the loadSkill(skillName) tool to retrieve its instructions.\n"
@@ -1522,6 +1642,7 @@ class DaexInferenceViewModel(
                         topP = _inferenceTopP.value,
                         customSystemPrompt = _customSystemPrompt.value,
                         isToolCallingEnabled = _isToolCallingEnabled.value,
+                        disabledToolIds = _disabledToolIds.value,
                         onRequestPermission = { toolName, description ->
                             requestPermission(toolName, description)
                         },
@@ -1580,7 +1701,7 @@ class DaexInferenceViewModel(
                     val finalMsg = updatedList.find { it.id == modelMsgId }
                     if (finalMsg != null) {
                         val finalModelMsg = finalMsg.copy(tokensPerSecond = result.tokensPerSecond)
-                        daexMemory?.saveMessage(convId, finalModelMsg)
+                        daexMemory?.saveMessageWithEmbedding(convId, finalModelMsg)
                     }
 
                     // --- DEBUNCED GLOBAL MEMORY CURATION TRIGGER ---
@@ -1698,7 +1819,7 @@ class DaexInferenceViewModel(
             
             _messages.value = _messages.value + listOf(userMsg, modelMsg)
             
-            daexMemory?.saveMessage(convId, userMsg)
+            daexMemory?.saveMessageWithEmbedding(convId, userMsg)
             daexMemory?.saveMessage(convId, modelMsg)
             
             _isGenerating.value = true
@@ -1752,6 +1873,7 @@ class DaexInferenceViewModel(
                         topP = _inferenceTopP.value,
                         customSystemPrompt = _customSystemPrompt.value,
                         isToolCallingEnabled = _isToolCallingEnabled.value,
+                        disabledToolIds = _disabledToolIds.value,
                         onRequestPermission = { toolName, description ->
                             requestPermission(toolName, description)
                         },
@@ -1821,7 +1943,7 @@ class DaexInferenceViewModel(
                     val finalMsg = updatedList.find { it.id == modelMsgId }
                     if (finalMsg != null) {
                         val finalModelMsg = finalMsg.copy(tokensPerSecond = result.tokensPerSecond)
-                        daexMemory?.saveMessage(convId, finalModelMsg)
+                        daexMemory?.saveMessageWithEmbedding(convId, finalModelMsg)
                     }
                 } catch (e: Exception) {
                     val isCancellation = e is kotlinx.coroutines.CancellationException ||
@@ -2022,6 +2144,63 @@ class DaexInferenceViewModel(
     fun refreshUploadedFiles() {
         viewModelScope.launch {
             _uploadedFiles.value = daexRag?.getUploadedFiles() ?: emptyList()
+        }
+    }
+
+    fun refreshPinnedMessages() {
+        viewModelScope.launch {
+            _pinnedMessages.value = daexMemory?.getPinnedMessages() ?: emptyList()
+        }
+    }
+
+    /** Pins or unpins a message into the saved-prompt library (see SavedPromptLibraryModal). */
+    fun togglePin(message: Message) {
+        val newPinned = !message.isPinned
+        viewModelScope.launch {
+            daexMemory?.setPinned(message.id, newPinned)
+            val updated = _messages.value.toMutableList()
+            val idx = updated.indexOfFirst { it.id == message.id }
+            if (idx != -1) {
+                updated[idx] = updated[idx].copy(isPinned = newPinned)
+                _messages.value = updated
+            }
+            refreshPinnedMessages()
+        }
+    }
+
+    /**
+     * Ingests the bundled about-DAEX reference doc (assets/about_daex.md) through the real RAG
+     * pipeline, tagged as a system document, exactly once. This grounds cold-start suggested
+     * prompts (see [seedColdStartPromptsIfNeeded]) in real retrieval instead of a blind guess.
+     */
+    private suspend fun ingestAboutDocIfNeeded(rag: DaexRag) {
+        val ctx = context ?: return
+        val currentVersion = preferences?.aboutDocVersionFlow?.first() ?: 0
+        if (currentVersion >= DaexPreferences.ABOUT_DAEX_CONTENT_VERSION) return
+        try {
+            // Unconditional and safe even if nothing exists yet - clears any chunks ingested
+            // under an older content version (or, on devices that ingested before this
+            // versioning existed, under the flag it replaced) so stale and fresh content don't
+            // both show up in retrieval side by side.
+            rag.deleteFileByName(DaexPreferences.ABOUT_DAEX_FILENAME)
+            val content = ctx.assets.open(DaexPreferences.ABOUT_DAEX_FILENAME).bufferedReader().use { it.readText() }
+            rag.ingestFile(DaexPreferences.ABOUT_DAEX_FILENAME, content, isSystem = true)
+            preferences?.setAboutDocVersion(DaexPreferences.ABOUT_DAEX_CONTENT_VERSION)
+        } catch (e: Exception) {
+            android.util.Log.e("DaexInference", "Failed to ingest bundled about-DAEX document", e)
+        }
+    }
+
+    /**
+     * On a true cold start (no conversations exist anywhere yet), seeds the suggested-prompts
+     * pool from a fixed set of questions about DAEX's own capabilities rather than the generic
+     * fallback strings or a blind, context-less generateSuggestedPrompts() call.
+     */
+    private fun seedColdStartPromptsIfNeeded() {
+        if (_conversations.value.isNotEmpty()) return
+        val picks = DaexPreferences.COLD_START_QUESTIONS.shuffled().take(3)
+        viewModelScope.launch {
+            preferences?.setSuggestedPrompts(picks)
         }
     }
 

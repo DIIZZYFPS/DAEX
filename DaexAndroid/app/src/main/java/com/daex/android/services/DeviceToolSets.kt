@@ -16,61 +16,79 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.runBlocking
-import org.json.JSONObject
 
-class DeviceTools(
-    private val context: Context,
-    private val onRequestPermission: (suspend (String, String) -> Boolean)? = null,
-    private val onStatusUpdate: ((String?) -> Unit)? = null
-) : ToolSet {
+/**
+ * One entry per individually-toggleable tool (Settings UI + the disabled-tool-id preference).
+ * `defaultEnabled = false` marks tools that take an external action or expose personal data
+ * (launching apps, sending email, running intents, recalling past conversations) - everything
+ * else (read-only device status) defaults on, matching today's behavior.
+ */
+data class ToolRegistryEntry(
+    val id: String,
+    val label: String,
+    val description: String,
+    val defaultEnabled: Boolean
+)
 
-    private val skillManager: DaexSkillManager = DaexSkillManagerImpl(context)
+object ToolRegistry {
+    val ALL = listOf(
+        ToolRegistryEntry("deviceTime", "Date & Time", "Current date and local system time", defaultEnabled = true),
+        ToolRegistryEntry("batteryStatus", "Battery Status", "Battery level and charging state", defaultEnabled = true),
+        ToolRegistryEntry("storageStatus", "Storage Status", "Free and total disk space", defaultEnabled = true),
+        ToolRegistryEntry("deviceInfo", "Device Info", "Manufacturer, model, and OS version", defaultEnabled = true),
+        ToolRegistryEntry("skills", "Modular Skills", "Discover and load domain-specific skill instructions", defaultEnabled = true),
+        ToolRegistryEntry("launchApp", "Launch Apps", "Launch other installed applications", defaultEnabled = false),
+        ToolRegistryEntry("sendEmail", "Send Email", "Open the email client with a prefilled message", defaultEnabled = false),
+        ToolRegistryEntry("runIntent", "Run System Intents", "Trigger native system actions", defaultEnabled = false),
+        ToolRegistryEntry("recallMemory", "Recall Past Conversations", "Search conversation history for relevant context", defaultEnabled = false)
+    )
 
-    companion object {
-        private const val TAG = "DeviceTools"
+    /** Short capability hint for the tool-aware system prompt line - only mentions tools that
+     * are actually enabled, so it never drifts from what the model can really call. */
+    fun capabilitySummary(disabledToolIds: Set<String>): String =
+        ALL.filter { it.id !in disabledToolIds }.joinToString(", ") { it.label }
+}
 
-        // Short prose hint appended to the system prompt when tool calling is enabled - NOT a
-        // restatement of the full @Tool descriptions below (those are already sent to the model
-        // structurally via ConversationConfig.tools). Keep this a plain capability list, and
-        // update it whenever a @Tool method is added/removed from this class.
-        const val TOOL_CAPABILITY_SUMMARY =
-            "device time, battery, storage, and device info; launching apps; sending email; and loading/listing skills"
-    }
-
+class DeviceTimeTool(private val onStatusUpdate: ((String?) -> Unit)? = null) : ToolSet {
     @Tool(description = "Get the current date and local system time")
     fun getDeviceTime(): String {
-        Log.d(TAG, "getDeviceTime execution triggered")
         onStatusUpdate?.invoke("Reading local system time...")
         val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         val result = formatter.format(Date())
-        Log.d(TAG, "getDeviceTime returning: $result")
         onStatusUpdate?.invoke(null)
         return result
     }
+}
 
+class BatteryStatusTool(
+    private val context: Context,
+    private val onStatusUpdate: ((String?) -> Unit)? = null
+) : ToolSet {
     @Tool(description = "Get the current battery level percentage and charging state")
     fun getBatteryStatus(): String {
-        Log.d(TAG, "getBatteryStatus execution triggered")
         onStatusUpdate?.invoke("Reading battery status...")
         val filter = IntentFilter(Intent.ACTION_BATTERY_CHANGED)
         val batteryStatus = context.registerReceiver(null, filter)
         val level = batteryStatus?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
         val scale = batteryStatus?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
         val batteryPct = if (level >= 0 && scale > 0) (level * 100 / scale.toFloat()).toInt() else -1
-        
+
         val status = batteryStatus?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
         val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
-                         status == BatteryManager.BATTERY_STATUS_FULL
-        
+            status == BatteryManager.BATTERY_STATUS_FULL
+
         val result = "Battery Level: $batteryPct%, Charging: $isCharging"
-        Log.d(TAG, "getBatteryStatus returning: $result")
         onStatusUpdate?.invoke(null)
         return result
     }
+}
 
+class StorageStatusTool(
+    private val context: Context,
+    private val onStatusUpdate: ((String?) -> Unit)? = null
+) : ToolSet {
     @Tool(description = "Get the available free disk space and total disk space in GB")
     fun getStorageStatus(): String {
-        Log.d(TAG, "getStorageStatus execution triggered")
         onStatusUpdate?.invoke("Reading storage footprint...")
         val path: File = context.filesDir
         val stat = StatFs(path.path)
@@ -79,41 +97,67 @@ class DeviceTools(
         val freeGb = String.format(Locale.US, "%.2f", free / (1024.0 * 1024.0 * 1024.0))
         val totalGb = String.format(Locale.US, "%.2f", total / (1024.0 * 1024.0 * 1024.0))
         val result = "Storage Free: $freeGb GB, Total: $totalGb GB"
-        Log.d(TAG, "getStorageStatus returning: $result")
         onStatusUpdate?.invoke(null)
         return result
     }
+}
 
+class DeviceInfoTool(private val onStatusUpdate: ((String?) -> Unit)? = null) : ToolSet {
     @Tool(description = "Get the device name, manufacturer, model, and Android OS version info")
     fun getDeviceInfo(): String {
-        Log.d(TAG, "getDeviceInfo execution triggered")
         onStatusUpdate?.invoke("Scanning hardware profile specifications...")
-        val manufacturer = Build.MANUFACTURER
-        val model = Build.MODEL
-        val sdk = Build.VERSION.SDK_INT
-        val release = Build.VERSION.RELEASE
-        val result = "Device: $manufacturer $model, Android SDK: $sdk, OS Version: $release"
-        Log.d(TAG, "getDeviceInfo returning: $result")
+        val result = "Device: ${Build.MANUFACTURER} ${Build.MODEL}, Android SDK: ${Build.VERSION.SDK_INT}, OS Version: ${Build.VERSION.RELEASE}"
         onStatusUpdate?.invoke(null)
         return result
+    }
+}
+
+class SkillTools(
+    context: Context,
+    private val onStatusUpdate: ((String?) -> Unit)? = null
+) : ToolSet {
+    private val skillManager: DaexSkillManager = DaexSkillManagerImpl(context)
+
+    @Tool(description = "Retrieve the full instructions and parameters for a specific skill. Call this when you need details on how to use a skill that is not currently loaded in your context.")
+    fun loadSkill(
+        @ToolParam(description = "The kebab-case name of the skill to load (e.g. 'send-email')") skillName: String
+    ): String {
+        onStatusUpdate?.invoke("Skill Loaded: $skillName")
+        val instructions = skillManager.loadSkillInstructions(skillName)
+        onStatusUpdate?.invoke(null)
+        return instructions ?: "Skill '$skillName' not found or could not be loaded."
+    }
+
+    @Tool(description = "List all available modular skills and their descriptions. Use this to find out what capabilities are available to be loaded via loadSkill.")
+    fun listSkills(): String {
+        onStatusUpdate?.invoke("Listing skills...")
+        val catalog = skillManager.getSkillCatalog()
+        onStatusUpdate?.invoke(null)
+        return catalog
+    }
+}
+
+class LaunchAppTool(
+    private val context: Context,
+    private val onRequestPermission: (suspend (String, String) -> Boolean)? = null,
+    private val onStatusUpdate: ((String?) -> Unit)? = null
+) : ToolSet {
+    companion object {
+        private const val TAG = "LaunchAppTool"
     }
 
     @Tool(description = "Launch an installed application on the device by its name")
     fun launchApp(
         @ToolParam(description = "The display name of the application to launch (e.g. 'Spotify', 'YouTube')") appName: String
     ): String {
-        Log.d(TAG, "launchApp execution triggered for appName: $appName")
         onStatusUpdate?.invoke("Launching application: $appName...")
-        
-        // Request user permission interactively
+
         val approved = runBlocking {
             onRequestPermission?.invoke("com.daex.system.launch_app", "Launch application: $appName") ?: true
         }
         if (!approved) {
-            val msg = "Permission denied by user"
-            Log.d(TAG, msg)
             onStatusUpdate?.invoke(null)
-            return msg
+            return "Permission denied by user"
         }
 
         try {
@@ -126,59 +170,35 @@ class DeviceTools(
                     return if (launchIntent != null) {
                         launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         context.startActivity(launchIntent)
-                        val msg = "Launched $appName successfully"
-                        Log.d(TAG, msg)
                         onStatusUpdate?.invoke(null)
-                        msg
+                        "Launched $appName successfully"
                     } else {
-                        val msg = "App $appName found but has no launchable main Activity"
-                        Log.d(TAG, msg)
                         onStatusUpdate?.invoke(null)
-                        msg
+                        "App $appName found but has no launchable main Activity"
                     }
                 }
             }
-            val msg = "App '$appName' not found on this device"
-            Log.d(TAG, msg)
             onStatusUpdate?.invoke(null)
-            return msg
+            return "App '$appName' not found on this device"
         } catch (e: Exception) {
-            val msg = "Failed to launch $appName: ${e.message}"
-            Log.e(TAG, msg, e)
+            Log.e(TAG, "Failed to launch $appName", e)
             onStatusUpdate?.invoke(null)
-            return msg
+            return "Failed to launch $appName: ${e.message}"
         }
     }
+}
 
-    @Tool(description = "Retrieve the full instructions and parameters for a specific skill. Call this when you need details on how to use a skill that is not currently loaded in your context.")
-    fun loadSkill(
-        @ToolParam(description = "The kebab-case name of the skill to load (e.g. 'send-email')") skillName: String
-    ): String {
-        Log.d(TAG, "loadSkill execution triggered for skillName: $skillName")
-        onStatusUpdate?.invoke("Skill Loaded: $skillName")
-        val instructions = skillManager.loadSkillInstructions(skillName)
-        onStatusUpdate?.invoke(null)
-        return instructions ?: "Skill '$skillName' not found or could not be loaded."
-    }
-
-    @Tool(description = "List all available modular skills and their descriptions. Use this to find out what capabilities are available to be loaded via loadSkill.")
-    fun listSkills(): String {
-        Log.d(TAG, "listSkills execution triggered")
-        onStatusUpdate?.invoke("Listing skills...")
-        val catalog = skillManager.getSkillCatalog()
-        onStatusUpdate?.invoke(null)
-        return catalog
-    }
-
+class SendEmailTool(
+    private val context: Context,
+    private val onStatusUpdate: ((String?) -> Unit)? = null
+) : ToolSet {
     @Tool(description = "Send an email. Launches the native device email client pre-filled with recipient, subject, and body.")
     fun sendEmail(
         @ToolParam(description = "The email address of the recipient.") to: String,
         @ToolParam(description = "The subject line of the email.") subject: String,
         @ToolParam(description = "The body text of the email.") body: String
     ): String {
-        Log.d(TAG, "sendEmail tool triggered. To: '$to', subject: '$subject'")
         onStatusUpdate?.invoke("Preparing email...")
-        
         return try {
             val emailIntent = Intent(Intent.ACTION_SENDTO).apply {
                 data = android.net.Uri.parse("mailto:")
@@ -195,15 +215,15 @@ class DeviceTools(
             onStatusUpdate?.invoke(null)
         }
     }
+}
 
+class RunIntentTool(private val onStatusUpdate: ((String?) -> Unit)? = null) : ToolSet {
     @Tool(description = "Run a native system intent to trigger device actions")
     fun runIntent(
         @ToolParam(description = "The intent action name") intent: String,
         @ToolParam(description = "JSON parameters matching the target intent specification") parameters: String
     ): String {
-        Log.d(TAG, "runIntent triggered: intent=$intent, parameters=$parameters")
         onStatusUpdate?.invoke(null)
-        
         return try {
             "Unknown intent action: $intent"
         } catch (e: Exception) {
