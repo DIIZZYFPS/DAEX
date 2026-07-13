@@ -127,17 +127,19 @@ class DaexMemory(private val boxStore: BoxStore) {
     }
 
     suspend fun deleteConversation(conversationId: String) = withContext(Dispatchers.IO) {
-        val conversation = conversationBox.query {
-            equal(ConversationEntity_.uuid, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
-        }.findFirst()
-            
-        if (conversation != null) {
-            conversationBox.remove(conversation)
-            
-            val messages = messageBox.query {
-                equal(MessageEntity_.conversationId, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
-            }.find()
-            messageBox.remove(messages)
+        boxStore.runInTx {
+            val conversation = conversationBox.query {
+                equal(ConversationEntity_.uuid, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+            }.findFirst()
+
+            if (conversation != null) {
+                conversationBox.remove(conversation)
+
+                val messages = messageBox.query {
+                    equal(MessageEntity_.conversationId, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)
+                }.find()
+                messageBox.remove(messages)
+            }
         }
     }
 

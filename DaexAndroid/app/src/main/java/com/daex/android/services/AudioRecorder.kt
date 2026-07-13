@@ -12,7 +12,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 // What the speaker is doing right now, as seen by the mic-side VAD gate.
 // SPEAKING: TTS audio is physically playing — normal speech detection is blocked,
@@ -261,8 +260,14 @@ class AudioRecorder(private val outputFile: File) {
                 Log.e("AudioRecorder", "Error recording audio", e)
             } finally {
                 isRecording = false
+                // The sole place AudioRecord.stop()/release() run - stop()/stopAsync() used to
+                // also do this from a second, independently-launched coroutine, racing this one
+                // on the same native object with no synchronization. audioRecord is nulled here
+                // too, once cleanup has actually happened, instead of preemptively from the
+                // caller's thread.
                 try { record?.stop() } catch (e: Exception) {}
                 try { record?.release() } catch (e: Exception) {}
+                audioRecord = null
                 try { fos?.close() } catch (e: Exception) {}
                 if (totalBytesWritten > 0) {
                     try {
@@ -304,39 +309,22 @@ class AudioRecorder(private val outputFile: File) {
 
     suspend fun stop() {
         isRecording = false
+        // join() suspends until the recording coroutine's own finally block has actually run
+        // (see start()) - that's the sole place AudioRecord.stop()/release() happen now, so by
+        // the time this returns, cleanup is guaranteed complete.
         recordingJob?.join()
         recordingJob = null
-        val recordToRelease = audioRecord
-        audioRecord = null
-        if (recordToRelease != null) {
-            withContext(Dispatchers.IO) {
-                try {
-                    recordToRelease.stop()
-                } catch (e: Exception) {}
-                try {
-                    recordToRelease.release()
-                } catch (e: Exception) {}
-            }
-        }
     }
 
     fun stopAsync() {
+        // Fire-and-forget: isRecording=false makes the recording loop in start() exit on its
+        // next iteration and reach its own finally block, which does the real AudioRecord
+        // cleanup on the coroutine's own dispatcher (already off the caller's thread). This
+        // used to also launch a second, independent coroutine to redundantly stop/release the
+        // same AudioRecord, racing the original coroutine's cleanup on the same native object.
         isRecording = false
         recordingJob?.cancel()
         recordingJob = null
-        val recordToRelease = audioRecord
-        audioRecord = null
-        if (recordToRelease != null) {
-            // DIIZZY: Release AudioRecord on a background thread to prevent UI thread stutter/lock
-            CoroutineScope(Dispatchers.IO).launch {
-                try {
-                    recordToRelease.stop()
-                } catch (e: Exception) {}
-                try {
-                    recordToRelease.release()
-                } catch (e: Exception) {}
-            }
-        }
     }
 
     private fun writeWavHeader(fos: FileOutputStream, totalAudioLen: Int) {

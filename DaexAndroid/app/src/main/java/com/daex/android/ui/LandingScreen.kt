@@ -5,6 +5,8 @@ import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -21,10 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.daex.android.services.DaexInferenceViewModel
 import com.daex.android.services.Model
 import com.daex.android.services.ModelBank
@@ -580,6 +584,11 @@ private fun OnboardingFamilyCard(
     recommendedModel: Model?,
     onSelectAndNext: () -> Unit
 ) {
+    val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { /* No-op either way: the download proceeds regardless, this only affects whether its progress notification is visible. */ }
+
     val sizes = remember(variants) { variants.map { it.sizeName }.distinct() }
     var selectedSize by remember(sizes) { mutableStateOf(sizes.firstOrNull() ?: "") }
 
@@ -595,14 +604,22 @@ private fun OnboardingFamilyCard(
     val downloadProgress by viewModel.downloadProgress.collectAsState()
     
     var isDownloaded by remember(activeModel) { mutableStateOf(false) }
-    var isHardwareCapable by remember(activeModel) { mutableStateOf(true) }
+    var hasEnoughRAM by remember(activeModel) { mutableStateOf(true) }
+    var hasEnoughStorage by remember(activeModel) { mutableStateOf(true) }
+    var storageShortfall by remember(activeModel) { mutableStateOf(0L) }
+    val canDownload = hasEnoughRAM && hasEnoughStorage
+    // Activating an already-downloaded model doesn't need extra free storage, only a fresh download does.
+    val canProceed = hasEnoughRAM && (isDownloaded || hasEnoughStorage)
 
     // Start with the card pre-expanded for onboarding ease
     var isExpanded by remember { mutableStateOf(true) }
 
     LaunchedEffect(activeModel) {
         isDownloaded = modelManager.isModelDownloaded(activeModel)
-        isHardwareCapable = modelManager.checkSpecSupport(activeModel).supported
+        val spec = modelManager.checkSpecSupport(activeModel)
+        hasEnoughRAM = spec.hasEnoughRAM
+        hasEnoughStorage = spec.hasEnoughStorage
+        storageShortfall = (activeModel.size - spec.freeSpace).coerceAtLeast(0L)
     }
 
     Box(
@@ -764,6 +781,22 @@ private fun OnboardingFamilyCard(
                     }
                 }
 
+                if (!canDownload && !isDownloaded) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    BasicText(
+                        text = if (!hasEnoughRAM) {
+                            "INCOMPATIBLE WITH HARDWARE"
+                        } else {
+                            "NOT ENOUGH FREE STORAGE — FREE UP ${formatBytes(storageShortfall).uppercase()}"
+                        },
+                        style = DaexTheme.typography.mono.copy(
+                            color = Color.Red.copy(alpha = 0.6f),
+                            fontSize = 9.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
 
                 // Stats and Action Download Button
@@ -780,11 +813,20 @@ private fun OnboardingFamilyCard(
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(8.dp))
-                            .background(if (isHardwareCapable) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.05f))
-                            .clickable(enabled = isHardwareCapable) {
+                            .background(if (canProceed) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.05f))
+                            .clickable(enabled = canProceed) {
                                 if (!isDownloaded) {
-                                    viewModel.downloadModel(activeModel)
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                                        ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                    }
                                 }
+                                // loadModel() downloads first if needed, then loads the engine,
+                                // and sets it as the current/last-used model either way - unlike
+                                // downloadModel() alone, which only downloaded the file and never
+                                // set it as current, so onboarding's choice was forgotten.
+                                viewModel.loadModel(activeModel)
                                 onSelectAndNext()
                             }
                             .padding(horizontal = 14.dp, vertical = 6.dp)
@@ -792,7 +834,7 @@ private fun OnboardingFamilyCard(
                         BasicText(
                             text = if (isDownloaded) "ACTIVATE" else "DOWNLOAD",
                             style = DaexTheme.typography.mono.copy(
-                                color = if (isHardwareCapable) DaexTheme.colors.onPrimary else DaexTheme.colors.onSurface.copy(alpha = 0.2f),
+                                color = if (canProceed) DaexTheme.colors.onPrimary else DaexTheme.colors.onSurface.copy(alpha = 0.2f),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp
                             )

@@ -7,6 +7,8 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,8 +16,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import android.os.VibrationEffect
+
+// ~30fps: fast enough that throttled streaming text looks continuous, far less often than per-token.
+private const val STREAM_UI_THROTTLE_MS = 33L
 
 enum class ModelStatus {
     NOT_DOWNLOADED, DOWNLOADING, LOADING, READY, ERROR
@@ -210,6 +216,98 @@ class DaexInferenceViewModel(
     private var generationJob: Job? = null
     private var curationJob: Job? = null
 
+    /**
+     * Extracts <think>/<|think|>/<|channel> blocks from streamed text, returning
+     * (visibleText, thoughtText). Re-scans from the start of [rawText] every call by design -
+     * this is what lets a tag split across two token deliveries (e.g. "<th" then "ink>") still
+     * be recognized correctly. Kept as a single full-rescan (not an incremental parser) since
+     * StreamingUpdater below throttles how often it's called instead of rewriting the algorithm.
+     */
+    private fun parseThinkTags(rawText: String): Pair<String, String?> {
+        val thinkTags = listOf(
+            Pair("<|think|>", "</think|>"),
+            Pair("<think>", "</think>"),
+            Pair("<|channel>", "<channel|>")
+        )
+
+        val extractedThoughts = mutableListOf<String>()
+        val modifiedText = StringBuilder()
+
+        var i = 0
+        while (i < rawText.length) {
+            var foundTag = false
+            for (tagPair in thinkTags) {
+                if (rawText.startsWith(tagPair.first, i)) {
+                    val startIdx = i + tagPair.first.length
+                    val endIdx = rawText.indexOf(tagPair.second, startIdx)
+                    if (endIdx != -1) {
+                        val content = rawText.substring(startIdx, endIdx).trim()
+                        if (content.isNotEmpty()) {
+                            extractedThoughts.add(content)
+                        }
+                        i = endIdx + tagPair.second.length
+                        foundTag = true
+                        break
+                    } else {
+                        val content = rawText.substring(startIdx).trim()
+                        if (content.isNotEmpty()) {
+                            extractedThoughts.add(content)
+                        }
+                        i = rawText.length
+                        foundTag = true
+                        break
+                    }
+                }
+            }
+            if (!foundTag) {
+                modifiedText.append(rawText[i])
+                i++
+            }
+        }
+
+        val thought = if (extractedThoughts.isNotEmpty()) extractedThoughts.joinToString("\n\n") else null
+        return Pair(modifiedText.toString(), thought)
+    }
+
+    /**
+     * Accumulates streamed tokens and re-publishes the parsed message content to [_messages] at
+     * most every [STREAM_UI_THROTTLE_MS] - the tag-rescan + full message-list copy this triggers
+     * is O(n) / O(m) respectively, so doing it on every token is O(n^2) / O(tokens * messages)
+     * over a full generation. One instance per generation call; [finalFlush] guarantees the
+     * saved message reflects the complete text regardless of when the last throttled tick fell.
+     */
+    private inner class StreamingUpdater(private val modelMsgId: String) {
+        private val rawText = StringBuilder()
+        private var lastUpdateMs = 0L
+        var lastActual: String = ""
+            private set
+
+        /** Returns true if this call actually re-parsed and published (i.e. wasn't throttled). */
+        fun onToken(token: String): Boolean {
+            rawText.append(token)
+            val now = System.currentTimeMillis()
+            if (now - lastUpdateMs < STREAM_UI_THROTTLE_MS) return false
+            lastUpdateMs = now
+            publish()
+            return true
+        }
+
+        fun finalFlush() {
+            publish()
+        }
+
+        private fun publish() {
+            val (actual, thought) = parseThinkTags(rawText.toString())
+            lastActual = actual.trimStart()
+            val updated = _messages.value.toMutableList()
+            val idx = updated.indexOfFirst { it.id == modelMsgId }
+            if (idx != -1) {
+                updated[idx] = updated[idx].copy(content = lastActual, thoughtContent = thought)
+                _messages.value = updated
+            }
+        }
+    }
+
     init {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
@@ -370,23 +468,93 @@ class DaexInferenceViewModel(
             }
         }
 
+        // Reconnect to a generative-model download ModelDownloadService is already running -
+        // e.g. started by a previous instance of this ViewModel before the Activity was
+        // recreated, or from a Gallery/Landing download the user began in an earlier session.
+        // Without this, a fresh ViewModel has no way to know a download is in flight and just
+        // shows nothing until it finishes on its own.
+        run {
+            val existing = ModelDownloadState.generative.value
+            if (existing != null && existing.phase == DownloadPhase.DOWNLOADING) {
+                _downloadingModelId.value = existing.modelId
+                _modelStatus.value = ModelStatus.DOWNLOADING
+                _downloadProgress.value = existing.percent
+                if (existing.modelId == ModelBank.embeddingModel.id) {
+                    _embeddingDownloadProgress.value = existing.percent
+                }
+                viewModelScope.launch {
+                    val status = awaitGenerativeDownload(existing.requestId) { percent ->
+                        _downloadProgress.value = percent
+                        if (existing.modelId == ModelBank.embeddingModel.id) {
+                            _embeddingDownloadProgress.value = percent
+                        }
+                    }
+                    _downloadingModelId.value = null
+                    if (existing.modelId == ModelBank.embeddingModel.id) {
+                        _embeddingDownloadProgress.value = null
+                    }
+                    if (status.phase == DownloadPhase.COMPLETED) {
+                        _modelStatus.value = ModelStatus.NOT_DOWNLOADED
+                        refreshDownloadedModels()
+                        if (status.modelId == ModelBank.embeddingModel.id) {
+                            try {
+                                daexRag?.initRag()
+                            } catch (e: Exception) {
+                                // Handle potential load failures
+                            }
+                        }
+                    } else {
+                        _modelStatus.value = ModelStatus.ERROR
+                        _errorMessage.value = status.error ?: "Download failed"
+                    }
+                }
+            }
+        }
+
+        // Reconnect to an in-progress Kokoro download the same way - see comment above.
+        run {
+            val existing = ModelDownloadState.kokoro.value
+            if (existing != null && existing.phase == DownloadPhase.DOWNLOADING) {
+                _isTtsDownloading.value = true
+                _ttsDownloadProgress.value = existing.percent
+                viewModelScope.launch {
+                    val status = awaitKokoroDownload(existing.requestId) { percent -> _ttsDownloadProgress.value = percent }
+                    _isTtsDownloading.value = false
+                    if (status.phase == DownloadPhase.COMPLETED) {
+                        _isTtsDownloaded.value = true
+                        _ttsDownloadProgress.value = 100
+                        refreshDownloadedModels()
+                    } else {
+                        android.util.Log.e("DaexInferenceViewModel", "Reconnected TTS download failed: ${status.error}")
+                    }
+                }
+            }
+        }
+
         // Silent Background Initialization of the Embedding Model
         viewModelScope.launch {
-            if (modelManager != null && daexRag != null) {
+            if (modelManager != null && daexRag != null && context != null) {
                 val embedModel = ModelBank.embeddingModel
                 val isDownloaded = modelManager.isModelDownloaded(embedModel)
-                if (!isDownloaded) {
-                    try {
-                        modelManager.downloadModel(embedModel) { progress ->
-                            _embeddingDownloadProgress.value = progress.percent
-                        }
-                        daexRag.initRag() // Initialize after download finishes
-                        _embeddingDownloadProgress.value = null
-                    } catch (e: Exception) {
-                        _embeddingDownloadProgress.value = null
-                        // Silently fail or log for background downloads
+                // Skip if a generative download is already running - either it's this same
+                // embedding model (the reconnect block above already handles it), or it's a
+                // different model occupying the single generative-download slot, in which case
+                // this falls back to trying again next launch, same as ModelManager's pre-existing
+                // single-slot behavior for concurrent generative downloads.
+                if (!isDownloaded && ModelDownloadState.generative.value?.phase != DownloadPhase.DOWNLOADING) {
+                    val requestId = ModelDownloadService.startModelDownload(context, embedModel.id)
+                    val status = awaitGenerativeDownload(requestId) { percent ->
+                        _embeddingDownloadProgress.value = percent
                     }
-                } else {
+                    _embeddingDownloadProgress.value = null
+                    if (status.phase == DownloadPhase.COMPLETED) {
+                        try {
+                            daexRag.initRag() // Initialize after download finishes
+                        } catch (e: Exception) {
+                            // Handle potential load failures
+                        }
+                    }
+                } else if (isDownloaded) {
                     try {
                         daexRag.initRag() // Initialize immediately if already downloaded
                     } catch (e: Exception) {
@@ -398,27 +566,60 @@ class DaexInferenceViewModel(
 
         // Silent Background Initialization of the Kokoro TTS Model
         viewModelScope.launch {
-            if (modelManager != null) {
+            if (modelManager != null && context != null) {
                 val isDownloaded = modelManager.isKokoroDownloaded()
-                if (!isDownloaded) {
-                    try {
-                        _isTtsDownloading.value = true
-                        _ttsDownloadProgress.value = 0
-                        modelManager.downloadKokoro { progress ->
-                            _ttsDownloadProgress.value = progress
-                        }
+                if (!isDownloaded && ModelDownloadState.kokoro.value?.phase != DownloadPhase.DOWNLOADING) {
+                    _isTtsDownloading.value = true
+                    _ttsDownloadProgress.value = 0
+                    val requestId = ModelDownloadService.startKokoroDownload(context)
+                    val status = awaitKokoroDownload(requestId) { percent -> _ttsDownloadProgress.value = percent }
+                    _isTtsDownloading.value = false
+                    if (status.phase == DownloadPhase.COMPLETED) {
                         _isTtsDownloaded.value = true
-                        _isTtsDownloading.value = false
                         _ttsDownloadProgress.value = 100
                         refreshDownloadedModels()
-                    } catch (e: Exception) {
-                        _isTtsDownloading.value = false
-                        android.util.Log.e("DaexInferenceViewModel", "Background TTS download failed", e)
+                    } else {
+                        android.util.Log.e("DaexInferenceViewModel", "Background TTS download failed: ${status.error}")
                     }
                 }
             }
         }
         refreshDownloadedModels()
+    }
+
+    /**
+     * Suspends until [ModelDownloadService] reports a terminal status for [requestId], mirroring
+     * progress via [onProgress] in the meantime. Filtering on the request id (not just modelId)
+     * matters: a terminal status from a *previous* download of the same model can already be
+     * sitting in the StateFlow when this starts collecting, before the service has processed the
+     * new request. The download itself runs in the service's own scope, so cancelling the caller
+     * (e.g. this ViewModel being cleared) only stops listening - it does not cancel the download.
+     */
+    private suspend fun awaitGenerativeDownload(requestId: String, onProgress: (Int) -> Unit): GenerativeDownloadStatus = coroutineScope {
+        val mirrorJob = launch {
+            ModelDownloadState.generative.collect { status ->
+                if (status?.requestId == requestId && status.phase == DownloadPhase.DOWNLOADING) {
+                    onProgress(status.percent)
+                }
+            }
+        }
+        val terminal = ModelDownloadState.generative
+            .first { it?.requestId == requestId && it.phase != DownloadPhase.DOWNLOADING }!!
+        mirrorJob.cancel()
+        terminal
+    }
+
+    private suspend fun awaitKokoroDownload(requestId: String, onProgress: (Int) -> Unit): KokoroDownloadStatus = coroutineScope {
+        val mirrorJob = launch {
+            ModelDownloadState.kokoro.collect { status ->
+                if (status?.requestId == requestId && status.phase == DownloadPhase.DOWNLOADING) {
+                    onProgress(status.percent)
+                }
+            }
+        }
+        val terminal = ModelDownloadState.kokoro.first { it?.requestId == requestId && it.phase != DownloadPhase.DOWNLOADING }!!
+        mirrorJob.cancel()
+        terminal
     }
 
     fun refreshDownloadedModels() {
@@ -909,57 +1110,55 @@ class DaexInferenceViewModel(
     }
 
     fun downloadModel(model: Model) {
-        if (_downloadingModelId.value != null || modelManager == null) return
+        if (_downloadingModelId.value != null || modelManager == null || context == null) return
 
         _downloadingModelId.value = model.id
         _modelStatus.value = ModelStatus.DOWNLOADING
         _downloadProgress.value = 0
         _errorMessage.value = null
 
+        val requestId = ModelDownloadService.startModelDownload(context, model.id)
+
         viewModelScope.launch {
-            try {
-                modelManager.downloadModel(model) { progress ->
-                    _downloadProgress.value = progress.percent
-                }
-                _downloadingModelId.value = null
+            val status = awaitGenerativeDownload(requestId) { percent -> _downloadProgress.value = percent }
+            _downloadingModelId.value = null
+            if (status.phase == DownloadPhase.COMPLETED) {
                 _modelStatus.value = ModelStatus.NOT_DOWNLOADED
                 _downloadProgress.value = 100
                 refreshDownloadedModels()
-            } catch (e: Exception) {
-                _downloadingModelId.value = null
+            } else {
                 _modelStatus.value = ModelStatus.ERROR
-                _errorMessage.value = e.message ?: "Download failed"
+                _errorMessage.value = status.error ?: "Download failed"
             }
         }
     }
 
     fun cancelDownload() {
-        modelManager?.cancelDownload()
+        context?.let { ModelDownloadService.cancelModelDownload(it) }
         _downloadingModelId.value = null
         _modelStatus.value = ModelStatus.NOT_DOWNLOADED
         _downloadProgress.value = 0
     }
 
     fun downloadTtsModel() {
-        if (_isTtsDownloading.value || modelManager == null) return
+        if (_isTtsDownloading.value || modelManager == null || context == null) return
 
         _isTtsDownloading.value = true
         _ttsDownloadProgress.value = 0
         _errorMessage.value = null
 
+        val requestId = ModelDownloadService.startKokoroDownload(context)
+
         viewModelScope.launch {
-            try {
-                modelManager.downloadKokoro { progress ->
-                    _ttsDownloadProgress.value = progress
-                }
+            val status = awaitKokoroDownload(requestId) { percent -> _ttsDownloadProgress.value = percent }
+            _isTtsDownloading.value = false
+            if (status.phase == DownloadPhase.COMPLETED) {
                 _isTtsDownloaded.value = true
-                _isTtsDownloading.value = false
                 _ttsDownloadProgress.value = 100
                 refreshDownloadedModels()
-            } catch (e: Exception) {
-                _isTtsDownloading.value = false
-                _errorMessage.value = e.message ?: "TTS Download failed"
-                android.util.Log.e("DaexInferenceViewModel", "TTS model download failed", e)
+            } else {
+                _errorMessage.value = status.error ?: "TTS Download failed"
+                android.util.Log.e("DaexInferenceViewModel", "TTS model download failed: ${status.error}")
             }
         }
     }
@@ -968,7 +1167,10 @@ class DaexInferenceViewModel(
         viewModelScope.launch {
             if (modelManager == null) return@launch
             try {
-                kokoroTtsService?.release()
+                // releaseTts() only releases the native OfflineTts object, not the whole
+                // service's coroutine scope/pipelines - release() would permanently kill TTS
+                // for the rest of this singleton's lifetime, since nothing ever recreates it.
+                kokoroTtsService?.releaseTts()
                 modelManager.deleteKokoro()
                 _isTtsDownloaded.value = false
                 refreshDownloadedModels()
@@ -989,23 +1191,26 @@ class DaexInferenceViewModel(
             
             val isDownloaded = modelManager.isModelDownloaded(model)
             if (!isDownloaded) {
+                if (context == null) {
+                    _modelStatus.value = ModelStatus.ERROR
+                    _errorMessage.value = "Download failed"
+                    return@launch
+                }
                 _downloadingModelId.value = model.id
                 _modelStatus.value = ModelStatus.DOWNLOADING
                 _downloadProgress.value = 0
                 _errorMessage.value = null
 
-                try {
-                    modelManager.downloadModel(model) { progress ->
-                        _downloadProgress.value = progress.percent
-                    }
-                    refreshDownloadedModels()
-                } catch (e: Exception) {
-                    _downloadingModelId.value = null
+                val requestId = ModelDownloadService.startModelDownload(context, model.id)
+                val status = awaitGenerativeDownload(requestId) { percent -> _downloadProgress.value = percent }
+                _downloadingModelId.value = null
+
+                if (status.phase != DownloadPhase.COMPLETED) {
                     _modelStatus.value = ModelStatus.ERROR
-                    _errorMessage.value = e.message ?: "Download failed"
+                    _errorMessage.value = status.error ?: "Download failed"
                     return@launch
                 }
-                _downloadingModelId.value = null
+                refreshDownloadedModels()
             }
 
             _modelStatus.value = ModelStatus.LOADING
@@ -1142,9 +1347,14 @@ class DaexInferenceViewModel(
             _errorMessage.value = "Model is not loaded yet."
             return
         }
-        curationJob?.cancel()
 
         viewModelScope.launch {
+            // Wait for any in-flight background memory curation to fully stop before starting a
+            // new generation - both drive the same DaexServiceImpl engine/conversation, and a
+            // bare cancel() (without join) only requests cancellation, it doesn't guarantee
+            // curation has actually stopped touching the engine by the time generation starts.
+            curationJob?.cancelAndJoin()
+
             var convId = _currentConversationId.value
             if (convId == null) {
                 val modelId = _currentModel.value?.id ?: ModelBank.generativeModels.first().id
@@ -1248,8 +1458,8 @@ class DaexInferenceViewModel(
                     }
 
                     val inferenceHistory = activeHistory.toMutableList()
-                    
-                    var rawText = ""
+
+                    val streamingUpdater = StreamingUpdater(modelMsgId)
                     val coreMemoryContent = daexCoreMemory?.getMemoryContent() ?: ""
 
                     // --- FILE RAG CONTEXT INJECTION ---
@@ -1330,68 +1540,12 @@ class DaexInferenceViewModel(
                         maxTokens = _maxTokens.value
                     ) { token ->
                         if (!isActive) return@generateResponse
-                        rawText += token
-                        
-                        var thought: String? = null
-                        var actual = rawText
-                        
-                        // Parse think/channel tags only — support multiple blocks dynamically
-                        val thinkTags = listOf(
-                            Pair("<|think|>", "</think|>"),
-                            Pair("<think>", "</think>"),
-                            Pair("<|channel>", "<channel|>")
-                        )
-                        
-                        val extractedThoughts = mutableListOf<String>()
-                        val modifiedText = java.lang.StringBuilder()
-                        
-                        var i = 0
-                        while (i < rawText.length) {
-                            var foundTag = false
-                            for (tagPair in thinkTags) {
-                                if (rawText.startsWith(tagPair.first, i)) {
-                                    val startIdx = i + tagPair.first.length
-                                    val endIdx = rawText.indexOf(tagPair.second, startIdx)
-                                    if (endIdx != -1) {
-                                        val content = rawText.substring(startIdx, endIdx).trim()
-                                        if (content.isNotEmpty()) {
-                                            extractedThoughts.add(content)
-                                        }
-                                        i = endIdx + tagPair.second.length
-                                        foundTag = true
-                                        break
-                                    } else {
-                                        val content = rawText.substring(startIdx).trim()
-                                        if (content.isNotEmpty()) {
-                                            extractedThoughts.add(content)
-                                        }
-                                        i = rawText.length
-                                        foundTag = true
-                                        break
-                                    }
-                                }
-                            }
-                            if (!foundTag) {
-                                modifiedText.append(rawText[i])
-                                i++
-                            }
-                        }
-                        
-                        if (extractedThoughts.isNotEmpty()) {
-                            thought = extractedThoughts.joinToString("\n\n")
-                        }
-                        actual = modifiedText.toString()
-                        
-                        val updated = _messages.value.toMutableList()
-                        val idx = updated.indexOfFirst { it.id == modelMsgId }
-                        if (idx != -1) {
-                            updated[idx] = updated[idx].copy(content = actual.trimStart(), thoughtContent = thought)
-                            _messages.value = updated
-                        }
+                        streamingUpdater.onToken(token)
                     }
+                    streamingUpdater.finalFlush()
                     _tokenSpeed.value = result.tokensPerSecond
                     triggerHapticFeedback(type = HapticType.SUCCESS_COMPLETION)
-                    
+
                     // Save final result to DB
                     val updatedList = _messages.value
                     val finalMsg = updatedList.find { it.id == modelMsgId }
@@ -1481,9 +1635,11 @@ class DaexInferenceViewModel(
             setVoiceStateInternal(VoiceState.IDLE)
             return
         }
-        curationJob?.cancel()
 
         viewModelScope.launch {
+            // See submitPrompt() for why this needs to be a joined cancellation, not fire-and-forget.
+            curationJob?.cancelAndJoin()
+
             var convId = _currentConversationId.value
             if (convId == null) {
                 val modelId = _currentModel.value?.id ?: ModelBank.generativeModels.first().id
@@ -1526,9 +1682,9 @@ class DaexInferenceViewModel(
                     val maxContextLimit = _currentModel.value?.maxContextTokens ?: 8192
                     
                     val inferenceHistory = activeHistory.toMutableList()
-                    var rawText = ""
+                    val streamingUpdater = StreamingUpdater(modelMsgId)
                     val coreMemoryContent = daexCoreMemory?.getMemoryContent() ?: ""
-                    
+
                     var systemContext = coreMemoryContent
                     if (daexRag != null && daexRag.hasDocuments() && _attachedFiles.value.isNotEmpty()) {
                         try {
@@ -1575,69 +1731,13 @@ class DaexInferenceViewModel(
                             }
                         },
                         maxTokens = _maxTokens.value,
-                        isLiveVoiceActive = _isLiveVoiceActive.value
+                        isLiveVoiceActive = _isLiveVoiceActive.value,
+                        conversationId = convId
                     ) { token ->
                         if (!isActive) return@generateResponse
-                        rawText += token
-                        
-                        var thought: String? = null
-                        var actual = rawText
-                        
-                        val thinkTags = listOf(
-                            Pair("<|think|>", "</think|>"),
-                            Pair("<think>", "</think>"),
-                            Pair("<|channel>", "<channel|>")
-                        )
-                        
-                        val extractedThoughts = mutableListOf<String>()
-                        val modifiedText = java.lang.StringBuilder()
-                        
-                        var i = 0
-                        while (i < rawText.length) {
-                            var foundTag = false
-                            for (tagPair in thinkTags) {
-                                if (rawText.startsWith(tagPair.first, i)) {
-                                    val startIdx = i + tagPair.first.length
-                                    val endIdx = rawText.indexOf(tagPair.second, startIdx)
-                                    if (endIdx != -1) {
-                                        val content = rawText.substring(startIdx, endIdx).trim()
-                                        if (content.isNotEmpty()) {
-                                            extractedThoughts.add(content)
-                                        }
-                                        i = endIdx + tagPair.second.length
-                                        foundTag = true
-                                        break
-                                    } else {
-                                        val content = rawText.substring(startIdx).trim()
-                                        if (content.isNotEmpty()) {
-                                            extractedThoughts.add(content)
-                                        }
-                                        i = rawText.length
-                                        foundTag = true
-                                        break
-                                    }
-                                }
-                            }
-                            if (!foundTag) {
-                                modifiedText.append(rawText[i])
-                                i++
-                            }
-                        }
-                        
-                        if (extractedThoughts.isNotEmpty()) {
-                            thought = extractedThoughts.joinToString("\n\n")
-                        }
-                        actual = modifiedText.toString()
-                        
-                        val updated = _messages.value.toMutableList()
-                        val idx = updated.indexOfFirst { it.id == modelMsgId }
-                        if (idx != -1) {
-                            updated[idx] = updated[idx].copy(content = actual.trimStart(), thoughtContent = thought)
-                            _messages.value = updated
-                        }
-
-                        if (_isLiveVoiceActive.value && _isTtsEnabled.value) {
-                            val currentText = actual.trimStart()
+                        val didUpdate = streamingUpdater.onToken(token)
+                        if (didUpdate && _isLiveVoiceActive.value && _isTtsEnabled.value) {
+                            val currentText = streamingUpdater.lastActual
                             if (currentText.length > lastSpokenIndex) {
                                 val searchSubstring = currentText.substring(lastSpokenIndex)
                                 // Split only on punctuation followed by whitespace so
@@ -1669,9 +1769,12 @@ class DaexInferenceViewModel(
                         }
                     }
 
+                    streamingUpdater.finalFlush()
+
                     if (_isLiveVoiceActive.value && _isTtsEnabled.value) {
-                        if (rawText.trimStart().length > lastSpokenIndex) {
-                            val remaining = rawText.trimStart().substring(lastSpokenIndex).trim()
+                        val currentText = streamingUpdater.lastActual
+                        if (currentText.length > lastSpokenIndex) {
+                            val remaining = currentText.substring(lastSpokenIndex).trim()
                             if (remaining.isNotEmpty()) {
                                 kokoroTtsService?.speak(remaining, _ttsVoiceId.value)
                             }
@@ -1862,6 +1965,7 @@ class DaexInferenceViewModel(
                 }
             } catch (e: Exception) {
                 android.util.Log.e("DaexInference", "File deletion failed", e)
+                _errorMessage.value = "Delete may be incomplete for \"$fileName\" - please try again."
             }
         }
     }

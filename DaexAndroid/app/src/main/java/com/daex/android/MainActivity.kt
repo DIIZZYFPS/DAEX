@@ -5,7 +5,6 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.remember
-import com.daex.android.database.MyObjectBox
 import com.daex.android.services.DaexInferenceViewModel
 import com.daex.android.services.DaexMemory
 import com.daex.android.services.DeviceService
@@ -29,7 +28,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.flow.first
 import com.daex.android.ui.LandingScreen
+import com.daex.android.ui.CrashReportModal
+import com.daex.android.services.CrashLogWriter
 import com.daex.android.services.DaexPreferences
+import java.io.File
 
 enum class Screen {
     LANDING, EXECUTION, GALLERY, SETTINGS
@@ -43,7 +45,7 @@ class MainActivity : ComponentActivity() {
             window.isNavigationBarContrastEnforced = false
         }
 
-        val boxStore = MyObjectBox.builder().androidContext(this.applicationContext).build()
+        val boxStore = (application as DaexApplication).boxStore
         val daexMemory = DaexMemory(boxStore)
         val deviceService = DeviceService(this)
         val daexService = com.daex.android.services.DaexServiceImpl(this)
@@ -69,10 +71,12 @@ class MainActivity : ComponentActivity() {
                 ) 
             }
             var currentScreen by remember { mutableStateOf<Screen?>(null) }
-            
+            var pendingCrashFile by remember { mutableStateOf<File?>(null) }
+
             LaunchedEffect(Unit) {
                 val completed = daexPreferences.hasCompletedLandingFlow.first()
                 currentScreen = if (completed) Screen.EXECUTION else Screen.LANDING
+                pendingCrashFile = CrashLogWriter.findPendingCrashLog(applicationContext)
             }
             
             val primaryColor by viewModel.primaryColor.collectAsState()
@@ -132,6 +136,13 @@ class MainActivity : ComponentActivity() {
                             onOpenGallery = { currentScreen = Screen.GALLERY }
                         )
                     }
+                }
+
+                pendingCrashFile?.let { crashFile ->
+                    CrashReportModal(
+                        crashFile = crashFile,
+                        onDismiss = { pendingCrashFile = null }
+                    )
                 }
             }
         }

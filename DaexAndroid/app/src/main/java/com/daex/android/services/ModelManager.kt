@@ -5,6 +5,8 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import kotlin.math.pow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,6 +33,9 @@ data class StorageInfo(
     val isHardwareCapable: Boolean
 )
 
+private class DownloadCancelledException : Exception("Download cancelled")
+private class DownloadCorruptException(message: String) : Exception(message)
+
 class ModelManager(private val context: Context) {
     private val deviceService = DeviceService(context)
     private val client = OkHttpClient()
@@ -55,12 +60,121 @@ class ModelManager(private val context: Context) {
         )
     }
 
+    private fun partFileFor(file: File): File = File(file.parentFile, "${file.name}.part")
+    private fun sizeMetaFileFor(file: File): File = File(file.parentFile, "${file.name}.size")
+
+    /**
+     * A file is valid only if its length exactly matches the size we recorded when we
+     * finished downloading it (learned from the server, not [ModelBank]'s rounded estimates).
+     * Files that predate this tracking (no sidecar yet) get a one-time heuristic pass so
+     * existing installs aren't forced to re-download; the sidecar is then backfilled.
+     */
+    private fun isFileValid(file: File, fallbackSize: Long): Boolean {
+        if (!file.exists()) return false
+        val sizeMetaFile = sizeMetaFileFor(file)
+        val recordedSize = if (sizeMetaFile.exists()) {
+            sizeMetaFile.readText().trim().toLongOrNull()
+        } else null
+
+        if (recordedSize != null) {
+            return file.length() == recordedSize
+        }
+
+        val looksComplete = file.length() >= (fallbackSize * 0.9).toLong()
+        if (looksComplete) {
+            sizeMetaFile.writeText(file.length().toString())
+        }
+        return looksComplete
+    }
+
+    private fun parseContentRangeTotal(header: String?): Long? {
+        // Expected format: "bytes start-end/total"
+        return header?.substringAfterLast('/')?.toLongOrNull()
+    }
+
+    /**
+     * Downloads [url] into [partFile], resuming via HTTP Range if a partial [partFile]
+     * already exists, then atomically renames it into [finalFile] once its length matches
+     * the size we actually observed from the server. Only an explicit cancel or a
+     * post-download size mismatch should cause the caller to delete [partFile] - any other
+     * exception (network drop, etc.) leaves it in place so the next call resumes.
+     */
+    private suspend fun downloadWithResume(
+        url: String,
+        partFile: File,
+        finalFile: File,
+        fallbackSize: Long,
+        isActive: () -> Boolean,
+        onChunk: (bytesWritten: Long, expectedTotal: Long) -> Unit
+    ) {
+        var resumeOffset = if (partFile.exists()) partFile.length() else 0L
+        val requestBuilder = Request.Builder().url(url)
+        if (resumeOffset > 0) {
+            requestBuilder.header("Range", "bytes=$resumeOffset-")
+        }
+
+        client.newCall(requestBuilder.build()).execute().use { response ->
+            if (response.code == 416) {
+                // Range Not Satisfiable: our resume offset no longer matches the remote file
+                // (e.g. a mutable URL now points at a different-sized file). Resuming from this
+                // offset can never succeed - discard the stale .part so the next attempt starts
+                // clean instead of replaying the same invalid offset forever.
+                partFile.delete()
+                throw DownloadCorruptException("Resume offset no longer valid for $url (416)")
+            }
+            if (!response.isSuccessful) throw Exception("Failed to download from $url: ${response.code}")
+
+            val body = response.body ?: throw Exception("Empty response body from $url")
+            var isResumed = response.code == 206
+
+            if (resumeOffset > 0 && !isResumed) {
+                // Server ignored the Range header and is sending the full file - restart it.
+                partFile.delete()
+                resumeOffset = 0L
+                isResumed = false
+            }
+
+            val expectedTotal = if (isResumed) {
+                parseContentRangeTotal(response.header("Content-Range"))
+                    ?: body.contentLength().takeIf { it > 0 }?.let { resumeOffset + it }
+                    ?: fallbackSize
+            } else {
+                body.contentLength().takeIf { it > 0 } ?: fallbackSize
+            }
+
+            body.byteStream().use { input ->
+                FileOutputStream(partFile, isResumed).use { output ->
+                    val buffer = ByteArray(8192)
+                    var written = resumeOffset
+                    while (isActive()) {
+                        val bytesRead = input.read(buffer)
+                        if (bytesRead == -1) break
+                        output.write(buffer, 0, bytesRead)
+                        written += bytesRead
+                        onChunk(written, expectedTotal)
+                    }
+                    if (!isActive()) throw DownloadCancelledException()
+                }
+            }
+
+            if (partFile.length() != expectedTotal) {
+                throw DownloadCorruptException(
+                    "Downloaded file size mismatch for $url: expected $expectedTotal, got ${partFile.length()}"
+                )
+            }
+
+            sizeMetaFileFor(finalFile).writeText(expectedTotal.toString())
+            Files.move(
+                partFile.toPath(),
+                finalFile.toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE
+            )
+        }
+    }
+
     suspend fun isModelDownloaded(model: Model): Boolean = withContext(Dispatchers.IO) {
-        val file = File(getModelPath(model))
-        if (!file.exists()) return@withContext false
-        
-        // Ensure the file is at least 90% of expected size to be considered "valid"
-        file.length() >= model.size * 0.9
+        isFileValid(File(getModelPath(model)), model.size)
     }
 
     suspend fun downloadModel(
@@ -69,6 +183,7 @@ class ModelManager(private val context: Context) {
     ): String = withContext(Dispatchers.IO) {
         val destPath = getModelPath(model)
         val file = File(destPath)
+        val partFile = partFileFor(file)
 
         val spec = checkSpecSupport(model)
         if (!spec.supported) {
@@ -76,11 +191,10 @@ class ModelManager(private val context: Context) {
         }
 
         if (file.exists()) {
-            if (file.length() < model.size * 0.9) {
-                file.delete()
-            } else {
+            if (isFileValid(file, model.size)) {
                 return@withContext destPath
             }
+            file.delete()
         }
 
         val downloadId = java.util.UUID.randomUUID().toString()
@@ -92,39 +206,21 @@ class ModelManager(private val context: Context) {
         }
 
         try {
-            val request = Request.Builder().url(model.downloadUrl).build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) throw Exception("Failed to download model: ${response.code}")
-
-                val body = response.body ?: throw Exception("Empty response body")
-                val totalBytes = body.contentLength().takeIf { it > 0 } ?: model.size
-                
-                body.byteStream().use { input ->
-                    FileOutputStream(file).use { output ->
-                        val buffer = ByteArray(8192)
-                        var bytesRead: Int
-                        var totalDownloaded = 0L
-                        
-                        while (input.read(buffer).also { bytesRead = it } != -1 && activeGenerativeDownloadId == downloadId) {
-                            output.write(buffer, 0, bytesRead)
-                            totalDownloaded += bytesRead
-                            
-                            val percent = if (totalBytes > 0) ((totalDownloaded.toDouble() / totalBytes) * 100).toInt() else 0
-                            onProgress?.invoke(DownloadProgress(totalDownloaded, totalBytes, percent))
-                        }
-                        
-                        if (activeGenerativeDownloadId != downloadId) {
-                            throw Exception("Download cancelled")
-                        }
-                    }
-                }
+            downloadWithResume(
+                url = model.downloadUrl,
+                partFile = partFile,
+                finalFile = file,
+                fallbackSize = model.size,
+                isActive = { activeGenerativeDownloadId == downloadId }
+            ) { written, total ->
+                val percent = if (total > 0) ((written.toDouble() / total) * 100).toInt() else 0
+                onProgress?.invoke(DownloadProgress(written, total, percent))
             }
-        } catch (e: Exception) {
-            synchronized(this) {
-                if (activeGenerativeDownloadId == downloadId) {
-                    if (file.exists()) file.delete()
-                }
-            }
+        } catch (e: DownloadCancelledException) {
+            partFile.delete()
+            throw e
+        } catch (e: DownloadCorruptException) {
+            partFile.delete()
             throw e
         } finally {
             synchronized(this) {
@@ -133,10 +229,10 @@ class ModelManager(private val context: Context) {
                 }
             }
         }
-        
+
         destPath
      }
- 
+
      fun cancelDownload() {
          synchronized(this) {
              activeGenerativeDownloadId = null
@@ -145,15 +241,17 @@ class ModelManager(private val context: Context) {
 
     suspend fun deleteModel(model: Model) = withContext(Dispatchers.IO) {
         val file = File(getModelPath(model))
-        if (file.exists()) {
-            file.delete()
-        }
+        val partFile = partFileFor(file)
+        val sizeMetaFile = sizeMetaFileFor(file)
+        if (file.exists()) file.delete()
+        if (partFile.exists()) partFile.delete()
+        if (sizeMetaFile.exists()) sizeMetaFile.delete()
     }
 
     suspend fun getStorageInfo(model: Model): StorageInfo {
         val spec = checkSpecSupport(model)
         val isDownloaded = isModelDownloaded(model)
-        
+
         var modelSize = 0L
         if (isDownloaded) {
             val file = File(getModelPath(model))
@@ -175,13 +273,16 @@ class ModelManager(private val context: Context) {
 
     suspend fun isKokoroDownloaded(): Boolean = withContext(Dispatchers.IO) {
         val dir = getKokoroDir()
-        val modelFile = File(dir, "model.onnx")
-        val voicesFile = File(dir, "voices.bin")
-        val tokensFile = File(dir, "tokens.txt")
-        
-        modelFile.exists() && modelFile.length() >= ModelBank.kokoroModel.size * 0.9 &&
-                voicesFile.exists() && voicesFile.length() >= ModelBank.kokoroVoices.size * 0.9 &&
-                tokensFile.exists() && tokensFile.length() >= ModelBank.kokoroTokens.size * 0.9
+        isFileValid(File(dir, "model.onnx"), ModelBank.kokoroModel.size) &&
+                isFileValid(File(dir, "voices.bin"), ModelBank.kokoroVoices.size) &&
+                isFileValid(File(dir, "tokens.txt"), ModelBank.kokoroTokens.size)
+    }
+
+    private fun deleteStrayKokoroParts(targets: List<Triple<File, String, Long>>) {
+        for ((file, _, _) in targets) {
+            val partFile = partFileFor(file)
+            if (partFile.exists()) partFile.delete()
+        }
     }
 
     suspend fun downloadKokoro(
@@ -199,7 +300,7 @@ class ModelManager(private val context: Context) {
         )
 
         val totalSize = targets.sumOf { it.third }
-        var totalBytesDownloaded = 0L
+        var completedBytes = targets.filter { isFileValid(it.first, it.third) }.sumOf { it.third }
 
         val downloadId = java.util.UUID.randomUUID().toString()
         synchronized(this) {
@@ -210,53 +311,33 @@ class ModelManager(private val context: Context) {
         }
         try {
             for ((file, url, expectedSize) in targets) {
-                if (file.exists() && file.length() >= expectedSize * 0.9) {
-                    totalBytesDownloaded += file.length()
+                if (isFileValid(file, expectedSize)) {
                     continue
                 }
-
                 if (file.exists()) {
                     file.delete()
                 }
 
-                val request = Request.Builder().url(url).build()
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) throw Exception("Failed to download file from $url: ${response.code}")
-
-                    val body = response.body ?: throw Exception("Empty response body from $url")
-                    val bodyLength = body.contentLength().takeIf { it > 0 } ?: expectedSize
-                    
-                    body.byteStream().use { input ->
-                        FileOutputStream(file).use { output ->
-                            val buffer = ByteArray(8192)
-                            var bytesRead: Int
-                            
-                            while (input.read(buffer).also { bytesRead = it } != -1 && activeKokoroDownloadId == downloadId) {
-                                output.write(buffer, 0, bytesRead)
-                                totalBytesDownloaded += bytesRead
-                                
-                                val percent = if (totalSize > 0) ((totalBytesDownloaded.toDouble() / totalSize) * 100).toInt() else 0
-                                onProgress?.invoke(percent.coerceAtMost(99))
-                            }
-                            
-                            if (activeKokoroDownloadId != downloadId) {
-                                throw Exception("Download cancelled")
-                            }
-                        }
-                    }
+                downloadWithResume(
+                    url = url,
+                    partFile = partFileFor(file),
+                    finalFile = file,
+                    fallbackSize = expectedSize,
+                    isActive = { activeKokoroDownloadId == downloadId }
+                ) { written, _ ->
+                    val percent = if (totalSize > 0) {
+                        (((completedBytes + written).toDouble() / totalSize) * 100).toInt()
+                    } else 0
+                    onProgress?.invoke(percent.coerceIn(0, 99))
                 }
+                completedBytes += expectedSize
             }
             onProgress?.invoke(100)
-        } catch (e: Exception) {
-            synchronized(this) {
-                if (activeKokoroDownloadId == downloadId) {
-                    for ((file, _, expectedSize) in targets) {
-                        if (file.exists() && file.length() < expectedSize * 0.9) {
-                            file.delete()
-                        }
-                    }
-                }
-            }
+        } catch (e: DownloadCancelledException) {
+            deleteStrayKokoroParts(targets)
+            throw e
+        } catch (e: DownloadCorruptException) {
+            deleteStrayKokoroParts(targets)
             throw e
         } finally {
             synchronized(this) {

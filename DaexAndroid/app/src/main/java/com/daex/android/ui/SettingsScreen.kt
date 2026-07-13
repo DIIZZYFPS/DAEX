@@ -32,6 +32,7 @@ import com.daex.android.services.ModelBank
 import com.daex.android.services.ModelManager
 import com.daex.android.services.ModelStatus
 import com.daex.android.services.HapticType
+import com.daex.android.ui.components.ConfirmDialog
 import com.daex.android.ui.components.DaexSwitch
 import com.daex.android.ui.theme.DaexTheme
 
@@ -73,6 +74,7 @@ fun SettingsScreen(
 
     var memoryEditorVisible by remember { mutableStateOf(false) }
     var changelogVisible by remember { mutableStateOf(false) }
+    var clearHistoryConfirmVisible by remember { mutableStateOf(false) }
 
     val downloadedModelIds by viewModel.downloadedModelIds.collectAsState()
 
@@ -797,10 +799,7 @@ fun SettingsScreen(
                             ActionButton(
                                 text = "Clear conversation history",
                                 color = DaexTheme.colors.error,
-                                onClick = { 
-                                    viewModel.deleteAllConversations()
-                                    onBack() 
-                                }
+                                onClick = { clearHistoryConfirmVisible = true }
                             )
                             Spacer(modifier = Modifier.height(10.dp))
                             ActionButton(
@@ -864,6 +863,18 @@ fun SettingsScreen(
     ChangelogModal(
         visible = changelogVisible,
         onClose = { changelogVisible = false }
+    )
+
+    ConfirmDialog(
+        visible = clearHistoryConfirmVisible,
+        title = "CLEAR ALL HISTORY?",
+        message = "This permanently deletes every conversation. This cannot be undone.",
+        confirmLabel = "CLEAR ALL",
+        onConfirm = {
+            viewModel.deleteAllConversations()
+            onBack()
+        },
+        onDismiss = { clearHistoryConfirmVisible = false }
     )
     }
 }

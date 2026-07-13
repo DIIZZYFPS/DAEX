@@ -121,7 +121,7 @@ fun Sidebar(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(conversations) { conv ->
+                    items(conversations, key = { it.id }) { conv ->
                         val isSelected = conv.id == currentConvId
                         var showMenu by remember { mutableStateOf(false) }
                         

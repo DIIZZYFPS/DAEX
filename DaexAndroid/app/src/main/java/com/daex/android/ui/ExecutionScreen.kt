@@ -238,6 +238,8 @@ fun ExecutionScreen(
             viewModel.startLiveVoiceSession { recognizedText ->
                 inputText = recognizedText
             }
+        } else {
+            android.widget.Toast.makeText(context, "Microphone permission is required for voice mode.", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
@@ -1058,7 +1060,7 @@ fun ExecutionScreen(
                                                 android.widget.Toast.makeText(context, "TTS voice engine is not downloaded yet. Please download it in Settings.", android.widget.Toast.LENGTH_LONG).show()
                                             }
                                         },
-                                        enabled = (isGenerating || isModelReady) && (isGenerating || inputText.isNotEmpty() || voiceState != VoiceState.PROCESSING) && transitionProgress < 0.5f,
+                                        enabled = (isGenerating || isModelReady) && (isGenerating || inputText.isNotEmpty() || (!isVoiceSessionActive && voiceState != VoiceState.PROCESSING)) && transitionProgress < 0.5f,
                                         modifier = Modifier.size(44.dp),
                                         backgroundColor = if (isVoiceSessionActive) Color.Transparent else if (isGenerating) DaexTheme.colors.primary else if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.1f) else DaexTheme.colors.primary,
                                         useDefaultPadding = false,

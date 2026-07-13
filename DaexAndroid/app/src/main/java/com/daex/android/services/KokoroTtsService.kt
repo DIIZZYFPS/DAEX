@@ -77,6 +77,14 @@ class KokoroTtsService(private val context: Context) {
     private val playbackChannel = Channel<PlayItem>(Channel.UNLIMITED)
     private val pendingUtterances = java.util.concurrent.atomic.AtomicInteger(0)
 
+    // Completed whenever the playback pipeline isn't inside playAudioSamples()'s blocking
+    // AudioTrack.write() loop; reset to a fresh, incomplete instance right before each call and
+    // completed right after. release()/releaseTts() wait on this (bounded) before releasing the
+    // AudioTrack, since track.stop()/flush() (called by stopPlayback()) only *interrupt* an
+    // in-flight write() from another thread - they don't block until it has actually returned,
+    // so release() could otherwise race a write() still unwinding on the same native object.
+    @Volatile private var playbackIdle = CompletableDeferred(Unit)
+
     // System chimes (session wake/close) are short premade assets played through
     // SoundPool, which is built for exactly this: low trigger latency, decoded once
     // at load time. No procedural synthesis involved. Declared here, above init{},
@@ -289,7 +297,12 @@ class KokoroTtsService(private val context: Context) {
                 when (item) {
                     is PlayItem.Pcm -> {
                         if (!stopped && item.epoch == playbackEpoch.get()) {
-                            playAudioSamples(item.samples)
+                            playbackIdle = CompletableDeferred()
+                            try {
+                                playAudioSamples(item.samples)
+                            } finally {
+                                playbackIdle.complete(Unit)
+                            }
                         }
                     }
                     is PlayItem.UtteranceEnd -> {
@@ -473,17 +486,18 @@ class KokoroTtsService(private val context: Context) {
     }
 
     private fun measureRawDurationMs(resId: Int, fallbackMs: Long): Long {
+        val retriever = android.media.MediaMetadataRetriever()
         return try {
-            val retriever = android.media.MediaMetadataRetriever()
             context.resources.openRawResourceFd(resId).use { afd ->
                 retriever.setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
             }
             val durationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()
-            retriever.release()
             durationMs ?: fallbackMs
         } catch (e: Exception) {
             android.util.Log.w("KokoroTtsService", "Failed to measure chime duration for res $resId", e)
             fallbackMs
+        } finally {
+            try { retriever.release() } catch (e: Exception) {}
         }
     }
 
@@ -509,11 +523,23 @@ class KokoroTtsService(private val context: Context) {
         releaseTts()
         ttsScope.cancel()
         chimePool.release()
+        awaitPlaybackIdle()
         synchronized(this) {
             try {
                 audioTrack?.release()
                 audioTrack = null
             } catch (e: Exception) {}
         }
+    }
+
+    // Bounded, blocking wait for any in-flight AudioTrack.write() to actually return before the
+    // caller releases the track - see playbackIdle's declaration. release()/releaseTts() aren't
+    // suspend functions (release() in particular is called from ViewModel.onCleared(), which
+    // can't reliably launch new coroutines on an already-cancelling scope), so this bridges with
+    // a short runBlocking rather than changing their signatures.
+    private fun awaitPlaybackIdle() {
+        try {
+            runBlocking { withTimeoutOrNull(200) { playbackIdle.await() } }
+        } catch (e: Exception) {}
     }
 }
