@@ -26,7 +26,7 @@ class RecallMemoryTool(
     fun searchPastConversations(
         @ToolParam(description = "What to search for, e.g. the topic or question to recall past context about") query: String
     ): String {
-        Log.d(TAG, "searchPastConversations triggered for query: $query")
+Log.d(TAG, "searchPastConversations triggered")
         onStatusUpdate?.invoke("Searching past conversations...")
         val results = runBlocking { daexMemory.searchMessages(query, maxResults = 5) }
         onStatusUpdate?.invoke(null)
