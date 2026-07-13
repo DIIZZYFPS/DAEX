@@ -36,6 +36,19 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Decode signing keystore
+        if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
+        working-directory: DaexAndroid
+        run: |
+          mkdir -p keystore
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > keystore/daex-release.jks
+          cat > keystore.properties <<EOF
+          storeFile=keystore/daex-release.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=daex-release
+          keyPassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          EOF
+
       - name: Build Android App (APK)
         if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
         run: |
@@ -43,10 +56,15 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleRelease assembleDebug
 
+      - name: Remove signing keystore
+        if: ${{ always() && steps.release.outputs['DaexAndroid--release_created'] }}
+        working-directory: DaexAndroid
+        run: rm -rf keystore keystore.properties
+
       - name: Upload APKs to GitHub Release
         if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
         run: |
-          gh release upload ${{ steps.release.outputs['DaexAndroid--tag_name'] }} DaexAndroid/app/build/outputs/apk/release/app-release-unsigned.apk
+          gh release upload ${{ steps.release.outputs['DaexAndroid--tag_name'] }} DaexAndroid/app/build/outputs/apk/release/app-release.apk
           gh release upload ${{ steps.release.outputs['DaexAndroid--tag_name'] }} DaexAndroid/app/build/outputs/apk/debug/app-debug.apk

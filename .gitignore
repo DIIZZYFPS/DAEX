@@ -208,6 +208,10 @@ captures/
 .cxx/
 DaexAndroid/build/
 DaexAndroid/app/build/
+DaexAndroid/keystore.properties
+DaexAndroid/keystore/
+*.jks
+*.keystore
 
 reflect_out.txt
 logcat_output.txt

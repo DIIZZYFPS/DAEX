@@ -1,5 +1,7 @@
 package com.daex.android.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -16,9 +18,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.daex.android.services.DaexInferenceViewModel
 import com.daex.android.services.Model
 import com.daex.android.services.ModelBank
@@ -262,6 +266,11 @@ private fun FamilyModelCard(
     modelManager: ModelManager,
     currentModel: Model?
 ) {
+    val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { /* No-op either way: the download proceeds regardless, this only affects whether its progress notification is visible. */ }
+
     // Unique Size names in this family (e.g. "E2B", "E4B")
     val sizes = remember(variants) { variants.map { it.sizeName }.distinct() }
     var selectedSize by remember(sizes) { mutableStateOf(sizes.firstOrNull() ?: "") }
@@ -284,8 +293,11 @@ private fun FamilyModelCard(
     val isThisDownloading = isCurrent && modelStatus == ModelStatus.DOWNLOADING
 
     var isDownloaded by remember(activeModel) { mutableStateOf(false) }
-    var isHardwareCapable by remember(activeModel) { mutableStateOf(true) }
+    var hasEnoughRAM by remember(activeModel) { mutableStateOf(true) }
+    var hasEnoughStorage by remember(activeModel) { mutableStateOf(true) }
+    var storageShortfall by remember(activeModel) { mutableStateOf(0L) }
     var isAnyVariantDownloaded by remember(variants) { mutableStateOf(false) }
+    val canDownload = hasEnoughRAM && hasEnoughStorage
 
     // Collapsible State (Default expanded if this family is currently selected/active)
     var isExpanded by remember(variants, currentModel) {
@@ -294,7 +306,10 @@ private fun FamilyModelCard(
 
     LaunchedEffect(activeModel) {
         isDownloaded = modelManager.isModelDownloaded(activeModel)
-        isHardwareCapable = modelManager.checkSpecSupport(activeModel).supported
+        val spec = modelManager.checkSpecSupport(activeModel)
+        hasEnoughRAM = spec.hasEnoughRAM
+        hasEnoughStorage = spec.hasEnoughStorage
+        storageShortfall = (activeModel.size - spec.freeSpace).coerceAtLeast(0L)
     }
 
     LaunchedEffect(variants, modelStatus) {
@@ -429,13 +444,17 @@ private fun FamilyModelCard(
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(if (isHardwareCapable) DaexTheme.colors.success else Color.Red)
+                            .background(if (canDownload) DaexTheme.colors.success else Color.Red)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     BasicText(
-                        text = if (isHardwareCapable) "COMPATIBLE WITH THIS DEVICE" else "INCOMPATIBLE WITH HARDWARE",
+                        text = when {
+                            !hasEnoughRAM -> "INCOMPATIBLE WITH HARDWARE"
+                            !hasEnoughStorage -> "NOT ENOUGH FREE STORAGE — FREE UP ${modelManager.formatBytes(storageShortfall).uppercase()}"
+                            else -> "COMPATIBLE WITH THIS DEVICE"
+                        },
                         style = DaexTheme.typography.mono.copy(
-                            color = if (isHardwareCapable) DaexTheme.colors.success.copy(alpha = 0.6f) else Color.Red.copy(alpha = 0.6f),
+                            color = if (canDownload) DaexTheme.colors.success.copy(alpha = 0.6f) else Color.Red.copy(alpha = 0.6f),
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -494,14 +513,21 @@ private fun FamilyModelCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(if (isHardwareCapable) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.05f))
-                                .clickable(enabled = isHardwareCapable) { viewModel.loadModel(activeModel) }
+                                .background(if (canDownload) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.05f))
+                                .clickable(enabled = canDownload) {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                                        ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                    viewModel.loadModel(activeModel)
+                                }
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             BasicText(
                                 text = "DOWNLOAD",
                                 style = DaexTheme.typography.mono.copy(
-                                    color = if (isHardwareCapable) DaexTheme.colors.onPrimary else DaexTheme.colors.onSurface.copy(alpha = 0.2f),
+                                    color = if (canDownload) DaexTheme.colors.onPrimary else DaexTheme.colors.onSurface.copy(alpha = 0.2f),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp
                                 )

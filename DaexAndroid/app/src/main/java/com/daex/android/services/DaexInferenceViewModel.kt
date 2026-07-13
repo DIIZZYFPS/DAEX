@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,6 +15,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.firstOrNull
 import android.os.VibrationEffect
 
@@ -370,23 +372,93 @@ class DaexInferenceViewModel(
             }
         }
 
+        // Reconnect to a generative-model download ModelDownloadService is already running -
+        // e.g. started by a previous instance of this ViewModel before the Activity was
+        // recreated, or from a Gallery/Landing download the user began in an earlier session.
+        // Without this, a fresh ViewModel has no way to know a download is in flight and just
+        // shows nothing until it finishes on its own.
+        run {
+            val existing = ModelDownloadState.generative.value
+            if (existing != null && existing.phase == DownloadPhase.DOWNLOADING) {
+                _downloadingModelId.value = existing.modelId
+                _modelStatus.value = ModelStatus.DOWNLOADING
+                _downloadProgress.value = existing.percent
+                if (existing.modelId == ModelBank.embeddingModel.id) {
+                    _embeddingDownloadProgress.value = existing.percent
+                }
+                viewModelScope.launch {
+                    val status = awaitGenerativeDownload(existing.requestId) { percent ->
+                        _downloadProgress.value = percent
+                        if (existing.modelId == ModelBank.embeddingModel.id) {
+                            _embeddingDownloadProgress.value = percent
+                        }
+                    }
+                    _downloadingModelId.value = null
+                    if (existing.modelId == ModelBank.embeddingModel.id) {
+                        _embeddingDownloadProgress.value = null
+                    }
+                    if (status.phase == DownloadPhase.COMPLETED) {
+                        _modelStatus.value = ModelStatus.NOT_DOWNLOADED
+                        refreshDownloadedModels()
+                        if (status.modelId == ModelBank.embeddingModel.id) {
+                            try {
+                                daexRag?.initRag()
+                            } catch (e: Exception) {
+                                // Handle potential load failures
+                            }
+                        }
+                    } else {
+                        _modelStatus.value = ModelStatus.ERROR
+                        _errorMessage.value = status.error ?: "Download failed"
+                    }
+                }
+            }
+        }
+
+        // Reconnect to an in-progress Kokoro download the same way - see comment above.
+        run {
+            val existing = ModelDownloadState.kokoro.value
+            if (existing != null && existing.phase == DownloadPhase.DOWNLOADING) {
+                _isTtsDownloading.value = true
+                _ttsDownloadProgress.value = existing.percent
+                viewModelScope.launch {
+                    val status = awaitKokoroDownload(existing.requestId) { percent -> _ttsDownloadProgress.value = percent }
+                    _isTtsDownloading.value = false
+                    if (status.phase == DownloadPhase.COMPLETED) {
+                        _isTtsDownloaded.value = true
+                        _ttsDownloadProgress.value = 100
+                        refreshDownloadedModels()
+                    } else {
+                        android.util.Log.e("DaexInferenceViewModel", "Reconnected TTS download failed: ${status.error}")
+                    }
+                }
+            }
+        }
+
         // Silent Background Initialization of the Embedding Model
         viewModelScope.launch {
-            if (modelManager != null && daexRag != null) {
+            if (modelManager != null && daexRag != null && context != null) {
                 val embedModel = ModelBank.embeddingModel
                 val isDownloaded = modelManager.isModelDownloaded(embedModel)
-                if (!isDownloaded) {
-                    try {
-                        modelManager.downloadModel(embedModel) { progress ->
-                            _embeddingDownloadProgress.value = progress.percent
-                        }
-                        daexRag.initRag() // Initialize after download finishes
-                        _embeddingDownloadProgress.value = null
-                    } catch (e: Exception) {
-                        _embeddingDownloadProgress.value = null
-                        // Silently fail or log for background downloads
+                // Skip if a generative download is already running - either it's this same
+                // embedding model (the reconnect block above already handles it), or it's a
+                // different model occupying the single generative-download slot, in which case
+                // this falls back to trying again next launch, same as ModelManager's pre-existing
+                // single-slot behavior for concurrent generative downloads.
+                if (!isDownloaded && ModelDownloadState.generative.value?.phase != DownloadPhase.DOWNLOADING) {
+                    val requestId = ModelDownloadService.startModelDownload(context, embedModel.id)
+                    val status = awaitGenerativeDownload(requestId) { percent ->
+                        _embeddingDownloadProgress.value = percent
                     }
-                } else {
+                    _embeddingDownloadProgress.value = null
+                    if (status.phase == DownloadPhase.COMPLETED) {
+                        try {
+                            daexRag.initRag() // Initialize after download finishes
+                        } catch (e: Exception) {
+                            // Handle potential load failures
+                        }
+                    }
+                } else if (isDownloaded) {
                     try {
                         daexRag.initRag() // Initialize immediately if already downloaded
                     } catch (e: Exception) {
@@ -398,27 +470,60 @@ class DaexInferenceViewModel(
 
         // Silent Background Initialization of the Kokoro TTS Model
         viewModelScope.launch {
-            if (modelManager != null) {
+            if (modelManager != null && context != null) {
                 val isDownloaded = modelManager.isKokoroDownloaded()
-                if (!isDownloaded) {
-                    try {
-                        _isTtsDownloading.value = true
-                        _ttsDownloadProgress.value = 0
-                        modelManager.downloadKokoro { progress ->
-                            _ttsDownloadProgress.value = progress
-                        }
+                if (!isDownloaded && ModelDownloadState.kokoro.value?.phase != DownloadPhase.DOWNLOADING) {
+                    _isTtsDownloading.value = true
+                    _ttsDownloadProgress.value = 0
+                    val requestId = ModelDownloadService.startKokoroDownload(context)
+                    val status = awaitKokoroDownload(requestId) { percent -> _ttsDownloadProgress.value = percent }
+                    _isTtsDownloading.value = false
+                    if (status.phase == DownloadPhase.COMPLETED) {
                         _isTtsDownloaded.value = true
-                        _isTtsDownloading.value = false
                         _ttsDownloadProgress.value = 100
                         refreshDownloadedModels()
-                    } catch (e: Exception) {
-                        _isTtsDownloading.value = false
-                        android.util.Log.e("DaexInferenceViewModel", "Background TTS download failed", e)
+                    } else {
+                        android.util.Log.e("DaexInferenceViewModel", "Background TTS download failed: ${status.error}")
                     }
                 }
             }
         }
         refreshDownloadedModels()
+    }
+
+    /**
+     * Suspends until [ModelDownloadService] reports a terminal status for [requestId], mirroring
+     * progress via [onProgress] in the meantime. Filtering on the request id (not just modelId)
+     * matters: a terminal status from a *previous* download of the same model can already be
+     * sitting in the StateFlow when this starts collecting, before the service has processed the
+     * new request. The download itself runs in the service's own scope, so cancelling the caller
+     * (e.g. this ViewModel being cleared) only stops listening - it does not cancel the download.
+     */
+    private suspend fun awaitGenerativeDownload(requestId: String, onProgress: (Int) -> Unit): GenerativeDownloadStatus = coroutineScope {
+        val mirrorJob = launch {
+            ModelDownloadState.generative.collect { status ->
+                if (status?.requestId == requestId && status.phase == DownloadPhase.DOWNLOADING) {
+                    onProgress(status.percent)
+                }
+            }
+        }
+        val terminal = ModelDownloadState.generative
+            .first { it?.requestId == requestId && it.phase != DownloadPhase.DOWNLOADING }!!
+        mirrorJob.cancel()
+        terminal
+    }
+
+    private suspend fun awaitKokoroDownload(requestId: String, onProgress: (Int) -> Unit): KokoroDownloadStatus = coroutineScope {
+        val mirrorJob = launch {
+            ModelDownloadState.kokoro.collect { status ->
+                if (status?.requestId == requestId && status.phase == DownloadPhase.DOWNLOADING) {
+                    onProgress(status.percent)
+                }
+            }
+        }
+        val terminal = ModelDownloadState.kokoro.first { it?.requestId == requestId && it.phase != DownloadPhase.DOWNLOADING }!!
+        mirrorJob.cancel()
+        terminal
     }
 
     fun refreshDownloadedModels() {
@@ -909,57 +1014,55 @@ class DaexInferenceViewModel(
     }
 
     fun downloadModel(model: Model) {
-        if (_downloadingModelId.value != null || modelManager == null) return
+        if (_downloadingModelId.value != null || modelManager == null || context == null) return
 
         _downloadingModelId.value = model.id
         _modelStatus.value = ModelStatus.DOWNLOADING
         _downloadProgress.value = 0
         _errorMessage.value = null
 
+        val requestId = ModelDownloadService.startModelDownload(context, model.id)
+
         viewModelScope.launch {
-            try {
-                modelManager.downloadModel(model) { progress ->
-                    _downloadProgress.value = progress.percent
-                }
-                _downloadingModelId.value = null
+            val status = awaitGenerativeDownload(requestId) { percent -> _downloadProgress.value = percent }
+            _downloadingModelId.value = null
+            if (status.phase == DownloadPhase.COMPLETED) {
                 _modelStatus.value = ModelStatus.NOT_DOWNLOADED
                 _downloadProgress.value = 100
                 refreshDownloadedModels()
-            } catch (e: Exception) {
-                _downloadingModelId.value = null
+            } else {
                 _modelStatus.value = ModelStatus.ERROR
-                _errorMessage.value = e.message ?: "Download failed"
+                _errorMessage.value = status.error ?: "Download failed"
             }
         }
     }
 
     fun cancelDownload() {
-        modelManager?.cancelDownload()
+        context?.let { ModelDownloadService.cancelModelDownload(it) }
         _downloadingModelId.value = null
         _modelStatus.value = ModelStatus.NOT_DOWNLOADED
         _downloadProgress.value = 0
     }
 
     fun downloadTtsModel() {
-        if (_isTtsDownloading.value || modelManager == null) return
+        if (_isTtsDownloading.value || modelManager == null || context == null) return
 
         _isTtsDownloading.value = true
         _ttsDownloadProgress.value = 0
         _errorMessage.value = null
 
+        val requestId = ModelDownloadService.startKokoroDownload(context)
+
         viewModelScope.launch {
-            try {
-                modelManager.downloadKokoro { progress ->
-                    _ttsDownloadProgress.value = progress
-                }
+            val status = awaitKokoroDownload(requestId) { percent -> _ttsDownloadProgress.value = percent }
+            _isTtsDownloading.value = false
+            if (status.phase == DownloadPhase.COMPLETED) {
                 _isTtsDownloaded.value = true
-                _isTtsDownloading.value = false
                 _ttsDownloadProgress.value = 100
                 refreshDownloadedModels()
-            } catch (e: Exception) {
-                _isTtsDownloading.value = false
-                _errorMessage.value = e.message ?: "TTS Download failed"
-                android.util.Log.e("DaexInferenceViewModel", "TTS model download failed", e)
+            } else {
+                _errorMessage.value = status.error ?: "TTS Download failed"
+                android.util.Log.e("DaexInferenceViewModel", "TTS model download failed: ${status.error}")
             }
         }
     }
@@ -989,23 +1092,26 @@ class DaexInferenceViewModel(
             
             val isDownloaded = modelManager.isModelDownloaded(model)
             if (!isDownloaded) {
+                if (context == null) {
+                    _modelStatus.value = ModelStatus.ERROR
+                    _errorMessage.value = "Download failed"
+                    return@launch
+                }
                 _downloadingModelId.value = model.id
                 _modelStatus.value = ModelStatus.DOWNLOADING
                 _downloadProgress.value = 0
                 _errorMessage.value = null
 
-                try {
-                    modelManager.downloadModel(model) { progress ->
-                        _downloadProgress.value = progress.percent
-                    }
-                    refreshDownloadedModels()
-                } catch (e: Exception) {
-                    _downloadingModelId.value = null
+                val requestId = ModelDownloadService.startModelDownload(context, model.id)
+                val status = awaitGenerativeDownload(requestId) { percent -> _downloadProgress.value = percent }
+                _downloadingModelId.value = null
+
+                if (status.phase != DownloadPhase.COMPLETED) {
                     _modelStatus.value = ModelStatus.ERROR
-                    _errorMessage.value = e.message ?: "Download failed"
+                    _errorMessage.value = status.error ?: "Download failed"
                     return@launch
                 }
-                _downloadingModelId.value = null
+                refreshDownloadedModels()
             }
 
             _modelStatus.value = ModelStatus.LOADING
