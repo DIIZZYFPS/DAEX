@@ -54,9 +54,6 @@ class KokoroTtsService(private val context: Context) {
             }
         }
 
-    @Volatile
-    var currentPlaybackRms = 0f
-
     // Frames written to the AudioTrack since play()/flush(). Compared against
     // playbackHeadPosition to know when the speaker has actually gone silent.
     @Volatile
@@ -112,7 +109,7 @@ class KokoroTtsService(private val context: Context) {
     @Volatile private var closeChimeDurationMs = 3400L
     // While now < this, the chime is audible on the speaker. The recorder's TTS
     // gate treats it like TTS playback so it can't false-trigger a speech start —
-    // SoundPool audio is invisible to isSpeaking/currentPlaybackRms otherwise.
+    // SoundPool audio is invisible to isSpeaking otherwise.
     @Volatile var chimeActiveUntilMs = 0L
         private set
 
@@ -318,8 +315,6 @@ class KokoroTtsService(private val context: Context) {
                             // to physically drain before the mic gate opens.
                             if (!stopped) {
                                 drainPlayback()
-                            } else {
-                                currentPlaybackRms = 0f
                             }
                             if (pendingUtterances.get() == 0) {
                                 isSpeaking = false
@@ -345,7 +340,6 @@ class KokoroTtsService(private val context: Context) {
                 // Track may have been released mid-drain
             }
         }
-        currentPlaybackRms = 0f
     }
 
     private fun playAudioSamples(samples: FloatArray) {
@@ -390,20 +384,10 @@ class KokoroTtsService(private val context: Context) {
             while (offset < samples.size && !stopped) {
                 val writeLen = minOf(chunkSize, samples.size - offset)
 
-                var sum = 0f
-                for (i in offset until (offset + writeLen)) {
-                    val s = samples[i]
-                    sum += s * s
-                }
-                val newRms = Math.sqrt((sum / writeLen).toDouble()).toFloat()
-
                 val written = track.write(samples, offset, writeLen, AudioTrack.WRITE_BLOCKING)
                 if (written <= 0) break
 
                 framesWritten += written
-                // RMS is intentionally never zeroed here: write() returns before the
-                // audio is heard, so only drainPlayback()/stopPlayback() may clear it.
-                currentPlaybackRms = maxOf(newRms, currentPlaybackRms * 0.85f)
                 offset += written
             }
 
@@ -442,7 +426,6 @@ class KokoroTtsService(private val context: Context) {
             }
             // stop()/flush() reset playbackHeadPosition, so the write counter resets with it
             framesWritten = 0
-            currentPlaybackRms = 0f
         }
     }
 

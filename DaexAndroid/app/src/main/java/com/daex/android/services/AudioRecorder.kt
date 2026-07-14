@@ -14,8 +14,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
 // What the speaker is doing right now, as seen by the mic-side VAD gate.
-// SPEAKING: TTS audio is physically playing — normal speech detection is blocked,
-//   only a sustained barge-in can start a chunk.
+// SPEAKING: TTS audio is physically playing — speech detection is blocked entirely
+//   so the model doesn't hear its own voice.
 // COOLDOWN: TTS just went silent — normal detection runs with a stricter frame
 //   requirement while the acoustic tail dies out.
 // CLEAR: normal VAD.
@@ -38,34 +38,15 @@ class AudioRecorder(private val outputFile: File) {
         }
     }
 
-    companion object {
-        // Acoustic speaker→mic bleed is ~10-15% on a handheld device
-        private const val ECHO_COUPLING_FACTOR = 0.12f
-        // Barge-in during TTS must clear an absolute floor (2x the default speech
-        // threshold) AND 4x the echo estimate, sustained — echo alone can't do that.
-        // Calibrated from 2026-07-10 device logs: user speech peaks 0.04-0.15.
-        private const val BARGE_IN_FLOOR = 0.06f
-        private const val BARGE_IN_SUSTAIN_MS = 450L
-        // A chunk whose speech overlapped playing TTS longer than this (without being
-        // a barge-in) is almost certainly echo — the VM discards it.
-        private const val TTS_OVERLAP_DISCARD_MS = 1500L
-    }
-
     @SuppressLint("MissingPermission")
     fun start(
         scope: CoroutineScope,
         speechThreshold: Float = 0.015f,
         silenceThreshold: Float = 0.008f,
         silenceDurationMs: Long = 1500L,
-        currentPlaybackRms: () -> Float = { 0f },
         ttsGateState: () -> TtsGateState = { TtsGateState.CLEAR },
-        // Barge-in (interrupting active TTS by talking over it) is parked until the
-        // rest of the live-voice loop is solid; when false, nothing can start a
-        // chunk while the gate reports SPEAKING.
-        bargeInEnabled: Boolean = false,
         onSpeechStarted: (() -> Unit)? = null,
-        onBargeIn: (() -> Unit)? = null,
-        onSilenceDetected: ((contaminatedByTts: Boolean) -> Unit)? = null,
+        onSilenceDetected: (() -> Unit)? = null,
         onAmplitude: (Float) -> Unit
     ) {
         if (isRecording) return
@@ -102,8 +83,9 @@ class AudioRecorder(private val outputFile: File) {
                 // testing on Samsung (2026-07-10 logcat): NS crushes sustained speech
                 // to the noise floor within ~500ms (mic 0.12 → 0.003 mid-sentence),
                 // making chunks unintelligible to the model, and AEC is half-duplex —
-                // it mutes the user's voice whenever TTS is playing, killing barge-in.
-                // Echo is handled by the software TTS gate + RMS ducking floor below.
+                // it mutes the user's voice whenever TTS is playing. Echo is instead
+                // handled by the software TTS gate above (speech detection is blocked
+                // outright while TTS is SPEAKING).
 
                 val out = FileOutputStream(outputFile)
                 fos = out
@@ -114,20 +96,14 @@ class AudioRecorder(private val outputFile: File) {
                 val buffer = ShortArray(bufferSize)
 
                 var hasSpeechStarted = false
-                var startedAsBargeIn = false
                 var silenceStartTime = 0L
                 var consecutiveSpeechFrames = 0
-                var bargeInSpeechMs = 0L
-                var ttsOverlapMs = 0L
                 val preRollBuffers = java.util.LinkedList<ByteArray>()
                 var lastLogTime = 0L
-                var smoothedTtsRms = 0f // Envelope follower state
 
                 while (isRecording) {
                     val readSize = rec.read(buffer, 0, buffer.size)
                     if (readSize > 0) {
-                        val frameMs = readSize * 1000L / sampleRate
-
                         // Calculate amplitude for waves visualization
                         var sum = 0.0
                         for (i in 0 until readSize) {
@@ -139,27 +115,12 @@ class AudioRecorder(private val outputFile: File) {
                         val normalized = (rms / 32768.0).toFloat().coerceIn(0f, 1f)
                         onAmplitude(normalized)
 
-                        // Real-time TTS playback volume drives a dynamic ducking floor
-                        val kokoroRms = currentPlaybackRms()
-
-                        // Peak envelope follower: fast attack, slow release (~350ms)
-                        // so the floor stays raised through the acoustic tail after
-                        // playback stops. (No instant-release shortcut — that defeats
-                        // the masking exactly when the tail needs it.)
-                        smoothedTtsRms = if (kokoroRms > smoothedTtsRms) kokoroRms else smoothedTtsRms * 0.92f
-
-                        // Acoustic echo estimation (no digital routing with VOICE_RECOGNITION)
-                        val echoEstimate = smoothedTtsRms * ECHO_COUPLING_FACTOR
-                        // Mic signal must be 1.5x louder than estimated acoustic echo
-                        val dynamicSilenceFloor = maxOf(speechThreshold, echoEstimate * 1.5f)
-                        val dynamicSilenceThreshold = maxOf(silenceThreshold, echoEstimate * 0.8f)
-
                         val gate = ttsGateState()
                         val requiredSpeechFrames = if (gate == TtsGateState.CLEAR) 2 else 3
 
                         val nowTime = System.currentTimeMillis()
                         if (nowTime - lastLogTime > 500L) {
-                            Log.d("AudioRecorder", "VAD: mic=$normalized, tts_rms=$kokoroRms, env=$smoothedTtsRms, duck_floor=$dynamicSilenceFloor, gate=$gate")
+                            Log.d("AudioRecorder", "VAD: mic=$normalized, gate=$gate")
                             lastLogTime = nowTime
                         }
 
@@ -174,34 +135,13 @@ class AudioRecorder(private val outputFile: File) {
 
                             if (gate == TtsGateState.SPEAKING) {
                                 // TTS is physically playing: normal detection would just
-                                // hear our own voice. Only a sustained, dominant signal
-                                // (a real barge-in) can start a chunk here — and only
-                                // when barge-in is enabled at all.
+                                // hear our own voice, so no speech-start can begin here.
                                 consecutiveSpeechFrames = 0
-                                val bargeInThreshold = maxOf(BARGE_IN_FLOOR, echoEstimate * 4f)
-                                if (!bargeInEnabled) {
-                                    bargeInSpeechMs = 0L
-                                } else if (normalized > bargeInThreshold) {
-                                    bargeInSpeechMs += frameMs
-                                    if (bargeInSpeechMs >= BARGE_IN_SUSTAIN_MS) {
-                                        hasSpeechStarted = true
-                                        startedAsBargeIn = true
-                                        totalBytesWritten += writePreRoll(out, preRollBuffers)
-                                        Log.i("AudioRecorder", "VAD: Barge-in over TTS (mic=$normalized, threshold=$bargeInThreshold)")
-                                        onBargeIn?.invoke()
-                                        onSpeechStarted?.invoke()
-                                    }
-                                } else {
-                                    // Decay instead of hard reset so natural speech
-                                    // dips (between words) don't zero the evidence.
-                                    bargeInSpeechMs = maxOf(0L, bargeInSpeechMs - 2 * frameMs)
-                                }
                             } else {
-                                // CLEAR or COOLDOWN: normal VAD. During COOLDOWN the
-                                // envelope-raised floor and the extra required frame
-                                // filter the residual tail.
-                                bargeInSpeechMs = 0L
-                                if (normalized > dynamicSilenceFloor) {
+                                // CLEAR or COOLDOWN: normal VAD against the static
+                                // thresholds. During COOLDOWN the extra required frame
+                                // filters the residual acoustic tail.
+                                if (normalized > speechThreshold) {
                                     consecutiveSpeechFrames++
                                     if (consecutiveSpeechFrames >= requiredSpeechFrames) {
                                         hasSpeechStarted = true
@@ -218,30 +158,18 @@ class AudioRecorder(private val outputFile: File) {
                             out.write(frameBytes)
                             totalBytesWritten += frameBytes.size
 
-                            if (gate == TtsGateState.SPEAKING) {
-                                // No auto-barge-in here: a false speech-start would make
-                                // the model cancel itself the moment it starts talking.
-                                // Overlap is only tracked so contaminated chunks get
-                                // discarded on silence.
-                                ttsOverlapMs += frameMs
-                            }
-
-                            if (normalized < dynamicSilenceThreshold) {
+                            if (normalized < silenceThreshold) {
                                 if (silenceStartTime == 0L) {
                                     silenceStartTime = System.currentTimeMillis()
                                 } else {
                                     val silentDuration = System.currentTimeMillis() - silenceStartTime
                                     if (silentDuration >= silenceDurationMs) {
-                                        val contaminated = !startedAsBargeIn && ttsOverlapMs > TTS_OVERLAP_DISCARD_MS
-                                        Log.d("AudioRecorder", "VAD: Silence detected ($silentDuration ms, ttsOverlap=${ttsOverlapMs}ms, contaminated=$contaminated)")
+                                        Log.d("AudioRecorder", "VAD: Silence detected ($silentDuration ms)")
                                         // Reset states before notifying to prevent multiple calls
                                         hasSpeechStarted = false
-                                        startedAsBargeIn = false
                                         silenceStartTime = 0L
                                         consecutiveSpeechFrames = 0
-                                        bargeInSpeechMs = 0L
-                                        ttsOverlapMs = 0L
-                                        onSilenceDetected?.invoke(contaminated)
+                                        onSilenceDetected?.invoke()
                                     }
                                 }
                             } else {

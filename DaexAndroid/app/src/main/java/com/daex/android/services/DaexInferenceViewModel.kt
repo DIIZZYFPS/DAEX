@@ -859,16 +859,12 @@ class DaexInferenceViewModel(
             speechThreshold = 0.015f,
             silenceThreshold = 0.008f,
             silenceDurationMs = 1500L,
-            // Parked for now — see AudioRecorder.start. Re-enable once normal
-            // conversation flow is solid.
-            bargeInEnabled = false,
-            currentPlaybackRms = { kokoroTtsService?.currentPlaybackRms ?: 0f },
             ttsGateState = {
                 val now = System.currentTimeMillis()
                 when {
                     kokoroTtsService?.isSpeaking == true -> TtsGateState.SPEAKING
                     // The wake/close chimes play via SoundPool, invisible to
-                    // isSpeaking/currentPlaybackRms — gate them like TTS.
+                    // isSpeaking — gate them like TTS.
                     now < (kokoroTtsService?.chimeActiveUntilMs ?: 0L) -> TtsGateState.SPEAKING
                     now < ttsCooldownUntilMs -> TtsGateState.COOLDOWN
                     else -> TtsGateState.CLEAR
@@ -877,11 +873,8 @@ class DaexInferenceViewModel(
             onSpeechStarted = {
                 handleUserSpeechStarted()
             },
-            onBargeIn = {
-                handleBargeIn()
-            },
-            onSilenceDetected = { contaminatedByTts ->
-                handleUserSilenceDetected(audioFile, contaminatedByTts)
+            onSilenceDetected = {
+                handleUserSilenceDetected(audioFile)
             }
         ) { amplitude ->
             setVoiceAmplitude(amplitude)
@@ -892,35 +885,14 @@ class DaexInferenceViewModel(
         // Deliberately does NOT cancel generation: a speech-start is only ~160ms of
         // signal and false-triggers on coughs/taps. Cancelling here made the model
         // cut itself off mid-response (2026-07-10 field testing). Chunks that finish
-        // while generation is running are queued in submitAudioPrompt instead, and
-        // deliberate interruption goes through the sustained barge-in path.
+        // while generation is running are queued in submitAudioPrompt instead.
         android.util.Log.d("DaexInference", "VAD: Speech started")
     }
 
-    private fun handleBargeIn() {
-        // Sustained user speech over active TTS: stop the voice and the generation
-        // feeding it so the user's chunk is submitted cleanly.
-        android.util.Log.i("DaexInference", "VAD: Barge-in — stopping TTS playback and generation")
-        cancelGeneration()
-    }
-
-    private fun handleUserSilenceDetected(audioFile: java.io.File, contaminatedByTts: Boolean) {
+    private fun handleUserSilenceDetected(audioFile: java.io.File) {
         viewModelScope.launch {
             // Finalize current chunk by calling stop() on its recorder
             audioRecorder?.stop()
-
-            if (contaminatedByTts) {
-                // The chunk mostly overlapped TTS playback without qualifying as a
-                // barge-in — it is almost certainly the model's own voice. Submitting
-                // it would make the model answer itself, so drop it.
-                android.util.Log.w("DaexInference", "VAD: Discarding echo-contaminated chunk ${audioFile.name}")
-                liveAudioFiles.remove(audioFile)
-                audioFile.delete()
-                if (_isLiveVoiceActive.value) {
-                    startNewRecordingSegment()
-                }
-                return@launch
-            }
 
             android.util.Log.i("DaexInference", "VAD: Silence detected. Finalizing chunk and submitting.")
             setVoiceStateInternal(VoiceState.PROCESSING)
