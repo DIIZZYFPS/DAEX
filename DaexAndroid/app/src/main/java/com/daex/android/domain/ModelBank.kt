@@ -1,4 +1,6 @@
-package com.daex.android.services
+package com.daex.android.domain
+
+import com.daex.android.framework.BackendType
 
 data class Model(
     val id: String,

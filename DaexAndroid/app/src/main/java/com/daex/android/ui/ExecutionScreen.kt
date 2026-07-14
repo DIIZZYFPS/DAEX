@@ -33,10 +33,10 @@ import androidx.compose.ui.graphics.Path
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import com.daex.android.services.DaexInferenceViewModel
-import com.daex.android.services.ModelBank
-import com.daex.android.services.ModelManager
+import com.daex.android.domain.ModelBank
+import com.daex.android.data.ModelManager
 import com.daex.android.services.ModelStatus
-import com.daex.android.services.PermissionRequest
+import com.daex.android.domain.PermissionRequest
 import com.daex.android.services.VoiceState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
@@ -49,7 +49,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.ui.draw.alpha
 import com.daex.android.ui.components.*
-import com.daex.android.services.BackendType
+import com.daex.android.framework.BackendType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource

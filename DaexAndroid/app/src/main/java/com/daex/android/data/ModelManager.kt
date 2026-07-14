@@ -1,6 +1,9 @@
-package com.daex.android.services
+package com.daex.android.data
 
 import android.content.Context
+import com.daex.android.domain.Model
+import com.daex.android.domain.ModelBank
+import com.daex.android.framework.DeviceService
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File

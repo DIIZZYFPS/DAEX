@@ -24,11 +24,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.daex.android.services.DaexInferenceViewModel
-import com.daex.android.services.Model
-import com.daex.android.services.ModelBank
-import com.daex.android.services.ModelManager
+import com.daex.android.domain.Model
+import com.daex.android.domain.ModelBank
+import com.daex.android.data.ModelManager
 import com.daex.android.services.ModelStatus
-import com.daex.android.services.BackendType
+import com.daex.android.framework.BackendType
 import com.daex.android.ui.components.DaexTextField
 import com.daex.android.ui.components.EmptyGalleryIcon
 import com.daex.android.ui.components.EmptyState
@@ -710,7 +710,7 @@ private fun MarketTag(label: String) {
     }
 }
 
-private fun isTargetHardwareCompatible(targetHardware: String, specs: com.daex.android.services.DeviceSpecs?): Boolean {
+private fun isTargetHardwareCompatible(targetHardware: String, specs: com.daex.android.framework.DeviceSpecs?): Boolean {
     if (specs == null) return false
     val target = targetHardware.lowercase().trim()
 

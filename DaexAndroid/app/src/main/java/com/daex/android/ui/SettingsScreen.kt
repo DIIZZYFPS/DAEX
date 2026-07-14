@@ -33,12 +33,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.daex.android.services.DaexInferenceViewModel
-import com.daex.android.services.Model
-import com.daex.android.services.ModelBank
-import com.daex.android.services.ModelManager
+import com.daex.android.domain.Model
+import com.daex.android.domain.ModelBank
+import com.daex.android.data.ModelManager
 import com.daex.android.services.ModelStatus
 import com.daex.android.services.HapticType
-import com.daex.android.services.ToolRegistry
+import com.daex.android.framework.ToolRegistry
 import com.daex.android.ui.components.ConfirmDialog
 import com.daex.android.ui.components.DaexSwitch
 import com.daex.android.ui.theme.DaexTheme

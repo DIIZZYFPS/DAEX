@@ -1,9 +1,10 @@
-package com.daex.android.database
+package com.daex.android.data
 
 import android.content.Context
 import android.util.Log
 import androidx.sqlite.SQLiteConnection
 import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.daex.android.domain.FtsQuerySanitizer
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File

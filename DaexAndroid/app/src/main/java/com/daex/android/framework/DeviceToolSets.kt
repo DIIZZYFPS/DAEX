@@ -1,4 +1,4 @@
-package com.daex.android.services
+package com.daex.android.framework
 
 import android.content.Context
 import android.content.Intent
@@ -8,6 +8,8 @@ import android.os.BatteryManager
 import android.os.Build
 import android.os.StatFs
 import android.util.Log
+import com.daex.android.data.DaexSkillManager
+import com.daex.android.data.DaexSkillManagerImpl
 import com.google.ai.edge.litertlm.Tool
 import com.google.ai.edge.litertlm.ToolParam
 import com.google.ai.edge.litertlm.ToolSet

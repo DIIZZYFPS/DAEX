@@ -1,4 +1,4 @@
-package com.daex.android.services
+package com.daex.android.data
 
 import android.content.Context
 import androidx.compose.ui.graphics.Color
@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.*
 import androidx.datastore.preferences.preferencesDataStore
+import com.daex.android.framework.ToolRegistry
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 

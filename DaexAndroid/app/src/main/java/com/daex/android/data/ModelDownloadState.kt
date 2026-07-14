@@ -1,4 +1,4 @@
-package com.daex.android.services
+package com.daex.android.data
 
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow

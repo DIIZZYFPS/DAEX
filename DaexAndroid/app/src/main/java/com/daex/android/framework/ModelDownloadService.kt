@@ -1,4 +1,4 @@
-package com.daex.android.services
+package com.daex.android.framework
 
 import android.app.Notification
 import android.app.NotificationChannel
@@ -11,6 +11,13 @@ import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.daex.android.R
+import com.daex.android.data.DownloadPhase
+import com.daex.android.data.GenerativeDownloadStatus
+import com.daex.android.data.KokoroDownloadStatus
+import com.daex.android.data.ModelDownloadState
+import com.daex.android.data.ModelManager
+import com.daex.android.domain.Model
+import com.daex.android.domain.ModelBank
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job

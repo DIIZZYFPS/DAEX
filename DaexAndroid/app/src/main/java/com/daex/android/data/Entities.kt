@@ -1,4 +1,4 @@
-package com.daex.android.database
+package com.daex.android.data
 
 import io.objectbox.annotation.Entity
 import io.objectbox.annotation.Id

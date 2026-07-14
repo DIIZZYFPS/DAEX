@@ -1,4 +1,4 @@
-package com.daex.android.services
+package com.daex.android.domain
 
 import kotlinx.coroutines.CompletableDeferred
 

@@ -1,4 +1,4 @@
-package com.daex.android.services
+package com.daex.android.data
 
 import android.content.Context
 import android.util.Log

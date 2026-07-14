@@ -1,11 +1,8 @@
-package com.daex.android.services
+package com.daex.android.data
 
 import android.content.Context
-import com.daex.android.database.ConversationEntity
-import com.daex.android.database.ConversationEntity_
-import com.daex.android.database.DaexMessageFtsHelper
-import com.daex.android.database.MessageEntity
-import com.daex.android.database.MessageEntity_
+import com.daex.android.framework.DaexEmbedder
+import com.daex.android.framework.Message
 import io.objectbox.BoxStore
 import io.objectbox.kotlin.query
 import io.objectbox.kotlin.toFlow

@@ -13,11 +13,11 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.remember
 import com.daex.android.services.DaexInferenceViewModel
-import com.daex.android.services.DaexMemory
-import com.daex.android.services.DeviceService
-import com.daex.android.services.ModelManager
-import com.daex.android.services.DaexEmbedder
-import com.daex.android.services.DaexRagImpl
+import com.daex.android.data.DaexMemory
+import com.daex.android.framework.DeviceService
+import com.daex.android.data.ModelManager
+import com.daex.android.framework.DaexEmbedder
+import com.daex.android.data.DaexRagImpl
 import com.daex.android.ui.theme.DaexAppTheme
 import com.daex.android.ui.ExecutionScreen
 import com.daex.android.ui.GalleryScreen
@@ -38,8 +38,8 @@ import com.daex.android.ui.LandingScreen
 import com.daex.android.ui.CrashReportModal
 import com.daex.android.ui.ChangelogModal
 import com.daex.android.ui.compareSemVer
-import com.daex.android.services.CrashLogWriter
-import com.daex.android.services.DaexPreferences
+import com.daex.android.data.CrashLogWriter
+import com.daex.android.data.DaexPreferences
 import java.io.File
 
 enum class Screen {
@@ -59,10 +59,10 @@ class MainActivity : ComponentActivity() {
         val modelManager = ModelManager(this)
         val daexEmbedder = DaexEmbedder(this, modelManager)
         val daexMemory = DaexMemory(boxStore, daexEmbedder, this.applicationContext)
-        val daexService = com.daex.android.services.DaexServiceImpl(this, daexMemory)
-        val daexCoreMemory = com.daex.android.services.DaexCoreMemoryImpl(this)
+        val daexService = com.daex.android.framework.DaexServiceImpl(this, daexMemory)
+        val daexCoreMemory = com.daex.android.framework.DaexCoreMemoryImpl(this)
         val daexRag = DaexRagImpl(this.applicationContext, boxStore, daexEmbedder)
-        val daexSkillManager = com.daex.android.services.DaexSkillManagerImpl(this)
+        val daexSkillManager = com.daex.android.data.DaexSkillManagerImpl(this)
 
         setContent {
             val daexPreferences = remember { DaexPreferences(this@MainActivity) }

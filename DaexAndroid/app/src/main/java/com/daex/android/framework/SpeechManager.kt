@@ -1,4 +1,4 @@
-package com.daex.android.services
+package com.daex.android.framework
 
 import android.content.Context
 import android.content.Intent
@@ -8,6 +8,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.os.Handler
 import android.os.Looper
+import com.daex.android.services.VoiceState
 
 class SpeechManager(
     private val context: Context,

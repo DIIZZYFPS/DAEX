@@ -1,4 +1,4 @@
-package com.daex.android.database
+package com.daex.android.domain
 
 /** Shared FTS5 query sanitization for both the document-chunk and message full-text indexes. */
 object FtsQuerySanitizer {

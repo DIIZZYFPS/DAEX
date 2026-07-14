@@ -1,10 +1,8 @@
-package com.daex.android.services
+package com.daex.android.data
 
 import android.content.Context
 import android.util.Log
-import com.daex.android.database.DocumentChunkEntity
-import com.daex.android.database.DocumentChunkEntity_
-import com.daex.android.database.DaexFtsDatabaseHelper
+import com.daex.android.framework.DaexEmbedder
 import io.objectbox.BoxStore
 import io.objectbox.kotlin.query
 import kotlinx.coroutines.Dispatchers
@@ -43,7 +41,7 @@ class DaexRagImpl(
             val allChunks = chunkBox.all
             if (allChunks.isNotEmpty()) {
                 val ftsChunks = allChunks.map {
-                    com.daex.android.database.DaexFtsDatabaseHelper.FtsMatch(
+                    com.daex.android.data.DaexFtsDatabaseHelper.FtsMatch(
                         documentId = it.documentId,
                         fileName = it.fileName,
                         chunkIndex = it.chunkIndex,
@@ -80,7 +78,7 @@ class DaexRagImpl(
             Log.d("DaexRag", "Ingesting file '$fileName' (size: $contentLength chars): ${chunks.size} chunks (maxSize: $maxChunkSize, overlap: $overlap)")
 
             val entities = mutableListOf<DocumentChunkEntity>()
-            val ftsChunks = mutableListOf<com.daex.android.database.DaexFtsDatabaseHelper.FtsMatch>()
+            val ftsChunks = mutableListOf<com.daex.android.data.DaexFtsDatabaseHelper.FtsMatch>()
             val batchSize = 200
 
             chunks.forEachIndexed { index, chunkText ->
@@ -97,7 +95,7 @@ class DaexRagImpl(
                         )
                     )
                     ftsChunks.add(
-                        com.daex.android.database.DaexFtsDatabaseHelper.FtsMatch(
+                        com.daex.android.data.DaexFtsDatabaseHelper.FtsMatch(
                             documentId = documentId,
                             fileName = fileName,
                             chunkIndex = index,
