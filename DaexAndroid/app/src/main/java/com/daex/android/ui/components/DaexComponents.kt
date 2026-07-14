@@ -113,7 +113,9 @@ fun DaexTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     textStyle: TextStyle = DaexTheme.typography.body1.copy(color = DaexTheme.colors.onBackground),
-    backgroundColor: Color = DaexTheme.colors.surface
+    backgroundColor: Color = DaexTheme.colors.surface,
+    minLines: Int = 1,
+    maxLines: Int = Int.MAX_VALUE
 ) {
     BasicTextField(
         value = value,
@@ -126,6 +128,8 @@ fun DaexTextField(
         enabled = enabled,
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
+        minLines = minLines,
+        maxLines = maxLines,
         cursorBrush = SolidColor(DaexTheme.colors.primary),
         decorationBox = { innerTextField ->
             Box(contentAlignment = Alignment.CenterStart) {

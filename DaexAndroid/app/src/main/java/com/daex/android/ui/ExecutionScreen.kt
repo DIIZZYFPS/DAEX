@@ -829,7 +829,7 @@ fun ExecutionScreen(
                         Box(
                             modifier = Modifier
                                 .width(barWidth)
-                                .height(52.dp)
+                                .heightIn(min = 52.dp, max = 200.dp)
                                 .align(Alignment.Center)
                                 .pointerInput(Unit) {
                                     detectHorizontalDragGestures(
@@ -957,7 +957,7 @@ fun ExecutionScreen(
                             )
 
                             Row(
-                                modifier = Modifier.matchParentSize().padding(4.dp),
+                                modifier = Modifier.fillMaxWidth().padding(4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 val textFieldWeight = (1f - transitionProgress).coerceAtLeast(0.001f)
@@ -965,7 +965,6 @@ fun ExecutionScreen(
                                 Row(
                                     modifier = Modifier
                                         .weight(textFieldWeight)
-                                        .fillMaxHeight()
                                         // DIIZZY: Layout freeze to prevent text squishing on compress
                                         .requiredWidth(maxBarWidth - 64.dp)
                                         .graphicsLayer {
@@ -996,7 +995,9 @@ fun ExecutionScreen(
                                         modifier = Modifier.weight(1f),
                                         placeholder = placeholderText,
                                         enabled = !isGenerating && isModelReady && voiceState != VoiceState.LISTENING && transitionProgress < 0.5f,
-                                        backgroundColor = Color.Transparent
+                                        backgroundColor = Color.Transparent,
+                                        minLines = 1,
+                                        maxLines = 6
                                     )
                                 }
 
@@ -1004,7 +1005,6 @@ fun ExecutionScreen(
 
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxHeight()
                                         .graphicsLayer {
                                             alpha = (1f - transitionProgress).coerceIn(0f, 1f)
                                             // DIIZZY: Subtle visual shift for gesture pull feeling
