@@ -829,7 +829,7 @@ fun ExecutionScreen(
                         Box(
                             modifier = Modifier
                                 .width(barWidth)
-                                .height(52.dp)
+                                .heightIn(min = 52.dp, max = 200.dp)
                                 .align(Alignment.Center)
                                 .pointerInput(Unit) {
                                     detectHorizontalDragGestures(
@@ -928,57 +928,17 @@ fun ExecutionScreen(
 
                                         val waveAlpha = if (isVoiceSessionActive) 1f else voiceModeProgress
                                         if (waveAlpha > 0f) {
-                                            val baseLineY = size.height * 0.5f
-                                            val widthF = size.width
-                                            val piF = kotlin.math.PI.toFloat()
-
                                             val activeAmplitude = if (isVoiceSessionActive && (voiceState == VoiceState.PROCESSING || isGenerating)) {
                                                 0.15f + 0.1f * kotlin.math.sin(wavePhase * 2.0f)
                                             } else {
                                                 smoothedAmplitude
                                             }
-
-                                            val path1 = Path()
-                                            val amplitude1 = 4.dp.toPx() + (activeAmplitude * 10.dp.toPx())
-                                            path1.moveTo(0f, size.height)
-                                            for (x in 0..size.width.toInt() step 10) {
-                                                val xf = x.toFloat()
-                                                val envelope = kotlin.math.sin(xf / widthF * piF)
-                                                val sineVal = kotlin.math.sin(xf * 0.01f + wavePhase)
-                                                val y = baseLineY + sineVal * amplitude1 * 0.4f * envelope
-                                                path1.lineTo(xf, y)
-                                            }
-                                            path1.lineTo(size.width, size.height)
-                                            path1.close()
-                                            drawPath(path = path1, brush = Brush.verticalGradient(colors = listOf(auraColor.copy(alpha = waveAlpha * 0.25f), Color.Transparent), startY = baseLineY - amplitude1, endY = size.height))
-
-                                            val path2 = Path()
-                                            val amplitude2 = 6.dp.toPx() + (activeAmplitude * 14.dp.toPx())
-                                            path2.moveTo(0f, size.height)
-                                            for (x in 0..size.width.toInt() step 10) {
-                                                val xf = x.toFloat()
-                                                val envelope = kotlin.math.sin(xf / widthF * piF)
-                                                val sineVal = kotlin.math.sin(xf * 0.015f - wavePhase * 2.0f + 1.0f)
-                                                val y = baseLineY + sineVal * amplitude2 * 0.6f * envelope
-                                                path2.lineTo(xf, y)
-                                            }
-                                            path2.lineTo(size.width, size.height)
-                                            path2.close()
-                                            drawPath(path = path2, brush = Brush.verticalGradient(colors = listOf(auraColor.copy(alpha = waveAlpha * 0.40f), Color.Transparent), startY = baseLineY - amplitude2, endY = size.height))
-
-                                            val path3 = Path()
-                                            val amplitude3 = 8.dp.toPx() + (activeAmplitude * 18.dp.toPx())
-                                            path3.moveTo(0f, size.height)
-                                            for (x in 0..size.width.toInt() step 10) {
-                                                val xf = x.toFloat()
-                                                val envelope = kotlin.math.sin(xf / widthF * piF)
-                                                val sineVal = kotlin.math.sin(xf * 0.02f + wavePhase * 3.0f + 2.5f)
-                                                val y = baseLineY + sineVal * amplitude3 * 0.8f * envelope
-                                                path3.lineTo(xf, y)
-                                            }
-                                            path3.lineTo(size.width, size.height)
-                                            path3.close()
-                                            drawPath(path = path3, brush = Brush.verticalGradient(colors = listOf(auraColor.copy(alpha = waveAlpha * 0.60f), Color.Transparent), startY = baseLineY - amplitude3, endY = size.height))
+                                            drawVoiceWaveform(
+                                                phase = wavePhase,
+                                                amplitude = activeAmplitude,
+                                                color = auraColor,
+                                                alpha = waveAlpha
+                                            )
                                         }
                                     }
                                     .border(
@@ -997,7 +957,7 @@ fun ExecutionScreen(
                             )
 
                             Row(
-                                modifier = Modifier.matchParentSize().padding(4.dp),
+                                modifier = Modifier.fillMaxWidth().padding(4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 val textFieldWeight = (1f - transitionProgress).coerceAtLeast(0.001f)
@@ -1005,7 +965,6 @@ fun ExecutionScreen(
                                 Row(
                                     modifier = Modifier
                                         .weight(textFieldWeight)
-                                        .fillMaxHeight()
                                         // DIIZZY: Layout freeze to prevent text squishing on compress
                                         .requiredWidth(maxBarWidth - 64.dp)
                                         .graphicsLayer {
@@ -1036,7 +995,9 @@ fun ExecutionScreen(
                                         modifier = Modifier.weight(1f),
                                         placeholder = placeholderText,
                                         enabled = !isGenerating && isModelReady && voiceState != VoiceState.LISTENING && transitionProgress < 0.5f,
-                                        backgroundColor = Color.Transparent
+                                        backgroundColor = Color.Transparent,
+                                        minLines = 1,
+                                        maxLines = 6
                                     )
                                 }
 
@@ -1044,7 +1005,6 @@ fun ExecutionScreen(
 
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxHeight()
                                         .graphicsLayer {
                                             alpha = (1f - transitionProgress).coerceIn(0f, 1f)
                                             // DIIZZY: Subtle visual shift for gesture pull feeling

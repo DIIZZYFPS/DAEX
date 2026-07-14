@@ -36,8 +36,10 @@ import com.daex.android.services.ModelManager
 import com.daex.android.services.ModelStatus
 import com.daex.android.services.BackendType
 import com.daex.android.services.DeviceSpecs
+import com.daex.android.ui.components.AmbientAura
 import com.daex.android.ui.components.DaexButton
 import com.daex.android.ui.components.DaexLogo
+import com.daex.android.ui.components.drawVoiceWaveform
 import com.daex.android.ui.theme.DaexTheme
 import com.daex.android.services.DaexPreferences
 import androidx.compose.foundation.lazy.LazyColumn
@@ -51,43 +53,80 @@ fun LandingScreen(
     onContinue: () -> Unit,
     daexPreferences: DaexPreferences,
     viewModel: DaexInferenceViewModel,
-    modelManager: ModelManager
+    modelManager: ModelManager,
+    isReplay: Boolean = false
 ) {
     val pagerState = rememberPagerState(pageCount = { 6 })
     val coroutineScope = rememberCoroutineScope()
     val deviceSpecs = viewModel.deviceSpecs
+    val isAuraEnabled by viewModel.isAuraEnabled.collectAsState()
+    val modelStatus by viewModel.modelStatus.collectAsState()
 
-    Column(
+    // The workspace's ambient aura "wakes up" across the tour: absent on the welcome
+    // slide, at full workspace strength by the final slide, so the transition into the
+    // real workspace reads as continuous. Page offset animates via animateScrollToPage,
+    // making the ramp smooth rather than stepped.
+    val auraIntensity = if (isAuraEnabled) {
+        ((pagerState.currentPage + pagerState.currentPageOffsetFraction) / 5f).coerceIn(0f, 1f)
+    } else 0f
+    val auraColor = if (modelStatus == ModelStatus.DOWNLOADING || modelStatus == ModelStatus.LOADING) {
+        DaexTheme.colors.warning
+    } else {
+        DaexTheme.colors.primary
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(DaexTheme.colors.background)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
     ) {
-        // Main Horizontal Pager (Locked swiping to control user onboarding steps)
-        HorizontalPager(
-            state = pagerState,
+        AmbientAura(intensity = auraIntensity, color = auraColor)
+
+        Column(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth(),
-            userScrollEnabled = false
-        ) { page ->
-            when (page) {
-                0 -> WelcomeSlide {
-                    coroutineScope.launch { pagerState.animateScrollToPage(1) }
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+        ) {
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            // Main Horizontal Pager (Locked swiping to control user onboarding steps)
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                userScrollEnabled = false
+            ) { page ->
+                when (page) {
+                    0 -> WelcomeSlide {
+                        coroutineScope.launch { pagerState.animateScrollToPage(1) }
+                    }
+                    1 -> PhilosophySlide {
+                        coroutineScope.launch { pagerState.animateScrollToPage(2) }
+                    }
+                    2 -> DiagnosticsSlide(deviceSpecs, isVisible = pagerState.currentPage == 2) {
+                        coroutineScope.launch { pagerState.animateScrollToPage(3) }
+                    }
+                    3 -> IcarusShowcaseSlide {
+                        coroutineScope.launch { pagerState.animateScrollToPage(4) }
+                    }
+                    4 -> EngineSelectorSlide(viewModel, modelManager, deviceSpecs) {
+                        coroutineScope.launch { pagerState.animateScrollToPage(5) }
+                    }
+                    5 -> TutorialSlide(viewModel, daexPreferences, onContinue)
                 }
-                1 -> PhilosophySlide {
-                    coroutineScope.launch { pagerState.animateScrollToPage(2) }
-                }
-                2 -> DiagnosticsSlide(deviceSpecs, isVisible = pagerState.currentPage == 2) {
-                    coroutineScope.launch { pagerState.animateScrollToPage(3) }
-                }
-                3 -> IcarusShowcaseSlide {
-                    coroutineScope.launch { pagerState.animateScrollToPage(4) }
-                }
-                4 -> EngineSelectorSlide(viewModel, modelManager, deviceSpecs) {
-                    coroutineScope.launch { pagerState.animateScrollToPage(5) }
-                }
-                5 -> TutorialSlide(viewModel, daexPreferences, onContinue)
+            }
+
+            if (isReplay) {
+                BasicText(
+                    text = "SKIP",
+                    style = DaexTheme.typography.mono.copy(
+                        color = Color.White.copy(alpha = 0.4f),
+                        fontSize = 11.sp,
+                        letterSpacing = 1.sp
+                    ),
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .clickable { onContinue() }
+                        .padding(16.dp)
+                )
             }
         }
 
@@ -109,6 +148,7 @@ fun LandingScreen(
                         .background(if (isSelected) DaexTheme.colors.primary else Color.White.copy(alpha = 0.2f))
                 )
             }
+        }
         }
     }
 }
@@ -878,9 +918,11 @@ private fun TutorialSlide(
     var tutorialPageIndex by remember { mutableStateOf(0) }
     
     val tutorialCards = listOf(
-        Pair("CHAIN OF THOUGHT REASONING", "DAEX displays real-time execution thoughts. You can see the neural model processing concepts inside the <|think|> channel before outputting the response."),
-        Pair("LOCAL RAG KNOWLEDGE BASES", "Vectorize local PDF or text files offline. The local Nomic embedder references context from your local document index during live conversation."),
-        Pair("SECURE SYSTEM CALLS", "Local models can secure execution triggers on your device. Launch applications or query disk specifications via secure sandbox tools.")
+        Pair("CHAIN OF THOUGHT REASONING", "DAEX displays real-time execution thoughts. Watch the reasoning channel process concepts live before the final response is composed."),
+        Pair("LOCAL RAG KNOWLEDGE BASES", "Vectorize local PDF or text files entirely offline. An on-device embedding engine indexes your documents so answers can be grounded in your own content."),
+        Pair("SECURE SYSTEM CALLS", "Icarus can trigger sandboxed device actions — with your approval. Its toolkit is modular and grows over time."),
+        Pair("LIVE VOICE MODE", "Speak naturally and Icarus answers out loud with a fully on-device voice — hands-free conversation with automatic turn detection."),
+        Pair("TOTAL RECALL", "Every conversation is saved on-device and searchable. Icarus maintains a curated core memory of what matters to you — and can recall past sessions when relevant.")
     )
 
     LaunchedEffect(Unit) {
@@ -1159,19 +1201,29 @@ private fun TutorialVisualPreview(pageIndex: Int) {
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         BasicText(
-                            text = "Vector Model:",
+                            text = "Vector Index:",
                             style = DaexTheme.typography.mono.copy(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp)
                         )
                         BasicText(
-                            text = "Nomic Embed Text 1.5",
+                            text = "LOCAL // OFFLINE",
                             style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.primary, fontSize = 9.sp, fontWeight = FontWeight.Bold)
                         )
                     }
                 }
             }
             2 -> {
-                // Mock System Call Tool Approval UI
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Mock System Call Tool Approval UI - mirrors the live permission card
+                // in MessageLine.kt (outer primary-bordered container wrapping the
+                // request card and DENY/APPROVE row).
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Color.White.copy(alpha = 0.02f))
+                        .border(1.dp, DaexTheme.colors.primary.copy(alpha = 0.2f), RoundedCornerShape(12.dp))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -1252,6 +1304,147 @@ private fun TutorialVisualPreview(pageIndex: Int) {
                             )
                         }
                     }
+                }
+            }
+            3 -> {
+                // Mock Live Voice Mode UI - mirrors the live input bar in voice mode:
+                // same rounded pill, same drawVoiceWaveform rendering, same placeholder copy.
+                val voiceTransition = rememberInfiniteTransition(label = "MockVoiceWave")
+                val mockPhase by voiceTransition.animateFloat(
+                    initialValue = 0f,
+                    targetValue = 2f * kotlin.math.PI.toFloat(),
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(durationMillis = 2000, easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart
+                    ),
+                    label = "MockWavePhase"
+                )
+                val primaryColor = DaexTheme.colors.primary
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DaexTheme.colors.success.copy(alpha = 0.05f))
+                            .border(0.5.dp, DaexTheme.colors.success.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                            .padding(8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(DaexTheme.colors.success)
+                            )
+                            BasicText(
+                                text = "LIVE SESSION",
+                                style = DaexTheme.typography.mono.copy(
+                                    color = DaexTheme.colors.success,
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            )
+                        }
+                        BasicText(
+                            text = "ON-DEVICE VOICE",
+                            style = DaexTheme.typography.mono.copy(color = Color.White.copy(alpha = 0.4f), fontSize = 8.sp)
+                        )
+                    }
+
+                    // Miniature of the live voice input bar with the real waveform
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(44.dp)
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(Color.Black.copy(alpha = 0.4f))
+                            .border(1.dp, primaryColor.copy(alpha = 0.6f), RoundedCornerShape(22.dp))
+                    ) {
+                        androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                            val mockAmplitude = 0.25f + 0.15f * kotlin.math.sin(mockPhase * 1.5f)
+                            drawVoiceWaveform(
+                                phase = mockPhase,
+                                amplitude = mockAmplitude,
+                                color = primaryColor,
+                                alpha = 1f
+                            )
+                        }
+                        BasicText(
+                            text = "Listening to speech...",
+                            style = DaexTheme.typography.body2.copy(
+                                color = Color.White.copy(alpha = 0.4f),
+                                fontSize = 10.sp
+                            ),
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(start = 14.dp)
+                        )
+                    }
+                }
+            }
+            4 -> {
+                // Mock Conversation Recall UI - mirrors the Sidebar's live search field
+                // and conversation-row styling.
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DaexTheme.colors.onSurface.copy(alpha = 0.05f))
+                            .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        BasicText(
+                            text = "that recipe from last week",
+                            style = DaexTheme.typography.body2.copy(
+                                color = Color.White.copy(alpha = 0.7f),
+                                fontSize = 10.sp
+                            )
+                        )
+                    }
+
+                    BasicText(
+                        text = "SEARCH RESULTS",
+                        style = DaexTheme.typography.mono.copy(
+                            color = Color.White.copy(alpha = 0.3f),
+                            fontSize = 8.sp,
+                            letterSpacing = 2.sp
+                        )
+                    )
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(DaexTheme.colors.onSurface.copy(alpha = 0.05f))
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        BasicText(
+                            text = "Weeknight pasta ideas",
+                            style = DaexTheme.typography.body1.copy(
+                                color = DaexTheme.colors.primary,
+                                fontSize = 11.sp
+                            )
+                        )
+                        BasicText(
+                            text = "SAVED SESSION",
+                            style = DaexTheme.typography.mono.copy(
+                                color = DaexTheme.colors.onSurface.copy(alpha = 0.2f),
+                                fontSize = 7.sp
+                            )
+                        )
+                    }
+
+                    BasicText(
+                        text = "Icarus can also recall past sessions on its own when relevant.",
+                        style = DaexTheme.typography.body2.copy(
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 9.sp,
+                            lineHeight = 13.sp
+                        )
+                    )
                 }
             }
         }
@@ -1370,7 +1563,7 @@ private fun IcarusShowcaseSlide(onNext: () -> Unit) {
                     }
                     Spacer(modifier = Modifier.height(4.dp))
                     BasicText(
-                        text = "Icarus executes secure functions on your device environment. Battery metrics, local storage specs, or launching system applications are processed locally.",
+                        text = "Icarus executes secure functions on your device environment — with per-tool controls you can toggle anytime. Everything is processed locally.",
                         style = DaexTheme.typography.body2.copy(
                             color = DaexTheme.colors.onSurface.copy(alpha = 0.6f),
                             fontSize = 11.sp,

@@ -4,6 +4,13 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.remember
 import com.daex.android.services.DaexInferenceViewModel
 import com.daex.android.services.DaexMemory
@@ -29,6 +36,8 @@ import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.flow.first
 import com.daex.android.ui.LandingScreen
 import com.daex.android.ui.CrashReportModal
+import com.daex.android.ui.ChangelogModal
+import com.daex.android.ui.compareSemVer
 import com.daex.android.services.CrashLogWriter
 import com.daex.android.services.DaexPreferences
 import java.io.File
@@ -72,11 +81,30 @@ class MainActivity : ComponentActivity() {
             }
             var currentScreen by remember { mutableStateOf<Screen?>(null) }
             var pendingCrashFile by remember { mutableStateOf<File?>(null) }
+            var autoChangelogVisible by remember { mutableStateOf(false) }
+            var changelogSinceVersion by remember { mutableStateOf<String?>(null) }
+            var isOnboardingReplay by remember { mutableStateOf(false) }
 
             LaunchedEffect(Unit) {
                 val completed = daexPreferences.hasCompletedLandingFlow.first()
                 currentScreen = if (completed) Screen.EXECUTION else Screen.LANDING
                 pendingCrashFile = CrashLogWriter.findPendingCrashLog(applicationContext)
+
+                val currentVersion = try {
+                    packageManager.getPackageInfo(packageName, 0).versionName
+                } catch (e: Exception) {
+                    null
+                }
+                if (currentVersion != null) {
+                    val lastSeen = daexPreferences.lastSeenVersionFlow.first()
+                    if (lastSeen == null) {
+                        daexPreferences.setLastSeenVersion(currentVersion)
+                    } else if (compareSemVer(currentVersion, lastSeen) > 0) {
+                        changelogSinceVersion = lastSeen
+                        autoChangelogVisible = true
+                        daexPreferences.setLastSeenVersion(currentVersion)
+                    }
+                }
             }
             
             val primaryColor by viewModel.primaryColor.collectAsState()
@@ -92,49 +120,68 @@ class MainActivity : ComponentActivity() {
                 primaryColor = primaryColor,
                 isDark = isDarkMode
             ) {
-                when (screen) {
-                    Screen.LANDING -> {
-                        LandingScreen(
-                            onContinue = { 
-                                currentScreen = Screen.EXECUTION 
-                            },
-                            daexPreferences = daexPreferences,
-                            viewModel = viewModel,
-                            modelManager = modelManager
-                        )
+                AnimatedContent(
+                    targetState = screen,
+                    label = "screen_transition",
+                    transitionSpec = {
+                        (fadeIn(tween(250)) + slideInVertically(tween(300)) { it / 20 }) togetherWith
+                            (fadeOut(tween(200)) + slideOutVertically(tween(300)) { -it / 20 })
                     }
-                    Screen.EXECUTION -> {
-                        ExecutionScreen(
-                            viewModel = viewModel,
-                            modelManager = modelManager,
-                            onBack = { 
-                                viewModel.disconnect()
-                                currentScreen = Screen.LANDING 
-                            },
-                            onOpenGallery = { currentScreen = Screen.GALLERY },
-                            onOpenSettings = { currentScreen = Screen.SETTINGS }
-                        )
-                    }
-                    Screen.GALLERY -> {
-                        androidx.activity.compose.BackHandler {
-                            currentScreen = Screen.EXECUTION
+                ) { targetScreen ->
+                    when (targetScreen) {
+                        Screen.LANDING -> {
+                            LandingScreen(
+                                onContinue = {
+                                    if (isOnboardingReplay) {
+                                        isOnboardingReplay = false
+                                        currentScreen = Screen.SETTINGS
+                                    } else {
+                                        currentScreen = Screen.EXECUTION
+                                    }
+                                },
+                                daexPreferences = daexPreferences,
+                                viewModel = viewModel,
+                                modelManager = modelManager,
+                                isReplay = isOnboardingReplay
+                            )
                         }
-                        GalleryScreen(
-                            viewModel = viewModel,
-                            modelManager = modelManager,
-                            onBack = { currentScreen = Screen.EXECUTION }
-                        )
-                    }
-                    Screen.SETTINGS -> {
-                        androidx.activity.compose.BackHandler {
-                            currentScreen = Screen.EXECUTION
+                        Screen.EXECUTION -> {
+                            ExecutionScreen(
+                                viewModel = viewModel,
+                                modelManager = modelManager,
+                                onBack = {
+                                    viewModel.disconnect()
+                                    currentScreen = Screen.LANDING
+                                },
+                                onOpenGallery = { currentScreen = Screen.GALLERY },
+                                onOpenSettings = { currentScreen = Screen.SETTINGS }
+                            )
                         }
-                        SettingsScreen(
-                            viewModel = viewModel,
-                            modelManager = modelManager,
-                            onBack = { currentScreen = Screen.EXECUTION },
-                            onOpenGallery = { currentScreen = Screen.GALLERY }
-                        )
+                        Screen.GALLERY -> {
+                            androidx.activity.compose.BackHandler {
+                                currentScreen = Screen.EXECUTION
+                            }
+                            GalleryScreen(
+                                viewModel = viewModel,
+                                modelManager = modelManager,
+                                onBack = { currentScreen = Screen.EXECUTION }
+                            )
+                        }
+                        Screen.SETTINGS -> {
+                            androidx.activity.compose.BackHandler {
+                                currentScreen = Screen.EXECUTION
+                            }
+                            SettingsScreen(
+                                viewModel = viewModel,
+                                modelManager = modelManager,
+                                onBack = { currentScreen = Screen.EXECUTION },
+                                onOpenGallery = { currentScreen = Screen.GALLERY },
+                                onReplayOnboarding = {
+                                    isOnboardingReplay = true
+                                    currentScreen = Screen.LANDING
+                                }
+                            )
+                        }
                     }
                 }
 
@@ -144,6 +191,12 @@ class MainActivity : ComponentActivity() {
                         onDismiss = { pendingCrashFile = null }
                     )
                 }
+
+                ChangelogModal(
+                    visible = autoChangelogVisible,
+                    sinceVersion = changelogSinceVersion,
+                    onClose = { autoChangelogVisible = false }
+                )
             }
         }
     }

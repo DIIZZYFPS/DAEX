@@ -30,6 +30,8 @@ import com.daex.android.services.ModelManager
 import com.daex.android.services.ModelStatus
 import com.daex.android.services.BackendType
 import com.daex.android.ui.components.DaexTextField
+import com.daex.android.ui.components.EmptyGalleryIcon
+import com.daex.android.ui.components.EmptyState
 import com.daex.android.ui.theme.DaexTheme
 
 enum class SortOrder {
@@ -197,17 +199,21 @@ fun GalleryScreen(
         ) {
             if (groupedModels.isEmpty()) {
                 item {
+                    val hasActiveFilter = searchQuery.isNotEmpty() || selectedBackendFilter != null
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 64.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        BasicText(
-                            text = "No compatible engines found",
-                            style = DaexTheme.typography.body2.copy(
-                                color = DaexTheme.colors.onBackground.copy(alpha = 0.4f)
-                            )
+                        EmptyState(
+                            icon = { color -> EmptyGalleryIcon(color = color, modifier = Modifier.size(40.dp)) },
+                            title = "No compatible engines found",
+                            subtitle = "Try a different search or filter",
+                            actionLabel = if (hasActiveFilter) "Clear filters" else null,
+                            onAction = if (hasActiveFilter) {
+                                { searchQuery = ""; selectedBackendFilter = null }
+                            } else null
                         )
                     }
                 }
