@@ -23,7 +23,7 @@ data class KokoroDownloadStatus(
 /**
  * Process-wide bridge between [ModelDownloadService] (the sole owner of download I/O,
  * so its own [ModelManager] instance is the only one whose single-flight guards matter)
- * and any DaexInferenceViewModel instance observing progress. Mirrors the three independent
+ * and any SettingsViewModel/TtsViewModel/ChatViewModel instance observing progress. Mirrors the three independent
  * lanes ModelManager enforces: one generative-model slot for chat models, one Kokoro TTS
  * slot, and one embedding-model slot - the embedding model gets its own lane (rather than
  * sharing the chat-model slot) specifically so it can download concurrently with the

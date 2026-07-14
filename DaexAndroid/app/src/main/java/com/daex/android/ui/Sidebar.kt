@@ -35,7 +35,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.daex.android.services.DaexInferenceViewModel
+import com.daex.android.ui.viewmodels.ChatViewModel
 import com.daex.android.ui.components.EmptyChatIcon
 import com.daex.android.ui.components.EmptyState
 import com.daex.android.ui.theme.DaexTheme
@@ -49,15 +49,15 @@ fun Sidebar(
     onOpenSettings: () -> Unit,
     onOpenGallery: () -> Unit,
     onOpenSavedPrompts: () -> Unit = {},
-    viewModel: DaexInferenceViewModel
+    chatViewModel: ChatViewModel
 ) {
-    val conversations by viewModel.conversations.collectAsState()
-    val currentConvId by viewModel.currentConversationId.collectAsState()
-    val searchResults by viewModel.conversationSearchResults.collectAsState()
+    val conversations by chatViewModel.conversations.collectAsState()
+    val currentConvId by chatViewModel.currentConversationId.collectAsState()
+    val searchResults by chatViewModel.conversationSearchResults.collectAsState()
 
     var searchQuery by remember { mutableStateOf("") }
     LaunchedEffect(searchQuery) {
-        viewModel.searchConversations(searchQuery)
+        chatViewModel.searchConversations(searchQuery)
     }
     val displayedConversations = searchResults ?: conversations
 
@@ -121,7 +121,7 @@ fun Sidebar(
                 Spacer(modifier = Modifier.height(24.dp))
 
                 // Cross-conversation search - hybrid vector+BM25, purely user-initiated
-                // (see DaexInferenceViewModel.searchConversations); nothing here ever gets
+                // (see ChatViewModel.searchConversations); nothing here ever gets
                 // silently injected into a chat's context.
                 Box(
                     modifier = Modifier
@@ -206,7 +206,7 @@ fun Sidebar(
                                 .background(if (isSelected) DaexTheme.colors.onSurface.copy(alpha = 0.05f) else Color.Transparent)
                                 .combinedClickable(
                                     onClick = { 
-                                        viewModel.selectConversation(conv.id)
+                                        chatViewModel.selectConversation(conv.id)
                                         onClose()
                                     },
                                     onLongClick = {
@@ -243,7 +243,7 @@ fun Sidebar(
                                     BasicText("Pin (Coming Soon)", style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.onSurface.copy(alpha=0.5f)))
                                 }
                                 DropdownMenuItem(onClick = { 
-                                    viewModel.deleteConversation(conv.id)
+                                    chatViewModel.deleteConversation(conv.id)
                                     showMenu = false 
                                 }) {
                                     BasicText("Delete Session", style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.error))

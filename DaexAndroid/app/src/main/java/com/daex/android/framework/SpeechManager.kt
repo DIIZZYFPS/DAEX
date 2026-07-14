@@ -8,7 +8,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.os.Handler
 import android.os.Looper
-import com.daex.android.services.VoiceState
+import com.daex.android.ui.viewmodels.VoiceState
 
 class SpeechManager(
     private val context: Context,
