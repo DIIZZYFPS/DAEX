@@ -79,6 +79,14 @@ android {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
+    testOptions {
+        unitTests {
+            // Safety net, not the primary testing strategy: any android.* call incidentally
+            // exercised by code under test without being mocked returns a default value
+            // instead of throwing "Stub!".
+            isReturnDefaultValues = true
+        }
+    }
     kotlinOptions {
         jvmTarget = "21"
         freeCompilerArgs += listOf("-Xskip-metadata-version-check")
@@ -150,6 +158,12 @@ dependencies {
     // Debug tooling
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
+
+    // Unit testing
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("io.mockk:mockk:1.13.13")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("app.cash.turbine:turbine:1.2.0")
 }
 
 kotlin {
