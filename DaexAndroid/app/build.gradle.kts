@@ -6,6 +6,8 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
     id("com.google.devtools.ksp")
     id("io.objectbox")
+    id("io.gitlab.arturbosch.detekt")
+    id("io.github.takahirom.roborazzi")
 }
 
 // release-please bumps this value directly (see .github/release-please-config.json's
@@ -74,10 +76,27 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+        // Release-like (non-debuggable) but debug-signed, so :macrobenchmark can install and
+        // measure it on any device without a release keystore. Never shipped.
+        create("benchmark") {
+            initWith(getByName("release"))
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+            isDebuggable = false
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
+    }
+    lint {
+        // Fails the build on any NEW lint issue; the 49 pre-existing warnings (dependency
+        // version lag, a few Compose perf hints, etc. - none are errors) are frozen in
+        // lint-baseline.xml rather than blocking this pass. Regenerate the baseline
+        // (./gradlew :app:updateLintBaseline) deliberately, not to silence a new real issue.
+        abortOnError = true
+        warningsAsErrors = false
+        baseline = file("lint-baseline.xml")
     }
     testOptions {
         unitTests {
@@ -85,6 +104,8 @@ android {
             // exercised by code under test without being mocked returns a default value
             // instead of throwing "Stub!".
             isReturnDefaultValues = true
+            // Robolectric-backed Compose UI tests need real resource resolution.
+            isIncludeAndroidResources = true
         }
     }
     kotlinOptions {
@@ -164,8 +185,72 @@ dependencies {
     testImplementation("io.mockk:mockk:1.13.13")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
     testImplementation("app.cash.turbine:turbine:1.2.0")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    // Desktop-native ObjectBox binaries so integration tests can run a real BoxStore on the
+    // JVM (no emulator) - linux for the ubuntu-latest CI runner, windows for local dev.
+    testImplementation("io.objectbox:objectbox-linux:4.0.0")
+    testImplementation("io.objectbox:objectbox-windows:4.0.0")
+
+    // Compose UI + screenshot tests, Robolectric-backed - JVM only, no emulator.
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation("androidx.test:core:1.6.1")
+    testImplementation("androidx.test.ext:junit:1.2.1")
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi:1.58.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.58.0")
+    testImplementation("io.github.takahirom.roborazzi:roborazzi-junit-rule:1.58.0")
+
+    // Instrumented tests (app/src/androidTest) - real device/emulator only, no JVM fallback.
+    // Written and reviewable for correctness in this environment, but not runnable here since
+    // there's no adb/device access; CI (or a local run with a connected device/emulator) should
+    // execute these via `:app:connectedDebugAndroidTest`.
+    androidTestImplementation(composeBom)
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test:rules:1.6.1")
+    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+
+    detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:1.23.8")
+}
+
+// Roborazzi's default file-path strategy resolves captureRoboImage(...) filenames relative to
+// the module's working directory, not a configurable outputDir - so each test passes an explicit
+// "src/test/screenshots/..." path instead of relying on global output-dir config here. Baseline
+// images are committed there; `recordRoborazziDebug` (re)generates them, `compareRoborazziDebug`/
+// `verifyRoborazziDebug` diff against them and fail on an unintended visual regression.
+
+// androidx.sqlite:sqlite-bundled (a main `implementation` dep, for RAG/message FTS5) resolves to
+// its Android variant everywhere by default - fine for the real app, but that variant expects its
+// native library packaged into an APK's jniLibs, not present on a plain JVM unit test's
+// java.library.path. Substitute the -jvm variant (ships a desktop-native binary instead) only for
+// the *UnitTest* classpaths (AGP names these "debugUnitTest.../releaseUnitTest...", not
+// "test..." - "androidTest" configs are untouched since those run on a real device/emulator
+// where the Android variant is correct), so integration tests can open a real FTS5 connection
+// without one.
+configurations.matching { it.name.contains("UnitTest") }.configureEach {
+    resolutionStrategy.dependencySubstitution {
+        substitute(module("androidx.sqlite:sqlite-bundled"))
+            .using(module("androidx.sqlite:sqlite-bundled-jvm:2.5.1"))
+    }
 }
 
 kotlin {
     jvmToolchain(21)
+}
+
+detekt {
+    // Google's Android style ruleset on top of detekt's own defaults, rather than a fully
+    // custom detekt.yml - this is an existing codebase, not a greenfield one.
+    buildUponDefaultConfig = true
+    baseline = file("config/detekt/baseline.xml")
+    parallel = true
+}
+
+tasks.withType<io.gitlab.arturbosch.detekt.Detekt>().configureEach {
+    reports {
+        html.required.set(true)
+        xml.required.set(true)
+        txt.required.set(false)
+        sarif.required.set(false)
+    }
 }

@@ -1,0 +1,1426 @@
+<?xml version="1.0" ?>
+<SmellBaseline>
+  <ManuallySuppressedIssues/>
+  <CurrentIssues>
+    <ID>ArgumentListWrapping:AudioSessionViewModel.kt$AudioSessionViewModel$("AudioSessionViewModel", "Cannot start live voice session: TTS is enabled but not downloaded.")</ID>
+    <ID>ArgumentListWrapping:AudioSessionViewModel.kt$AudioSessionViewModel$(android.content.Context.AUDIO_SERVICE)</ID>
+    <ID>ArgumentListWrapping:AudioSessionViewModel.kt$AudioSessionViewModel$(android.media.AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)</ID>
+    <ID>ArgumentListWrapping:AudioSessionViewModel.kt$AudioSessionViewModel$(ctx, "TTS voice engine is not downloaded yet. Please download it in Settings.", android.widget.Toast.LENGTH_LONG)</ID>
+    <ID>ArgumentListWrapping:ChangelogModal.kt$(alpha = 0.5f)</ID>
+    <ID>ArgumentListWrapping:ChangelogModal.kt$(color = DaexTheme.colors.onBackground.copy(alpha = 0.5f))</ID>
+    <ID>ArgumentListWrapping:ChatViewModel.kt$ChatViewModel$(", ")</ID>
+    <ID>ArgumentListWrapping:ChatViewModel.kt$ChatViewModel$("ChatCompaction", "Middle region contains $middleTokens tokens. Summary budget: $targetTokens tokens.")</ID>
+    <ID>ArgumentListWrapping:ChatViewModel.kt$ChatViewModel$("ChatViewModel", "submitAudioPrompt: generation in progress — queueing chunk for next turn")</ID>
+    <ID>ArgumentListWrapping:ChatViewModel.kt$ChatViewModel$(3)</ID>
+    <ID>ArgumentListWrapping:CrashLogWriter.kt$CrashLogWriter$("Device: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE}, SDK ${Build.VERSION.SDK_INT})")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$(" * '## Key Facts &amp; Preferences' for durable facts about the user's routine, hobbies, device settings, or general preferences.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$(" * '## User Profile' for the user's name, personal traits, communication habits, and persistent preferences.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$(" 1) user: \"do you remember things between conversations?\" / assistant explains its own memory and search features → unchanged, not 'user asked about memory'.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$(" 2) user: \"what tools can you use on my device?\" / assistant lists its own tools → unchanged, not 'user inquired about available tools'.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("- DO NOT record temporary debug sessions, transient tasks, or ephemeral conversation history.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("- DO NOT record the fact that you were asked or forced to update your memory, or that a memory compaction occurred.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("- DO NOT record the subject/topic of a question the user asked — only standalone facts the user stated about themselves.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("- DO NOT record tool availability, MCP servers, or system commands (e.g. \"saive-finance MCP is available\").\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("- DO NOT record what DAEX/Icarus can do or how its features work (RAG, memory, tools, voice, etc.) — that describes the app, not the user.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("- Keep the entire markdown file strictly under a 2,000-character budget. If the list is getting long, aggressively merge related bullets and prune older/completed or less relevant details.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("- Maintain the exact headers '# Core Memory', '## User Profile', and '## Key Facts &amp; Preferences'.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("CRITICAL: Only record facts about who the user IS (name, traits, circumstances, routines, opinions, life details they shared about themselves). ")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("DaexCoreMemory", "Compactor output didn't look like valid markdown structure, skipping overwrite. Output: ${cleaned.take(200)}")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("Examples of conversations with NOTHING to record, because they're about the app, not the user:\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("If the conversation reveals no new durable fact about the user, output the CURRENT MEMORY FILE unchanged, verbatim — that is the correct and expected outcome most of the time, not a failure. Do not force a new bullet just because compaction ran.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("Never record facts about DAEX, Icarus, or how the app works, even if that was the topic of conversation — the assistant explaining its own features is not a fact about the user. ")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("Only note something if the user stated it about themselves directly (e.g. 'I'm a nurse', 'I love hiking'), or the same personal detail comes up across multiple turns.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("Output ONLY the updated markdown file — nothing else. No preamble, no explanation, no commentary.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("Reminder: if this conversation was about DAEX/Icarus itself rather than the user's own life, output the current memory file unchanged. Do not log the topic of a question as a fact.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("The TOPIC of a question is never itself a fact — do not write bullets like 'User asked about X', 'User inquired about Y', or 'User wanted to know Z'. ")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$("You are a memory curator. Your ONLY job is to maintain a clean markdown file of durable facts about the USER — the human on the other end of the conversation, never the AI assistant itself.\n")</ID>
+    <ID>ArgumentListWrapping:DaexCoreMemory.kt$DaexCoreMemoryImpl$(200)</ID>
+    <ID>ArgumentListWrapping:DaexEmbedder.kt$DaexEmbedder$(", ")</ID>
+    <ID>ArgumentListWrapping:DaexEmbedder.kt$DaexEmbedder$("DaexEmbedder", "Embedding text='${text.take(30).replace("\n", " ")}' -&gt; raw norm=$norm, size=${floatArray.size}, first 5=[${floatArray.take(5).joinToString(", ")}]")</ID>
+    <ID>ArgumentListWrapping:DaexEmbedder.kt$DaexEmbedder$("\n", " ")</ID>
+    <ID>ArgumentListWrapping:DaexEmbedder.kt$DaexEmbedder$(30)</ID>
+    <ID>ArgumentListWrapping:DaexEmbedder.kt$DaexEmbedder$(5)</ID>
+    <ID>ArgumentListWrapping:DaexFtsDatabaseHelper.kt$DaexFtsDatabaseHelper$("DaexFtsDatabaseHelper", "Successfully opened and initialized Bundled SQLite connection at: ${dbFile.absolutePath}")</ID>
+    <ID>ArgumentListWrapping:DaexMemory.kt$DaexMemory$("DaexMemory", "saveMessage convId=$conversationId, messageId=${message.id}, role=${message.role}")</ID>
+    <ID>ArgumentListWrapping:DaexMemory.kt$DaexMemory$(50)</ID>
+    <ID>ArgumentListWrapping:DaexMemory.kt$DaexMemory$(ConversationEntity_.uuid, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>ArgumentListWrapping:DaexMemory.kt$DaexMemory$(Dispatchers.IO)</ID>
+    <ID>ArgumentListWrapping:DaexMemory.kt$DaexMemory$(MessageEntity_.conversationId, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>ArgumentListWrapping:DaexMemory.kt$DaexMemory$(MessageEntity_.conversationId, entity.conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>ArgumentListWrapping:DaexMemory.kt$DaexMemory$(MessageEntity_.embedding.nearestNeighbors(queryVector, (maxResults * 10).coerceAtLeast(50)))</ID>
+    <ID>ArgumentListWrapping:DaexMemory.kt$DaexMemory$(match.messageId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>ArgumentListWrapping:DaexMemory.kt$DaexMemory$(queryVector, (maxResults * 10).coerceAtLeast(50))</ID>
+    <ID>ArgumentListWrapping:DaexMessageFtsHelper.kt$DaexMessageFtsHelper$("DaexMessageFts", "Successfully opened and initialized message FTS5 connection at: ${dbFile.absolutePath}")</ID>
+    <ID>ArgumentListWrapping:DaexRag.kt$DaexRagImpl$("DaexRag", " FTS match #$i (score=${res.score}): [Index ${res.chunkIndex}] ${res.content.take(60).replace("\n", " ")}...")</ID>
+    <ID>ArgumentListWrapping:DaexRag.kt$DaexRagImpl$("DaexRag", " Vector match #$i (score=${res.score}): [Index ${entity.chunkIndex}] ${entity.content.take(60).replace("\n", " ")}...")</ID>
+    <ID>ArgumentListWrapping:DaexRag.kt$DaexRagImpl$("DaexRag", "Ingesting file '$fileName' (size: $contentLength chars): ${chunks.size} chunks (maxSize: $maxChunkSize, overlap: $overlap)")</ID>
+    <ID>ArgumentListWrapping:DaexRag.kt$DaexRagImpl$("\n", " ")</ID>
+    <ID>ArgumentListWrapping:DaexRag.kt$DaexRagImpl$(60)</ID>
+    <ID>ArgumentListWrapping:DaexRag.kt$DaexRagImpl$(Dispatchers.IO)</ID>
+    <ID>ArgumentListWrapping:DaexRag.kt$DaexRagImpl$(DocumentChunkEntity_.documentId, documentId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>ArgumentListWrapping:DaexRag.kt$DaexRagImpl$(DocumentChunkEntity_.fileName, fileName, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>ArgumentListWrapping:DaexRag.kt$DaexRagImpl$(fileName, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$("Additional instructions from the user (apply on top of the above; they do not override your core identity or the timestamp rule):\n")</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$("Chat history turns are prefixed with relative timestamps like '[5m ago]'. Do not add timestamp prefixes to your own response.\n\n")</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$("DaexService", "Failed to initialize with speculative decoding, retrying with it disabled", specEx)</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$("DaexService", "Initializing LiteRT-LM Engine with model: $modelPath (backend=$backendType, speculative=$isSpeculativeDecodingEnabled)")</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$("DaexService", "NPU initialization failed (missing TF_LITE_AUX), attempting fallback to GPU", e)</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$("EEEE, MMMM d, yyyy, h:mm a", java.util.Locale.getDefault())</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$("The above is your persistent memory. Use it to personalize your responses. Do NOT mention your memory or refer to it, and do NOT attempt to update it yourself.\n")</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$("Your name is Icarus. You are DAEX's on-device assistant. Respond with precision and directness; avoid all meta-commentary unless asked.\n")</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$("\nIMPORTANT CONSTRAINT: The user has requested a concise response. Keep your reasoning and final response relatively brief.\n")</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$("\nIMPORTANT CONSTRAINT: The user has requested an extremely brief response. Keep both your internal thinking/reasoning and final response very short, concise, and direct (under 50 words).\n")</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$(LaunchAppTool(context, onRequestPermission, onStatusUpdate))</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$(RecallMemoryTool(daexMemory, onStatusUpdate))</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$(TAG, "generateResponse: isToolCallingEnabled=$isToolCallingEnabled, temperature=$temperature, topK=$topK, topP=$topP, customPromptLength=${customSystemPrompt.length}")</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$(context, onRequestPermission, onStatusUpdate)</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$(daexMemory, onStatusUpdate)</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$(tool(LaunchAppTool(context, onRequestPermission, onStatusUpdate)))</ID>
+    <ID>ArgumentListWrapping:DaexService.kt$DaexServiceImpl$(tool(RecallMemoryTool(daexMemory, onStatusUpdate)))</ID>
+    <ID>ArgumentListWrapping:DeviceToolSets.kt$LaunchAppTool$(description = "The display name of the application to launch (e.g. 'Spotify', 'YouTube')")</ID>
+    <ID>ArgumentListWrapping:DeviceToolSets.kt$SendEmailTool$(description = "Send an email. Launches the native device email client pre-filled with recipient, subject, and body.")</ID>
+    <ID>ArgumentListWrapping:DeviceToolSets.kt$SkillTools$(description = "List all available modular skills and their descriptions. Use this to find out what capabilities are available to be loaded via loadSkill.")</ID>
+    <ID>ArgumentListWrapping:DeviceToolSets.kt$SkillTools$(description = "Retrieve the full instructions and parameters for a specific skill. Call this when you need details on how to use a skill that is not currently loaded in your context.")</ID>
+    <ID>ArgumentListWrapping:DeviceToolSets.kt$ToolRegistry$("recallMemory", "Recall Past Conversations", "Search conversation history for relevant context", defaultEnabled = true)</ID>
+    <ID>ArgumentListWrapping:DeviceToolSets.kt$ToolRegistry$("sendEmail", "Send Email", "Open the email client with a prefilled message", defaultEnabled = false)</ID>
+    <ID>ArgumentListWrapping:DeviceToolSets.kt$ToolRegistry$("skills", "Modular Skills", "Discover and load domain-specific skill instructions", defaultEnabled = true)</ID>
+    <ID>ArgumentListWrapping:DocumentLibraryModal.kt$(0.5.dp, DaexTheme.colors.error.copy(alpha = 0.3f), RoundedCornerShape(6.dp))</ID>
+    <ID>ArgumentListWrapping:DocumentLibraryModal.kt$(1.dp, if (isAttached) DaexTheme.colors.primary else Color.White.copy(alpha = 0.3f), CircleShape)</ID>
+    <ID>ArgumentListWrapping:DocumentLibraryModal.kt$(6.dp)</ID>
+    <ID>ArgumentListWrapping:DocumentLibraryModal.kt$(alpha = 0.02f)</ID>
+    <ID>ArgumentListWrapping:DocumentLibraryModal.kt$(alpha = 0.05f)</ID>
+    <ID>ArgumentListWrapping:DocumentLibraryModal.kt$(alpha = 0.08f)</ID>
+    <ID>ArgumentListWrapping:DocumentLibraryModal.kt$(alpha = 0.3f)</ID>
+    <ID>ArgumentListWrapping:DocumentLibraryModal.kt$(alpha = 0.4f)</ID>
+    <ID>ArgumentListWrapping:DocumentLibraryModal.kt$(color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 10.sp)</ID>
+    <ID>ArgumentListWrapping:DocumentLibraryModal.kt$(if (isAttached) DaexTheme.colors.primary else Color.Transparent)</ID>
+    <ID>ArgumentListWrapping:DocumentLibraryModal.kt$(if (isAttached) DaexTheme.colors.primary.copy(alpha = 0.05f) else Color.White.copy(alpha = 0.02f))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.25f), RoundedCornerShape(14.dp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(16.dp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(0.5.dp, if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.2f), RoundedCornerShape(16.dp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(0f, spring(stiffness = Spring.StiffnessMediumLow))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(14.dp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(16.dp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(18.dp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(1f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(2.dp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(28.dp.toPx(), 28.dp.toPx())</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(3.dp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(6.dp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(8.dp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(CircleShape)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(DaexTheme.colors.primary.copy(alpha = 0.12f))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(DaexTheme.colors.warning)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(DaexTheme.colors.warning.copy(alpha = 0.15f))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(RoundedCornerShape(16.dp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(RoundedCornerShape(2.dp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(alpha = 0.12f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(alpha = 0.15f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(alpha = 0.1f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(alpha = 0.25f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(alpha = 0.3f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(alpha = 0.8f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(alpha = if (currentModel != null) 0.6f else 0.4f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(alpha=0.15f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(alpha=0.1f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(alpha=0.2f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(alpha=0.4f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(alpha=0.6f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(android.Manifest.permission.RECORD_AUDIO)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(bottom = 8.dp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(color = DaexTheme.colors.error, fontSize = 12.sp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(color = DaexTheme.colors.onPrimary, modifier = Modifier.size(16.dp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(color = DaexTheme.colors.primary)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(color = DaexTheme.colors.primary, fontSize = 12.sp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(color = DaexTheme.colors.primary, fontSize = 18.sp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(color = DaexTheme.colors.warning)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(color = DaexTheme.colors.warning, fontSize = 12.sp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(color = if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary, modifier = Modifier.size(16.dp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(color = if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.6f), fontSize = 10.sp, letterSpacing = 1.sp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(color = if (isVoiceSessionActive) DaexTheme.colors.primary else if (micBlocked) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary, modifier = Modifier.size(18.dp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(color = if (selectedBackend == BackendType.CPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = if (selectedBackend == BackendType.CPU) FontWeight.Bold else FontWeight.Normal)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(color = if (selectedBackend == BackendType.GPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = if (selectedBackend == BackendType.GPU) FontWeight.Bold else FontWeight.Normal)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(color = if (selectedBackend == BackendType.NPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = if (selectedBackend == BackendType.NPU) FontWeight.Bold else FontWeight.Normal)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(context)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(context, "Microphone permission is required for voice mode.", android.widget.Toast.LENGTH_LONG)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(context, "TTS voice engine is not downloaded yet. Please download it in Settings.", android.widget.Toast.LENGTH_LONG)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(context, android.Manifest.permission.RECORD_AUDIO)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(downloadProgress / 100f)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(horizontal = 10.dp, vertical = 4.dp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.4f))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(if (isReasoningEnabled) DaexTheme.colors.primary.copy(alpha=0.15f) else DaexTheme.colors.onSurface.copy(alpha=0.1f))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(if (selectedBackend == BackendType.CPU) DaexTheme.colors.primary else Color.Transparent)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(if (selectedBackend == BackendType.GPU) DaexTheme.colors.primary else Color.Transparent)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(if (selectedBackend == BackendType.NPU) DaexTheme.colors.primary else Color.Transparent)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(it)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(modifier = Modifier.fillMaxWidth().clickable { (currentModel ?: selectedModel).let { settingsViewModel.loadModel(it) } }, contentAlignment = Alignment.Center)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(modifier = Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)).background(DaexTheme.colors.warning.copy(alpha = 0.15f)))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(modifier = Modifier.fillMaxWidth(downloadProgress / 100f).fillMaxHeight().background(DaexTheme.colors.warning))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(modifier = Modifier.size(14.dp), color = DaexTheme.colors.warning, strokeWidth = 2.dp)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = DaexTheme.colors.warning)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.4f)))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (selectedBackend == BackendType.CPU) DaexTheme.colors.primary else Color.Transparent))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (selectedBackend == BackendType.GPU) DaexTheme.colors.primary else Color.Transparent))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (selectedBackend == BackendType.NPU) DaexTheme.colors.primary else Color.Transparent))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(stiffness = Spring.StiffnessMediumLow)</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(targetState = inputText.isEmpty(), label = "morph_button")</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(text = "+", style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.primary, fontSize = 18.sp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(text = "CPU Backend", style = DaexTheme.typography.body2.copy(color = if (selectedBackend == BackendType.CPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = if (selectedBackend == BackendType.CPU) FontWeight.Bold else FontWeight.Normal))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(text = "Downloading model... $downloadProgress%", style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.warning, fontSize = 12.sp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(text = "GPU Offload", style = DaexTheme.typography.body2.copy(color = if (selectedBackend == BackendType.GPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = if (selectedBackend == BackendType.GPU) FontWeight.Bold else FontWeight.Normal))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(text = "Loading engine into memory...", style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.warning, fontSize = 12.sp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(text = "Model not loaded — tap to initialize", style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.warning, fontSize = 12.sp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(text = "NPU Acceleration", style = DaexTheme.typography.body2.copy(color = if (selectedBackend == BackendType.NPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = if (selectedBackend == BackendType.NPU) FontWeight.Bold else FontWeight.Normal))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(text = "RETRY", modifier = Modifier.clickable { (currentModel ?: selectedModel).let { settingsViewModel.loadModel(it) } }, style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.primary, fontSize = 12.sp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(text = "Vectorizing file...", style = DaexTheme.typography.caption.copy(color = DaexTheme.colors.warning))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(text = attachedFiles[index], style = DaexTheme.typography.caption.copy(color = DaexTheme.colors.primary))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(text = errorMessage ?: "Model error", modifier = Modifier.weight(1f), style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.error, fontSize = 12.sp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(text = if (isReasoningEnabled) "REASONING" else "FAST", style = DaexTheme.typography.mono.copy(color = if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.6f), fontSize = 10.sp, letterSpacing = 1.sp))</ID>
+    <ID>ArgumentListWrapping:ExecutionScreen.kt$(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp))</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(1.dp, DaexTheme.colors.primary.copy(alpha = if (isOtherDownloadInFlight) 0.1f else 0.3f), RoundedCornerShape(10.dp))</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(10.dp)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(activeModel)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(alpha = 0.04f)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(alpha = 0.05f)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(alpha = 0.08f)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(alpha = 0.15f)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(alpha = 0.1f)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(alpha = 0.2f)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(alpha = 0.3f)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(alpha = 0.4f)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(alpha = 0.6f)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(alpha = if (isOtherDownloadInFlight) 0.1f else 0.3f)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(android.Manifest.permission.POST_NOTIFICATIONS)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(enabled = !isOtherDownloadInFlight)</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(if (canDownload &amp;&amp; !isOtherDownloadInFlight) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.05f))</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(if (selected) DaexTheme.colors.primary.copy(alpha = 0.15f) else DaexTheme.colors.onSurface.copy(alpha = 0.04f))</ID>
+    <ID>ArgumentListWrapping:GalleryScreen.kt$(storageShortfall)</ID>
+    <ID>ArgumentListWrapping:KokoroTtsService.kt$KokoroTtsService$("KokoroTtsService", "Cannot initialize Kokoro TTS engine: model files are not downloaded yet.")</ID>
+    <ID>ArgumentListWrapping:KokoroTtsService.kt$KokoroTtsService$("KokoroTtsService", "Extracting espeak-ng-data from assets to $localDataDir...")</ID>
+    <ID>ArgumentListWrapping:KokoroTtsService.kt$KokoroTtsService$(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$("CHAIN OF THOUGHT REASONING", "DAEX displays real-time execution thoughts. Watch the reasoning channel process concepts live before the final response is composed.")</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$("LIVE VOICE MODE", "Speak naturally and Icarus answers out loud with a fully on-device voice — hands-free conversation with automatic turn detection.")</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$("LOCAL RAG KNOWLEDGE BASES", "Vectorize local PDF or text files entirely offline. An on-device embedding engine indexes your documents so answers can be grounded in your own content.")</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$("SECURE SYSTEM CALLS", "Icarus can trigger sandboxed device actions — with your approval. Its toolkit is modular and grows over time.")</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$("SUCCESS")</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$("TOTAL RECALL", "Every conversation is saved on-device and searchable. Icarus maintains a curated core memory of what matters to you — and can recall past sessions when relevant.")</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.4f), RoundedCornerShape(4.dp))</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(4.dp)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(6.dp)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(8.dp)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(alpha = 0.04f)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(alpha = 0.05f)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(alpha = 0.15f)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(alpha = 0.2f)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(alpha = 0.4f)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(alpha = 0.5f)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(alpha = 0.8f)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(android.Manifest.permission.POST_NOTIFICATIONS)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(color = Color.White.copy(alpha = 0.4f), fontSize = 8.sp)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, fontWeight = FontWeight.Bold)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(color = DaexTheme.colors.primary, fontSize = 9.sp, fontWeight = FontWeight.Bold)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(color = DaexTheme.colors.primary, fontWeight = FontWeight.Bold, fontSize = 12.sp)</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(if (canProceed) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.05f))</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(if (selectedSize == size) DaexTheme.colors.primary.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.04f))</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(if (selectedVariantIndex == idx) DaexTheme.colors.primary.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.04f))</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp))</ID>
+    <ID>ArgumentListWrapping:LandingScreen.kt$(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp))</ID>
+    <ID>ArgumentListWrapping:MemoryEditorModal.kt$(androidx.compose.ui.platform.LocalDensity.current)</ID>
+    <ID>ArgumentListWrapping:MessageLine.kt$(0.5.dp)</ID>
+    <ID>ArgumentListWrapping:MessageLine.kt$(0xFFA855F7)</ID>
+    <ID>ArgumentListWrapping:MessageLine.kt$(DaexTheme.colors.onSurface.copy(alpha = 0.06f))</ID>
+    <ID>ArgumentListWrapping:MessageLine.kt$(alpha = 0.06f)</ID>
+    <ID>ArgumentListWrapping:MessageLine.kt$(alpha = 0.25f)</ID>
+    <ID>ArgumentListWrapping:MessageLine.kt$(alpha = 0.35f)</ID>
+    <ID>ArgumentListWrapping:MessageLine.kt$(alpha = 0.4f)</ID>
+    <ID>ArgumentListWrapping:MessageLine.kt$(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(DaexTheme.colors.onSurface.copy(alpha = 0.06f)))</ID>
+    <ID>ArgumentListWrapping:MessageLine.kt$(topStart = 24.dp, topEnd = 24.dp, bottomStart = 24.dp, bottomEnd = 0.dp)</ID>
+    <ID>ArgumentListWrapping:ModelDownloadService.kt$ModelDownloadService$(requestId, DownloadPhase.ERROR, error = "A TTS download is already in progress.")</ID>
+    <ID>ArgumentListWrapping:ModelDownloadService.kt$ModelDownloadService$(requestId, ModelBank.embeddingModel.id, DownloadPhase.ERROR, error = "An embedding model download is already in progress.")</ID>
+    <ID>ArgumentListWrapping:ModelDownloadService.kt$ModelDownloadService$(requestId, model.id, DownloadPhase.ERROR, error = "A model download is already in progress.")</ID>
+    <ID>ArgumentListWrapping:ModelManager.kt$ModelManager$("Device does not meet the required ${formatBytes(model.requiredRAM)} of RAM for this model.")</ID>
+    <ID>ArgumentListWrapping:ModelManager.kt$ModelManager$(model.requiredRAM)</ID>
+    <ID>ArgumentListWrapping:ModelSelectorModal.kt$(color = Color.White, fontWeight = FontWeight.Bold)</ID>
+    <ID>ArgumentListWrapping:RecallMemoryTool.kt$RecallMemoryTool$(description = "Search the user's past conversations (beyond what's in the current chat) for relevant context. Use this when the user references something discussed before that isn't in the visible history.")</ID>
+    <ID>ArgumentListWrapping:RecallMemoryTool.kt$RecallMemoryTool$(description = "What to search for, e.g. the topic or question to recall past context about")</ID>
+    <ID>ArgumentListWrapping:SavedPromptLibraryModal.kt$(0.5.dp, DaexTheme.colors.error.copy(alpha = 0.3f), RoundedCornerShape(6.dp))</ID>
+    <ID>ArgumentListWrapping:SavedPromptLibraryModal.kt$(6.dp)</ID>
+    <ID>ArgumentListWrapping:SavedPromptLibraryModal.kt$(alpha = 0.3f)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$( Color.Red, Color.Yellow, Color.Green, Color.Cyan, Color.Blue, Color.Magenta, Color.Red )</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$("Female")</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(0.5.dp)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.15f), RoundedCornerShape(8.dp))</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(8.dp))</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(12.dp)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(8.dp)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(DaexTheme.colors.onSurface.copy(alpha = 0.08f))</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(alpha = 0.08f)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(alpha = 0.15f)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(alpha = 0.1f)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(alpha = 0.3f)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(alpha = 0.5f)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(alpha = if (enabled) 0.9f else 0.4f)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness)))</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(color = DaexTheme.colors.onBackground)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(color = DaexTheme.colors.onSurface.copy(alpha = 0.3f))</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(color = DaexTheme.colors.onSurface.copy(alpha = 0.5f), fontSize = 11.sp)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(color = DaexTheme.colors.primary, fontWeight = FontWeight.Bold)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(context, force = true, type = com.daex.android.ui.viewmodels.HapticType.TICK)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(floatArrayOf(hue, saturation, brightness))</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(hue, saturation, brightness)</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(java.util.Locale.US, "%.1f", specs.freeStorage / (1024.0 * 1024.0 * 1024.0))</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(java.util.Locale.US, "%.1f", specs.totalRAM / (1024.0 * 1024.0 * 1024.0))</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(DaexTheme.colors.onSurface.copy(alpha = 0.08f)))</ID>
+    <ID>ArgumentListWrapping:SettingsScreen.kt$(primaryColor, isDark)</ID>
+    <ID>ArgumentListWrapping:SettingsViewModel.kt$SettingsViewModel$("DaexAutoload", "Model loaded successfully. Saving configuration to preferences: id=${model.id}, backend=${actualBackend.name}")</ID>
+    <ID>ArgumentListWrapping:SettingsViewModel.kt$SettingsViewModel$(0, 200, 0, 100)</ID>
+    <ID>ArgumentListWrapping:SettingsViewModel.kt$SettingsViewModel$(0, 30, 80, 40)</ID>
+    <ID>ArgumentListWrapping:SettingsViewModel.kt$SettingsViewModel$(VibrationEffect.EFFECT_DOUBLE_CLICK)</ID>
+    <ID>ArgumentListWrapping:SettingsViewModel.kt$SettingsViewModel$(VibrationEffect.EFFECT_HEAVY_CLICK)</ID>
+    <ID>ArgumentListWrapping:SettingsViewModel.kt$SettingsViewModel$(android.content.Context.VIBRATOR_SERVICE)</ID>
+    <ID>ArgumentListWrapping:SettingsViewModel.kt$SettingsViewModel$(longArrayOf(0, 30, 80, 40), intArrayOf(0, 200, 0, 100), -1)</ID>
+    <ID>ArgumentListWrapping:SettingsViewModel.kt$SettingsViewModel$(modelPath, targetBackend, _isSpeculativeDecodingEnabled.value)</ID>
+    <ID>ArgumentListWrapping:Sidebar.kt$("Delete Session", style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.error))</ID>
+    <ID>ArgumentListWrapping:Sidebar.kt$("Pin (Coming Soon)", style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.onSurface.copy(alpha=0.5f)))</ID>
+    <ID>ArgumentListWrapping:Sidebar.kt$(alpha = 0.05f)</ID>
+    <ID>ArgumentListWrapping:Sidebar.kt$(alpha = 0.7f)</ID>
+    <ID>ArgumentListWrapping:Sidebar.kt$(alpha=0.5f)</ID>
+    <ID>ArgumentListWrapping:Sidebar.kt$(color = DaexTheme.colors.error)</ID>
+    <ID>ArgumentListWrapping:Sidebar.kt$(color = DaexTheme.colors.onSurface.copy(alpha=0.5f))</ID>
+    <ID>ArgumentListWrapping:Sidebar.kt$(if (isSelected) DaexTheme.colors.onSurface.copy(alpha = 0.05f) else Color.Transparent)</ID>
+    <ID>ArgumentListWrapping:TtsViewModel.kt$TtsViewModel$(existing.requestId)</ID>
+    <ID>ComplexCondition:ChatViewModel.kt$ChatViewModel$(c == '.' || c == '?' || c == '!') &amp;&amp; searchSubstring.getOrNull(i + 1)?.isWhitespace() == true</ID>
+    <ID>ComplexCondition:ExecutionScreen.kt$!currentIsVoiceSessionActive &amp;&amp; currentIsModelReady &amp;&amp; !currentIsGenerating &amp;&amp; (!currentIsTtsEnabled || currentIsTtsDownloaded)</ID>
+    <ID>ComplexCondition:ExecutionScreen.kt$isDragging &amp;&amp; currentIsModelReady &amp;&amp; !currentIsGenerating &amp;&amp; (!currentIsTtsEnabled || currentIsTtsDownloaded)</ID>
+    <ID>ComplexCondition:ExecutionScreen.kt$modelStatus == ModelStatus.READY &amp;&amp; !isGenerating &amp;&amp; !isReflecting &amp;&amp; !isVectorizing</ID>
+    <ID>ComplexCondition:ExecutionScreen.kt$rawDragOffset &lt; -maxDragDistancePx * 0.6f &amp;&amp; currentIsModelReady &amp;&amp; !currentIsGenerating &amp;&amp; (!currentIsTtsEnabled || currentIsTtsDownloaded)</ID>
+    <ID>ComplexCondition:KokoroTtsService.kt$KokoroTtsService$currentTts != null &amp;&amp; currentTts == activeTts &amp;&amp; !stopped &amp;&amp; epoch == playbackEpoch.get()</ID>
+    <ID>CyclomaticComplexMethod:AudioRecorder.kt$AudioRecorder$@SuppressLint("MissingPermission") fun start( scope: CoroutineScope, speechThreshold: Float = 0.015f, silenceThreshold: Float = 0.008f, silenceDurationMs: Long = 1500L, ttsGateState: () -&gt; TtsGateState = { TtsGateState.CLEAR }, onSpeechStarted: (() -&gt; Unit)? = null, onSilenceDetected: (() -&gt; Unit)? = null, onAmplitude: (Float) -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:ChangelogModal.kt$@Composable fun ChangelogModal( visible: Boolean, onClose: () -&gt; Unit, sinceVersion: String? = null )</ID>
+    <ID>CyclomaticComplexMethod:ChatViewModel.kt$ChatViewModel$fun submitAudioPrompt(audioPath: String)</ID>
+    <ID>CyclomaticComplexMethod:ChatViewModel.kt$ChatViewModel$fun submitPrompt(prompt: String)</ID>
+    <ID>CyclomaticComplexMethod:DaexMemory.kt$DaexMemory$suspend fun searchMessages(query: String, maxResults: Int = 8): List&lt;MessageSearchResult&gt;</ID>
+    <ID>CyclomaticComplexMethod:DaexService.kt$DaexServiceImpl$private fun getBestDispatchLibraryName(): String</ID>
+    <ID>CyclomaticComplexMethod:DaexService.kt$DaexServiceImpl$private suspend fun generateResponseAttempt( messages: List&lt;Message&gt;, systemContext: String, isReasoningEnabled: Boolean, temperature: Float, topK: Int, topP: Float, customSystemPrompt: String, isToolCallingEnabled: Boolean, disabledToolIds: Set&lt;String&gt;, onRequestPermission: (suspend (String, String) -&gt; Boolean)?, onStatusUpdate: ((String?) -&gt; Unit)?, maxTokens: Int, isLiveVoiceActive: Boolean, conversationId: String?, allowReuse: Boolean, onToken: (String) -&gt; Unit ): GenerationResult</ID>
+    <ID>CyclomaticComplexMethod:DaexSkillManager.kt$DaexSkillManagerImpl$override fun getSkillCatalog(): String</ID>
+    <ID>CyclomaticComplexMethod:ExecutionScreen.kt$@Composable fun ExecutionScreen( chatViewModel: ChatViewModel, audioSessionViewModel: AudioSessionViewModel, ttsViewModel: TtsViewModel, settingsViewModel: SettingsViewModel, modelManager: ModelManager, onBack: () -&gt; Unit, onOpenGallery: () -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:GalleryScreen.kt$@Composable fun GalleryScreen( settingsViewModel: SettingsViewModel, modelManager: ModelManager, onBack: () -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:GalleryScreen.kt$@Composable private fun FamilyModelCard( variants: List&lt;Model&gt;, settingsViewModel: SettingsViewModel, modelManager: ModelManager, currentModel: Model? )</ID>
+    <ID>CyclomaticComplexMethod:GalleryScreen.kt$private fun isTargetHardwareCompatible(targetHardware: String, specs: com.daex.android.framework.DeviceSpecs?): Boolean</ID>
+    <ID>CyclomaticComplexMethod:LandingScreen.kt$@Composable private fun OnboardingFamilyCard( variants: List&lt;Model&gt;, settingsViewModel: SettingsViewModel, modelManager: ModelManager, recommendedModel: Model?, onSelectAndNext: () -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:LandingScreen.kt$private fun isTargetHardwareCompatible(targetHardware: String, specs: DeviceSpecs?): Boolean</ID>
+    <ID>CyclomaticComplexMethod:MessageLine.kt$@Composable fun MessageLine( message: Message, isLastModel: Boolean = false, isGenerating: Boolean = false, tokenSpeed: Double = 0.0, activePermission: PermissionRequest? = null, isSpeaking: Boolean = false, onSpeak: (() -&gt; Unit)? = null, onTogglePin: (() -&gt; Unit)? = null )</ID>
+    <ID>CyclomaticComplexMethod:ModelManager.kt$ModelManager$private suspend fun downloadWithResume( url: String, partFile: File, finalFile: File, fallbackSize: Long, isActive: () -&gt; Boolean, onChunk: (bytesWritten: Long, expectedTotal: Long) -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:SettingsScreen.kt$@Composable fun SettingsScreen( settingsViewModel: SettingsViewModel, ttsViewModel: TtsViewModel, chatViewModel: ChatViewModel, modelManager: ModelManager, onBack: () -&gt; Unit, onOpenGallery: () -&gt; Unit, onReplayOnboarding: () -&gt; Unit )</ID>
+    <ID>CyclomaticComplexMethod:SettingsViewModel.kt$SettingsViewModel$fun triggerHapticFeedback(context: android.content.Context? = null, force: Boolean = false, type: HapticType = HapticType.CLICK)</ID>
+    <ID>EmptyCatchBlock:AudioRecorder.kt$AudioRecorder${}</ID>
+    <ID>EmptyCatchBlock:DaexService.kt$DaexServiceImpl${}</ID>
+    <ID>EmptyCatchBlock:KokoroTtsService.kt$KokoroTtsService${}</ID>
+    <ID>EmptyFunctionBlock:DaexAnimations.kt$&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:ExecutionScreen.kt$&lt;no name provided&gt;${}</ID>
+    <ID>EmptyFunctionBlock:SpeechManager.kt$SpeechManager.&lt;no name provided&gt;${}</ID>
+    <ID>EmptyWhileBlock:KokoroTtsService.kt$KokoroTtsService${}</ID>
+    <ID>FinalNewline:DaexRag.kt$com.daex.android.data.DaexRag.kt</ID>
+    <ID>FinalNewline:ExecutionScreen.kt$com.daex.android.ui.ExecutionScreen.kt</ID>
+    <ID>FinalNewline:KokoroTtsService.kt$com.daex.android.framework.KokoroTtsService.kt</ID>
+    <ID>FunctionNaming:ChangelogModal.kt$@Composable fun ChangelogModal( visible: Boolean, onClose: () -&gt; Unit, sinceVersion: String? = null )</ID>
+    <ID>FunctionNaming:ConfirmDialog.kt$@Composable fun ConfirmDialog( visible: Boolean, title: String, message: String, confirmLabel: String = "CONFIRM", onConfirm: () -&gt; Unit, onDismiss: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:CrashReportModal.kt$@Composable fun CrashReportModal( crashFile: File, onDismiss: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:DaexAnimations.kt$@Composable fun AmbientAura( intensity: Float, modifier: Modifier = Modifier, color: Color = DaexTheme.colors.primary, tiltEnabled: Boolean = true )</ID>
+    <ID>FunctionNaming:DaexAnimations.kt$@Composable fun DaexLoader( size: Dp = 40.dp )</ID>
+    <ID>FunctionNaming:DaexAnimations.kt$@Composable fun DaexLogo( size: Dp = 24.dp, ambient: Boolean = false )</ID>
+    <ID>FunctionNaming:DaexComponents.kt$@Composable fun AudioWaveformPulseRings( amplitude: Float, modifier: Modifier = Modifier, ringColor: Color = DaexTheme.colors.primary )</ID>
+    <ID>FunctionNaming:DaexComponents.kt$@Composable fun DaexButton( onClick: () -&gt; Unit, modifier: Modifier = Modifier, enabled: Boolean = true, backgroundColor: Color = DaexTheme.colors.primary, useDefaultPadding: Boolean = true, shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(8.dp), content: @Composable () -&gt; Unit )</ID>
+    <ID>FunctionNaming:DaexComponents.kt$@Composable fun DaexMicIcon( color: Color, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:DaexComponents.kt$@Composable fun DaexSendIcon( color: Color, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:DaexComponents.kt$@Composable fun DaexStopIcon( color: Color, modifier: Modifier = Modifier )</ID>
+    <ID>FunctionNaming:DaexComponents.kt$@Composable fun DaexSwitch( checked: Boolean, onCheckedChange: ((Boolean) -&gt; Unit)?, modifier: Modifier = Modifier, checkedColor: Color = DaexTheme.colors.primary, uncheckedColor: Color = Color(0xFFFFFFFF) )</ID>
+    <ID>FunctionNaming:DaexComponents.kt$@Composable fun DaexTextField( value: String, onValueChange: (String) -&gt; Unit, modifier: Modifier = Modifier, placeholder: String = "", enabled: Boolean = true, keyboardOptions: KeyboardOptions = KeyboardOptions.Default, keyboardActions: KeyboardActions = KeyboardActions.Default, textStyle: TextStyle = DaexTheme.typography.body1.copy(color = DaexTheme.colors.onBackground), backgroundColor: Color = DaexTheme.colors.surface, minLines: Int = 1, maxLines: Int = Int.MAX_VALUE )</ID>
+    <ID>FunctionNaming:DaexComponents.kt$@Composable fun EmptyChatIcon(color: Color, modifier: Modifier = Modifier)</ID>
+    <ID>FunctionNaming:DaexComponents.kt$@Composable fun EmptyDocumentIcon(color: Color, modifier: Modifier = Modifier)</ID>
+    <ID>FunctionNaming:DaexComponents.kt$@Composable fun EmptyGalleryIcon(color: Color, modifier: Modifier = Modifier)</ID>
+    <ID>FunctionNaming:DaexComponents.kt$@Composable fun EmptyState( icon: @Composable (Color) -&gt; Unit, title: String, modifier: Modifier = Modifier, subtitle: String? = null, actionLabel: String? = null, onAction: (() -&gt; Unit)? = null )</ID>
+    <ID>FunctionNaming:DaexTheme.kt$@Composable fun DaexAppTheme( primaryColor: Color = Color(0xFF00FFFF), isDark: Boolean = true, content: @Composable () -&gt; Unit )</ID>
+    <ID>FunctionNaming:DocumentLibraryModal.kt$@Composable fun DocumentLibraryModal( visible: Boolean, onClose: () -&gt; Unit, uploadedFiles: List&lt;String&gt;, attachedFiles: List&lt;String&gt;, onToggleAttachment: (String) -&gt; Unit, onDeleteFromLibrary: (String) -&gt; Unit, onUploadNew: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:ExecutionScreen.kt$@Composable fun ExecutionScreen( chatViewModel: ChatViewModel, audioSessionViewModel: AudioSessionViewModel, ttsViewModel: TtsViewModel, settingsViewModel: SettingsViewModel, modelManager: ModelManager, onBack: () -&gt; Unit, onOpenGallery: () -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:ExecutionScreen.kt$@OptIn(ExperimentalAnimationApi::class) @Composable fun TelemetryTicker(systemState: String, textColor: Color)</ID>
+    <ID>FunctionNaming:GalleryScreen.kt$@Composable fun GalleryScreen( settingsViewModel: SettingsViewModel, modelManager: ModelManager, onBack: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:GalleryScreen.kt$@Composable private fun FamilyModelCard( variants: List&lt;Model&gt;, settingsViewModel: SettingsViewModel, modelManager: ModelManager, currentModel: Model? )</ID>
+    <ID>FunctionNaming:GalleryScreen.kt$@Composable private fun FilterChip( label: String, selected: Boolean, onClick: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:GalleryScreen.kt$@Composable private fun MarketTag(label: String)</ID>
+    <ID>FunctionNaming:GalleryScreen.kt$@Composable private fun ProviderHeader(provider: String)</ID>
+    <ID>FunctionNaming:GalleryScreen.kt$@Composable private fun SizeSelectChip( label: String, selected: Boolean, onClick: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:GalleryScreen.kt$@Composable private fun SortChip( label: String, selected: Boolean, onClick: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:GalleryScreen.kt$@Composable private fun VariantSelectChip( label: String, selected: Boolean, onClick: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:LandingScreen.kt$@Composable private fun DiagnosticsSlide( specs: DeviceSpecs?, isVisible: Boolean, onNext: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:LandingScreen.kt$@Composable private fun EngineSelectorSlide( settingsViewModel: SettingsViewModel, modelManager: ModelManager, specs: DeviceSpecs?, onNext: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:LandingScreen.kt$@Composable private fun IcarusShowcaseSlide(onNext: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:LandingScreen.kt$@Composable private fun OnboardingFamilyCard( variants: List&lt;Model&gt;, settingsViewModel: SettingsViewModel, modelManager: ModelManager, recommendedModel: Model?, onSelectAndNext: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:LandingScreen.kt$@Composable private fun OnboardingMarketTag(label: String)</ID>
+    <ID>FunctionNaming:LandingScreen.kt$@Composable private fun OnboardingProviderHeader(provider: String)</ID>
+    <ID>FunctionNaming:LandingScreen.kt$@Composable private fun PhilosophyItem(title: String, description: String, modifier: Modifier = Modifier)</ID>
+    <ID>FunctionNaming:LandingScreen.kt$@Composable private fun PhilosophySlide(onNext: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:LandingScreen.kt$@Composable private fun TutorialSlide( settingsViewModel: SettingsViewModel, onboardingViewModel: OnboardingViewModel, onContinue: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:LandingScreen.kt$@Composable private fun TutorialVisualPreview(pageIndex: Int)</ID>
+    <ID>FunctionNaming:LandingScreen.kt$@Composable private fun WelcomeSlide(onNext: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:LandingScreen.kt$@OptIn(ExperimentalFoundationApi::class) @Composable fun LandingScreen( onContinue: () -&gt; Unit, onboardingViewModel: OnboardingViewModel, settingsViewModel: SettingsViewModel, modelManager: ModelManager, isReplay: Boolean = false )</ID>
+    <ID>FunctionNaming:MemoryEditorModal.kt$@Composable fun MemoryEditorModal( visible: Boolean, onClose: () -&gt; Unit, initialContent: String, onSave: (String) -&gt; Unit )</ID>
+    <ID>FunctionNaming:MessageLine.kt$@Composable fun MessageLine( message: Message, isLastModel: Boolean = false, isGenerating: Boolean = false, tokenSpeed: Double = 0.0, activePermission: PermissionRequest? = null, isSpeaking: Boolean = false, onSpeak: (() -&gt; Unit)? = null, onTogglePin: (() -&gt; Unit)? = null )</ID>
+    <ID>FunctionNaming:ModelSelectorModal.kt$@Composable fun ModelSelectorModal( visible: Boolean, onClose: () -&gt; Unit, onSelect: (Model) -&gt; Unit, onOpenMarketplace: () -&gt; Unit, downloadedModelIds: Set&lt;String&gt;, onDelete: ((Model) -&gt; Unit)? = null )</ID>
+    <ID>FunctionNaming:SavedPromptLibraryModal.kt$@Composable fun SavedPromptLibraryModal( visible: Boolean, onClose: () -&gt; Unit, pinnedMessages: List&lt;Message&gt;, onUsePrompt: (Message) -&gt; Unit, onUnpin: (Message) -&gt; Unit )</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@Composable fun SettingsScreen( settingsViewModel: SettingsViewModel, ttsViewModel: TtsViewModel, chatViewModel: ChatViewModel, modelManager: ModelManager, onBack: () -&gt; Unit, onOpenGallery: () -&gt; Unit, onReplayOnboarding: () -&gt; Unit )</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@Composable private fun ActionButton(text: String, color: Color, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@Composable private fun DiagnosticRow(label: String, value: String)</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@Composable private fun SectionHeader(text: String, modifier: Modifier = Modifier)</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@Composable private fun SettingsCard( content: @Composable ColumnScope.() -&gt; Unit )</ID>
+    <ID>FunctionNaming:SettingsScreen.kt$@Composable private fun SliderParameter( label: String, value: Float, valueRange: ClosedFloatingPointRange&lt;Float&gt;, valueFormatter: (Float) -&gt; String, onValueChange: (Float) -&gt; Unit, primaryColor: Color, subtitle: String? = null, settingsViewModel: SettingsViewModel? = null )</ID>
+    <ID>FunctionNaming:Sidebar.kt$@Composable private fun SidebarItem(label: String, icon: String, onClick: () -&gt; Unit)</ID>
+    <ID>FunctionNaming:Sidebar.kt$@OptIn(ExperimentalFoundationApi::class) @Composable fun Sidebar( visible: Boolean, onClose: () -&gt; Unit, onNewConversation: () -&gt; Unit, onOpenSettings: () -&gt; Unit, onOpenGallery: () -&gt; Unit, onOpenSavedPrompts: () -&gt; Unit = {}, chatViewModel: ChatViewModel )</ID>
+    <ID>FunctionNaming:SuggestedPrompts.kt$@Composable fun SuggestedPrompts( prompts: List&lt;String&gt;, onSelectPrompt: (String) -&gt; Unit )</ID>
+    <ID>ImplicitDefaultLocale:LandingScreen.kt$String.format("%.1f %s", bytes / Math.pow(k, i.toDouble()), sizes[i])</ID>
+    <ID>ImplicitDefaultLocale:ModelManager.kt$ModelManager$String.format("%.1f %s", bytes / k.pow(i.toDouble()), sizes[i])</ID>
+    <ID>ImportOrdering:AudioRecorder.kt$import android.annotation.SuppressLint import android.media.AudioFormat import android.media.AudioRecord import android.media.MediaRecorder import android.util.Log import java.io.File import java.io.FileOutputStream import java.io.RandomAccessFile import kotlinx.coroutines.CoroutineScope import kotlinx.coroutines.Dispatchers import kotlinx.coroutines.Job import kotlinx.coroutines.launch</ID>
+    <ID>ImportOrdering:DaexComponents.kt$import androidx.compose.animation.core.animateFloatAsState import androidx.compose.foundation.background import androidx.compose.foundation.border import androidx.compose.foundation.clickable import androidx.compose.foundation.interaction.MutableInteractionSource import androidx.compose.foundation.interaction.collectIsPressedAsState import androidx.compose.foundation.layout.Box import androidx.compose.foundation.layout.Column import androidx.compose.foundation.layout.fillMaxWidth import androidx.compose.foundation.layout.height import androidx.compose.foundation.layout.offset import androidx.compose.foundation.layout.padding import androidx.compose.foundation.layout.size import androidx.compose.foundation.layout.width import androidx.compose.foundation.shape.RoundedCornerShape import androidx.compose.foundation.text.BasicTextField import androidx.compose.foundation.text.KeyboardActions import androidx.compose.foundation.text.KeyboardOptions import androidx.compose.runtime.Composable import androidx.compose.runtime.getValue import androidx.compose.runtime.remember import androidx.compose.ui.Alignment import androidx.compose.ui.Modifier import androidx.compose.ui.draw.clip import androidx.compose.ui.draw.scale import androidx.compose.ui.graphics.Color import androidx.compose.ui.graphics.SolidColor import androidx.compose.ui.graphics.asComposeRenderEffect import androidx.compose.ui.graphics.graphicsLayer import androidx.compose.ui.text.TextStyle import androidx.compose.ui.unit.dp import androidx.compose.ui.unit.sp import com.daex.android.ui.theme.DaexTheme import androidx.compose.foundation.Canvas import androidx.compose.ui.graphics.Path import androidx.compose.ui.graphics.StrokeCap import androidx.compose.ui.graphics.StrokeJoin import androidx.compose.ui.graphics.drawscope.Stroke import androidx.compose.ui.geometry.CornerRadius import androidx.compose.ui.geometry.Size import androidx.compose.ui.geometry.Offset import androidx.compose.animation.core.rememberInfiniteTransition import androidx.compose.animation.core.animateFloat import androidx.compose.animation.core.infiniteRepeatable import androidx.compose.animation.core.tween import androidx.compose.animation.core.RepeatMode import androidx.compose.animation.core.LinearEasing import androidx.compose.foundation.layout.fillMaxSize</ID>
+    <ID>ImportOrdering:DaexMemory.kt$import android.content.Context import com.daex.android.framework.DaexEmbedder import com.daex.android.framework.Message import io.objectbox.BoxStore import io.objectbox.kotlin.query import io.objectbox.kotlin.toFlow import kotlinx.coroutines.flow.Flow import kotlinx.coroutines.flow.map import kotlinx.coroutines.Dispatchers import kotlinx.coroutines.withContext import kotlinx.coroutines.sync.Mutex import kotlinx.coroutines.sync.withLock import java.util.UUID</ID>
+    <ID>ImportOrdering:DaexService.kt$import android.content.Context import android.util.Log import com.daex.android.data.DaexMemory import kotlinx.coroutines.Dispatchers import kotlinx.coroutines.flow.collect import kotlinx.coroutines.withContext import com.google.ai.edge.litertlm.Engine import com.google.ai.edge.litertlm.EngineConfig import com.google.ai.edge.litertlm.Backend import com.google.ai.edge.litertlm.Conversation import com.google.ai.edge.litertlm.ConversationConfig import com.google.ai.edge.litertlm.Channel import com.google.ai.edge.litertlm.SamplerConfig import com.google.ai.edge.litertlm.tool import com.google.ai.edge.litertlm.Message as LiteRtMessage import com.google.ai.edge.litertlm.Contents as LiteRtContents import com.google.ai.edge.litertlm.Role as LiteRtRole</ID>
+    <ID>ImportOrdering:DeviceToolSets.kt$import android.content.Context import android.content.Intent import android.content.IntentFilter import android.content.pm.PackageManager import android.os.BatteryManager import android.os.Build import android.os.StatFs import android.util.Log import com.daex.android.data.DaexSkillManager import com.daex.android.data.DaexSkillManagerImpl import com.google.ai.edge.litertlm.Tool import com.google.ai.edge.litertlm.ToolParam import com.google.ai.edge.litertlm.ToolSet import java.io.File import java.text.SimpleDateFormat import java.util.Date import java.util.Locale import kotlinx.coroutines.runBlocking</ID>
+    <ID>ImportOrdering:Entities.kt$import io.objectbox.annotation.Entity import io.objectbox.annotation.Id import io.objectbox.annotation.Unique import io.objectbox.annotation.HnswIndex</ID>
+    <ID>ImportOrdering:ExecutionScreen.kt$import androidx.compose.foundation.background import androidx.compose.foundation.border import androidx.compose.foundation.clickable import androidx.compose.foundation.layout.* import androidx.compose.foundation.lazy.LazyColumn import androidx.compose.foundation.lazy.LazyRow import androidx.compose.foundation.lazy.itemsIndexed import androidx.compose.foundation.lazy.rememberLazyListState import androidx.compose.foundation.shape.CircleShape import androidx.compose.foundation.shape.RoundedCornerShape import androidx.compose.foundation.text.BasicText import androidx.compose.material.CircularProgressIndicator import androidx.compose.runtime.* import androidx.compose.ui.Alignment import androidx.compose.ui.Modifier import androidx.compose.ui.draw.clip import androidx.compose.ui.graphics.Color import androidx.compose.ui.graphics.asComposeRenderEffect import androidx.compose.ui.graphics.lerp import androidx.compose.ui.graphics.graphicsLayer import androidx.compose.ui.platform.LocalContext import androidx.compose.ui.platform.LocalDensity import androidx.compose.ui.unit.dp import androidx.compose.ui.unit.sp import androidx.compose.animation.animateColorAsState import androidx.compose.animation.core.* import androidx.compose.ui.draw.drawBehind import androidx.compose.ui.geometry.Offset import androidx.compose.ui.graphics.Brush import androidx.compose.ui.graphics.Path import androidx.activity.compose.rememberLauncherForActivityResult import androidx.activity.result.contract.ActivityResultContracts import com.daex.android.ui.viewmodels.AudioSessionViewModel import com.daex.android.ui.viewmodels.ChatViewModel import com.daex.android.ui.viewmodels.SettingsViewModel import com.daex.android.ui.viewmodels.TtsViewModel import com.daex.android.domain.ModelBank import com.daex.android.data.ModelManager import com.daex.android.ui.viewmodels.ModelStatus import com.daex.android.domain.PermissionRequest import com.daex.android.ui.viewmodels.VoiceState import androidx.compose.animation.AnimatedVisibility import androidx.compose.animation.AnimatedContent import androidx.compose.animation.togetherWith import androidx.compose.animation.slideInVertically import androidx.compose.animation.slideOutVertically import androidx.compose.animation.fadeIn import androidx.compose.animation.fadeOut import androidx.compose.animation.Crossfade import androidx.compose.animation.ExperimentalAnimationApi import androidx.compose.ui.draw.alpha import com.daex.android.ui.components.* import com.daex.android.framework.BackendType import androidx.compose.ui.input.pointer.pointerInput import androidx.compose.foundation.gestures.detectHorizontalDragGestures import androidx.compose.foundation.interaction.MutableInteractionSource import androidx.compose.material3.Text import androidx.compose.ui.text.font.FontWeight import com.daex.android.ui.theme.DaexTheme import androidx.compose.ui.window.Popup import androidx.compose.ui.unit.IntOffset import android.hardware.Sensor import android.hardware.SensorEvent import android.hardware.SensorEventListener import android.hardware.SensorManager import android.content.Context import kotlinx.coroutines.launch</ID>
+    <ID>ImportOrdering:GalleryScreen.kt$import androidx.activity.compose.rememberLauncherForActivityResult import androidx.activity.result.contract.ActivityResultContracts import androidx.compose.animation.AnimatedVisibility import androidx.compose.animation.animateContentSize import androidx.compose.foundation.background import androidx.compose.foundation.border import androidx.compose.foundation.clickable import androidx.compose.foundation.layout.* import androidx.compose.foundation.lazy.LazyColumn import androidx.compose.foundation.lazy.items import androidx.compose.foundation.shape.CircleShape import androidx.compose.foundation.shape.RoundedCornerShape import androidx.compose.foundation.text.BasicText import androidx.compose.runtime.* import androidx.compose.ui.Alignment import androidx.compose.ui.Modifier import androidx.compose.ui.draw.clip import androidx.compose.ui.graphics.Color import androidx.compose.ui.platform.LocalContext import androidx.compose.ui.text.font.FontWeight import androidx.compose.ui.unit.dp import androidx.compose.ui.unit.sp import androidx.core.content.ContextCompat import com.daex.android.ui.viewmodels.SettingsViewModel import com.daex.android.domain.Model import com.daex.android.domain.ModelBank import com.daex.android.data.ModelManager import com.daex.android.ui.viewmodels.ModelStatus import com.daex.android.framework.BackendType import com.daex.android.ui.components.DaexTextField import com.daex.android.ui.components.EmptyGalleryIcon import com.daex.android.ui.components.EmptyState import com.daex.android.ui.theme.DaexTheme</ID>
+    <ID>ImportOrdering:LandingScreen.kt$import androidx.compose.animation.AnimatedVisibility import androidx.compose.animation.animateContentSize import androidx.compose.animation.core.* import androidx.compose.animation.fadeIn import androidx.compose.animation.slideInVertically import androidx.activity.compose.rememberLauncherForActivityResult import androidx.activity.result.contract.ActivityResultContracts import androidx.compose.foundation.ExperimentalFoundationApi import androidx.compose.foundation.background import androidx.compose.foundation.border import androidx.compose.foundation.clickable import androidx.compose.foundation.layout.* import androidx.compose.foundation.pager.HorizontalPager import androidx.compose.foundation.pager.rememberPagerState import androidx.compose.foundation.shape.CircleShape import androidx.compose.foundation.shape.RoundedCornerShape import androidx.compose.foundation.text.BasicText import androidx.compose.runtime.* import androidx.compose.ui.Alignment import androidx.compose.ui.Modifier import androidx.compose.ui.draw.clip import androidx.compose.ui.graphics.Color import androidx.compose.ui.graphics.graphicsLayer import androidx.compose.ui.platform.LocalContext import androidx.compose.ui.text.font.FontWeight import androidx.compose.ui.text.style.TextAlign import androidx.compose.ui.unit.dp import androidx.compose.ui.unit.sp import androidx.core.content.ContextCompat import com.daex.android.ui.viewmodels.SettingsViewModel import com.daex.android.ui.viewmodels.OnboardingViewModel import com.daex.android.domain.Model import com.daex.android.domain.ModelBank import com.daex.android.data.ModelManager import com.daex.android.ui.viewmodels.ModelStatus import com.daex.android.framework.BackendType import com.daex.android.framework.DeviceSpecs import com.daex.android.ui.components.AmbientAura import com.daex.android.ui.components.DaexButton import com.daex.android.ui.components.DaexLogo import com.daex.android.ui.components.drawVoiceWaveform import com.daex.android.ui.theme.DaexTheme import androidx.compose.foundation.lazy.LazyColumn import androidx.compose.foundation.lazy.items import kotlinx.coroutines.delay import kotlinx.coroutines.launch</ID>
+    <ID>ImportOrdering:MainActivity.kt$import android.os.Bundle import androidx.activity.ComponentActivity import androidx.activity.compose.setContent import androidx.activity.enableEdgeToEdge import androidx.compose.animation.AnimatedContent import androidx.compose.animation.core.tween import androidx.compose.animation.fadeIn import androidx.compose.animation.fadeOut import androidx.compose.animation.slideInVertically import androidx.compose.animation.slideOutVertically import androidx.compose.animation.togetherWith import androidx.compose.runtime.remember import com.daex.android.ui.viewmodels.AudioSessionViewModel import com.daex.android.ui.viewmodels.ChatViewModel import com.daex.android.ui.viewmodels.OnboardingViewModel import com.daex.android.ui.viewmodels.SettingsViewModel import com.daex.android.ui.viewmodels.TtsViewModel import com.daex.android.data.DaexMemory import com.daex.android.framework.DeviceService import com.daex.android.data.ModelManager import com.daex.android.framework.DaexEmbedder import com.daex.android.data.DaexRagImpl import com.daex.android.ui.theme.DaexAppTheme import com.daex.android.ui.ExecutionScreen import com.daex.android.ui.GalleryScreen import com.daex.android.ui.SettingsScreen import androidx.compose.runtime.getValue import androidx.compose.runtime.mutableStateOf import androidx.compose.runtime.setValue import androidx.compose.runtime.collectAsState import androidx.compose.runtime.LaunchedEffect import androidx.compose.foundation.layout.Box import androidx.compose.foundation.layout.fillMaxSize import androidx.compose.foundation.background import androidx.compose.ui.Modifier import androidx.compose.ui.graphics.Color import kotlinx.coroutines.flow.first import com.daex.android.ui.LandingScreen import com.daex.android.ui.CrashReportModal import com.daex.android.ui.ChangelogModal import com.daex.android.ui.compareSemVer import com.daex.android.data.CrashLogWriter import com.daex.android.data.DaexPreferences import kotlinx.coroutines.flow.filterNotNull import java.io.File</ID>
+    <ID>ImportOrdering:MainDispatcherRule.kt$import kotlinx.coroutines.ExperimentalCoroutinesApi import kotlinx.coroutines.test.TestDispatcher import kotlinx.coroutines.test.UnconfinedTestDispatcher import kotlinx.coroutines.Dispatchers import kotlinx.coroutines.test.resetMain import kotlinx.coroutines.test.setMain import org.junit.rules.TestWatcher import org.junit.runner.Description</ID>
+    <ID>ImportOrdering:MessageLine.kt$import androidx.compose.foundation.background import androidx.compose.foundation.border import androidx.compose.foundation.layout.* import androidx.compose.foundation.shape.RoundedCornerShape import androidx.compose.foundation.text.BasicText import androidx.compose.runtime.Composable import androidx.compose.ui.Alignment import androidx.compose.ui.Modifier import androidx.compose.animation.AnimatedVisibility import androidx.compose.foundation.clickable import androidx.compose.ui.draw.clip import androidx.compose.ui.draw.scale import androidx.compose.animation.core.* import androidx.compose.runtime.getValue import androidx.compose.runtime.mutableStateOf import androidx.compose.runtime.remember import androidx.compose.runtime.setValue import androidx.compose.ui.graphics.Color import androidx.compose.ui.text.font.FontWeight import androidx.compose.ui.unit.dp import androidx.compose.ui.unit.sp import com.daex.android.framework.Message import com.daex.android.domain.PermissionRequest import com.daex.android.ui.theme.DaexTheme import com.mikepenz.markdown.m3.Markdown</ID>
+    <ID>ImportOrdering:ModelManager.kt$import android.content.Context import com.daex.android.domain.Model import com.daex.android.domain.ModelBank import com.daex.android.framework.DeviceService import okhttp3.OkHttpClient import okhttp3.Request import java.io.File import java.io.FileOutputStream import java.nio.file.Files import java.nio.file.StandardCopyOption import kotlin.math.pow import kotlinx.coroutines.Dispatchers import kotlinx.coroutines.withContext</ID>
+    <ID>ImportOrdering:ModelSelectorModal.kt$import androidx.compose.animation.AnimatedVisibility import androidx.compose.animation.core.* import androidx.compose.animation.fadeIn import androidx.compose.animation.fadeOut import androidx.compose.animation.slideInVertically import androidx.compose.animation.slideOutVertically import androidx.compose.foundation.background import androidx.compose.foundation.border import androidx.compose.foundation.clickable import androidx.compose.foundation.layout.* import androidx.compose.foundation.lazy.LazyColumn import androidx.compose.foundation.lazy.itemsIndexed import androidx.compose.foundation.shape.CircleShape import androidx.compose.foundation.shape.RoundedCornerShape import androidx.compose.foundation.text.BasicText import androidx.compose.runtime.* import androidx.compose.ui.Alignment import androidx.compose.ui.Modifier import androidx.compose.ui.draw.clip import androidx.compose.ui.graphics.Color import androidx.compose.ui.text.font.FontWeight import androidx.compose.ui.unit.dp import androidx.compose.ui.unit.sp import com.daex.android.domain.Model import com.daex.android.domain.ModelBank import com.daex.android.data.ModelManager import com.daex.android.ui.theme.DaexTheme</ID>
+    <ID>ImportOrdering:SettingsScreen.kt$import androidx.compose.animation.AnimatedVisibility import androidx.compose.animation.core.* import androidx.compose.animation.expandVertically import androidx.compose.animation.fadeIn import androidx.compose.animation.fadeOut import androidx.compose.animation.shrinkVertically import androidx.compose.foundation.background import androidx.compose.foundation.border import androidx.compose.foundation.clickable import androidx.compose.foundation.layout.* import androidx.compose.foundation.lazy.LazyColumn import androidx.compose.foundation.lazy.LazyRow import androidx.compose.foundation.lazy.items import androidx.compose.foundation.shape.CircleShape import androidx.compose.foundation.shape.RoundedCornerShape import androidx.compose.foundation.text.BasicText import androidx.compose.foundation.text.BasicTextField import androidx.compose.material3.Slider import androidx.compose.material3.SliderDefaults import androidx.compose.runtime.* import androidx.compose.ui.Alignment import androidx.compose.ui.Modifier import androidx.compose.ui.draw.clip import androidx.compose.ui.graphics.Brush import androidx.compose.ui.graphics.Color import androidx.compose.ui.graphics.SolidColor import androidx.compose.ui.graphics.toArgb import androidx.compose.ui.platform.LocalContext import androidx.compose.ui.text.TextStyle import androidx.compose.ui.text.font.FontWeight import androidx.compose.ui.unit.dp import androidx.compose.ui.unit.sp import com.daex.android.ui.viewmodels.ChatViewModel import com.daex.android.ui.viewmodels.SettingsViewModel import com.daex.android.ui.viewmodels.TtsViewModel import com.daex.android.domain.Model import com.daex.android.domain.ModelBank import com.daex.android.data.ModelManager import com.daex.android.ui.viewmodels.ModelStatus import com.daex.android.ui.viewmodels.HapticType import com.daex.android.framework.ToolRegistry import com.daex.android.ui.components.ConfirmDialog import com.daex.android.ui.components.DaexSwitch import com.daex.android.ui.theme.DaexTheme</ID>
+    <ID>ImportOrdering:SettingsViewModel.kt$import androidx.compose.ui.graphics.Color import androidx.compose.ui.graphics.toArgb import androidx.lifecycle.ViewModel import androidx.lifecycle.viewModelScope import com.daex.android.data.DaexPreferences import com.daex.android.data.DownloadPhase import com.daex.android.data.GenerativeDownloadStatus import com.daex.android.data.ModelDownloadState import com.daex.android.data.ModelManager import com.daex.android.domain.Model import com.daex.android.framework.BackendType import com.daex.android.framework.DaexService import com.daex.android.framework.DeviceService import com.daex.android.framework.DeviceSpecs import com.daex.android.framework.ModelDownloadService import com.daex.android.framework.ToolRegistry import android.os.VibrationEffect import kotlinx.coroutines.Job import kotlinx.coroutines.coroutineScope import kotlinx.coroutines.flow.MutableStateFlow import kotlinx.coroutines.flow.StateFlow import kotlinx.coroutines.flow.asStateFlow import kotlinx.coroutines.flow.collectLatest import kotlinx.coroutines.flow.first import kotlinx.coroutines.flow.firstOrNull import kotlinx.coroutines.launch</ID>
+    <ID>ImportOrdering:Sidebar.kt$import androidx.compose.animation.AnimatedVisibility import androidx.compose.animation.core.tween import androidx.compose.animation.slideInHorizontally import androidx.compose.animation.slideOutHorizontally import androidx.compose.foundation.ExperimentalFoundationApi import androidx.compose.foundation.background import androidx.compose.foundation.border import androidx.compose.foundation.clickable import androidx.compose.foundation.combinedClickable import androidx.compose.foundation.layout.* import androidx.compose.foundation.lazy.LazyColumn import androidx.compose.foundation.lazy.items import androidx.compose.material.DropdownMenu import androidx.compose.material.DropdownMenuItem import androidx.compose.material.Text import androidx.compose.foundation.shape.RoundedCornerShape import androidx.compose.foundation.text.BasicText import androidx.compose.foundation.text.BasicTextField import androidx.compose.runtime.Composable import androidx.compose.runtime.LaunchedEffect import androidx.compose.runtime.collectAsState import androidx.compose.runtime.getValue import androidx.compose.runtime.mutableStateOf import androidx.compose.runtime.remember import androidx.compose.runtime.setValue import androidx.compose.ui.Alignment import androidx.compose.ui.Modifier import androidx.compose.ui.draw.clip import androidx.compose.ui.graphics.Color import androidx.compose.ui.graphics.SolidColor import androidx.compose.ui.text.TextStyle import androidx.compose.ui.text.font.FontWeight import androidx.compose.ui.text.style.TextOverflow import androidx.compose.ui.unit.dp import androidx.compose.ui.unit.sp import com.daex.android.ui.viewmodels.ChatViewModel import com.daex.android.ui.components.EmptyChatIcon import com.daex.android.ui.components.EmptyState import com.daex.android.ui.theme.DaexTheme</ID>
+    <ID>ImportOrdering:SpeechManager.kt$import android.content.Context import android.content.Intent import android.os.Bundle import android.speech.RecognitionListener import android.speech.RecognizerIntent import android.speech.SpeechRecognizer import android.os.Handler import android.os.Looper import com.daex.android.ui.viewmodels.VoiceState</ID>
+    <ID>Indentation:ChatViewModel.kt$ChatViewModel$ </ID>
+    <ID>Indentation:DaexService.kt$DaexServiceImpl$ </ID>
+    <ID>Indentation:DeviceService.kt$DeviceService$ </ID>
+    <ID>Indentation:DocumentLibraryModal.kt$ </ID>
+    <ID>Indentation:GalleryScreen.kt$ </ID>
+    <ID>Indentation:LandingScreen.kt$ </ID>
+    <ID>Indentation:MessageLine.kt$ </ID>
+    <ID>Indentation:ModelManager.kt$ModelManager$ </ID>
+    <ID>Indentation:RecallMemoryTool.kt$RecallMemoryTool$ </ID>
+    <ID>Indentation:SettingsScreen.kt$ </ID>
+    <ID>Indentation:Sidebar.kt$ </ID>
+    <ID>InstanceOfCheckForException:ChatViewModel.kt$ChatViewModel$e is java.util.concurrent.CancellationException</ID>
+    <ID>InstanceOfCheckForException:ChatViewModel.kt$ChatViewModel$e is kotlinx.coroutines.CancellationException</ID>
+    <ID>InstanceOfCheckForException:DaexService.kt$DaexServiceImpl$e is java.util.concurrent.CancellationException</ID>
+    <ID>InstanceOfCheckForException:DaexService.kt$DaexServiceImpl$e is kotlinx.coroutines.CancellationException</ID>
+    <ID>LargeClass:ChatViewModel.kt$ChatViewModel : ViewModel</ID>
+    <ID>LongMethod:AudioRecorder.kt$AudioRecorder$@SuppressLint("MissingPermission") fun start( scope: CoroutineScope, speechThreshold: Float = 0.015f, silenceThreshold: Float = 0.008f, silenceDurationMs: Long = 1500L, ttsGateState: () -&gt; TtsGateState = { TtsGateState.CLEAR }, onSpeechStarted: (() -&gt; Unit)? = null, onSilenceDetected: (() -&gt; Unit)? = null, onAmplitude: (Float) -&gt; Unit )</ID>
+    <ID>LongMethod:ChangelogModal.kt$@Composable fun ChangelogModal( visible: Boolean, onClose: () -&gt; Unit, sinceVersion: String? = null )</ID>
+    <ID>LongMethod:ChatViewModel.kt$ChatViewModel$fun submitAudioPrompt(audioPath: String)</ID>
+    <ID>LongMethod:ChatViewModel.kt$ChatViewModel$fun submitPrompt(prompt: String)</ID>
+    <ID>LongMethod:ChatViewModel.kt$ChatViewModel$suspend fun performCompaction(convId: String, messages: List&lt;Message&gt;, maxContextLimit: Int)</ID>
+    <ID>LongMethod:ConfirmDialog.kt$@Composable fun ConfirmDialog( visible: Boolean, title: String, message: String, confirmLabel: String = "CONFIRM", onConfirm: () -&gt; Unit, onDismiss: () -&gt; Unit )</ID>
+    <ID>LongMethod:CrashReportModal.kt$@Composable fun CrashReportModal( crashFile: File, onDismiss: () -&gt; Unit )</ID>
+    <ID>LongMethod:DaexAnimations.kt$@Composable fun AmbientAura( intensity: Float, modifier: Modifier = Modifier, color: Color = DaexTheme.colors.primary, tiltEnabled: Boolean = true )</ID>
+    <ID>LongMethod:DaexAnimations.kt$@Composable fun DaexLoader( size: Dp = 40.dp )</ID>
+    <ID>LongMethod:DaexAnimations.kt$@Composable fun DaexLogo( size: Dp = 24.dp, ambient: Boolean = false )</ID>
+    <ID>LongMethod:DaexComponents.kt$@Composable fun AudioWaveformPulseRings( amplitude: Float, modifier: Modifier = Modifier, ringColor: Color = DaexTheme.colors.primary )</ID>
+    <ID>LongMethod:DaexComponents.kt$fun androidx.compose.ui.graphics.drawscope.DrawScope.drawVoiceWaveform( phase: Float, amplitude: Float, color: Color, alpha: Float )</ID>
+    <ID>LongMethod:DaexCoreMemory.kt$DaexCoreMemoryImpl$override suspend fun compactMemory(recentMessages: List&lt;Message&gt;, daexService: DaexService): MemoryCurationResult</ID>
+    <ID>LongMethod:DaexRag.kt$DaexRagImpl$override suspend fun ingestFile(fileName: String, content: String, isSystem: Boolean, onProgress: (Int, Int) -&gt; Unit)</ID>
+    <ID>LongMethod:DaexRag.kt$DaexRagImpl$override suspend fun queryDocuments(query: String, maxResults: Int, activeFileNames: List&lt;String&gt;): List&lt;String&gt;</ID>
+    <ID>LongMethod:DaexService.kt$DaexServiceImpl$override suspend fun initContext(modelPath: String, backendType: BackendType, isSpeculativeDecodingEnabled: Boolean): BackendType</ID>
+    <ID>LongMethod:DaexService.kt$DaexServiceImpl$private suspend fun generateResponseAttempt( messages: List&lt;Message&gt;, systemContext: String, isReasoningEnabled: Boolean, temperature: Float, topK: Int, topP: Float, customSystemPrompt: String, isToolCallingEnabled: Boolean, disabledToolIds: Set&lt;String&gt;, onRequestPermission: (suspend (String, String) -&gt; Boolean)?, onStatusUpdate: ((String?) -&gt; Unit)?, maxTokens: Int, isLiveVoiceActive: Boolean, conversationId: String?, allowReuse: Boolean, onToken: (String) -&gt; Unit ): GenerationResult</ID>
+    <ID>LongMethod:DaexTheme.kt$@Composable fun DaexAppTheme( primaryColor: Color = Color(0xFF00FFFF), isDark: Boolean = true, content: @Composable () -&gt; Unit )</ID>
+    <ID>LongMethod:DocumentLibraryModal.kt$@Composable fun DocumentLibraryModal( visible: Boolean, onClose: () -&gt; Unit, uploadedFiles: List&lt;String&gt;, attachedFiles: List&lt;String&gt;, onToggleAttachment: (String) -&gt; Unit, onDeleteFromLibrary: (String) -&gt; Unit, onUploadNew: () -&gt; Unit )</ID>
+    <ID>LongMethod:ExecutionScreen.kt$@Composable fun ExecutionScreen( chatViewModel: ChatViewModel, audioSessionViewModel: AudioSessionViewModel, ttsViewModel: TtsViewModel, settingsViewModel: SettingsViewModel, modelManager: ModelManager, onBack: () -&gt; Unit, onOpenGallery: () -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
+    <ID>LongMethod:GalleryScreen.kt$@Composable fun GalleryScreen( settingsViewModel: SettingsViewModel, modelManager: ModelManager, onBack: () -&gt; Unit )</ID>
+    <ID>LongMethod:GalleryScreen.kt$@Composable private fun FamilyModelCard( variants: List&lt;Model&gt;, settingsViewModel: SettingsViewModel, modelManager: ModelManager, currentModel: Model? )</ID>
+    <ID>LongMethod:LandingScreen.kt$@Composable private fun DiagnosticsSlide( specs: DeviceSpecs?, isVisible: Boolean, onNext: () -&gt; Unit )</ID>
+    <ID>LongMethod:LandingScreen.kt$@Composable private fun EngineSelectorSlide( settingsViewModel: SettingsViewModel, modelManager: ModelManager, specs: DeviceSpecs?, onNext: () -&gt; Unit )</ID>
+    <ID>LongMethod:LandingScreen.kt$@Composable private fun IcarusShowcaseSlide(onNext: () -&gt; Unit)</ID>
+    <ID>LongMethod:LandingScreen.kt$@Composable private fun OnboardingFamilyCard( variants: List&lt;Model&gt;, settingsViewModel: SettingsViewModel, modelManager: ModelManager, recommendedModel: Model?, onSelectAndNext: () -&gt; Unit )</ID>
+    <ID>LongMethod:LandingScreen.kt$@Composable private fun PhilosophySlide(onNext: () -&gt; Unit)</ID>
+    <ID>LongMethod:LandingScreen.kt$@Composable private fun TutorialSlide( settingsViewModel: SettingsViewModel, onboardingViewModel: OnboardingViewModel, onContinue: () -&gt; Unit )</ID>
+    <ID>LongMethod:LandingScreen.kt$@Composable private fun TutorialVisualPreview(pageIndex: Int)</ID>
+    <ID>LongMethod:LandingScreen.kt$@Composable private fun WelcomeSlide(onNext: () -&gt; Unit)</ID>
+    <ID>LongMethod:LandingScreen.kt$@OptIn(ExperimentalFoundationApi::class) @Composable fun LandingScreen( onContinue: () -&gt; Unit, onboardingViewModel: OnboardingViewModel, settingsViewModel: SettingsViewModel, modelManager: ModelManager, isReplay: Boolean = false )</ID>
+    <ID>LongMethod:MainActivity.kt$MainActivity$override fun onCreate(savedInstanceState: Bundle?)</ID>
+    <ID>LongMethod:MemoryEditorModal.kt$@Composable fun MemoryEditorModal( visible: Boolean, onClose: () -&gt; Unit, initialContent: String, onSave: (String) -&gt; Unit )</ID>
+    <ID>LongMethod:MessageLine.kt$@Composable fun MessageLine( message: Message, isLastModel: Boolean = false, isGenerating: Boolean = false, tokenSpeed: Double = 0.0, activePermission: PermissionRequest? = null, isSpeaking: Boolean = false, onSpeak: (() -&gt; Unit)? = null, onTogglePin: (() -&gt; Unit)? = null )</ID>
+    <ID>LongMethod:ModelSelectorModal.kt$@Composable fun ModelSelectorModal( visible: Boolean, onClose: () -&gt; Unit, onSelect: (Model) -&gt; Unit, onOpenMarketplace: () -&gt; Unit, downloadedModelIds: Set&lt;String&gt;, onDelete: ((Model) -&gt; Unit)? = null )</ID>
+    <ID>LongMethod:SavedPromptLibraryModal.kt$@Composable fun SavedPromptLibraryModal( visible: Boolean, onClose: () -&gt; Unit, pinnedMessages: List&lt;Message&gt;, onUsePrompt: (Message) -&gt; Unit, onUnpin: (Message) -&gt; Unit )</ID>
+    <ID>LongMethod:SettingsScreen.kt$@Composable fun SettingsScreen( settingsViewModel: SettingsViewModel, ttsViewModel: TtsViewModel, chatViewModel: ChatViewModel, modelManager: ModelManager, onBack: () -&gt; Unit, onOpenGallery: () -&gt; Unit, onReplayOnboarding: () -&gt; Unit )</ID>
+    <ID>LongMethod:Sidebar.kt$@OptIn(ExperimentalFoundationApi::class) @Composable fun Sidebar( visible: Boolean, onClose: () -&gt; Unit, onNewConversation: () -&gt; Unit, onOpenSettings: () -&gt; Unit, onOpenGallery: () -&gt; Unit, onOpenSavedPrompts: () -&gt; Unit = {}, chatViewModel: ChatViewModel )</ID>
+    <ID>LongParameterList:AudioRecorder.kt$AudioRecorder$( scope: CoroutineScope, speechThreshold: Float = 0.015f, silenceThreshold: Float = 0.008f, silenceDurationMs: Long = 1500L, ttsGateState: () -&gt; TtsGateState = { TtsGateState.CLEAR }, onSpeechStarted: (() -&gt; Unit)? = null, onSilenceDetected: (() -&gt; Unit)? = null, onAmplitude: (Float) -&gt; Unit )</ID>
+    <ID>LongParameterList:ChatViewModel.kt$ChatViewModel$( private val daexService: DaexService, private val modelManager: ModelManager? = null, private val daexMemory: DaexMemory? = null, private val daexCoreMemory: DaexCoreMemory? = null, private val preferences: DaexPreferences? = null, private val daexRag: DaexRag? = null, private val daexSkillManager: DaexSkillManager? = null, private val context: android.content.Context? = null, private val settingsViewModel: SettingsViewModel, private val ttsViewModel: TtsViewModel )</ID>
+    <ID>LongParameterList:ConfirmDialog.kt$( visible: Boolean, title: String, message: String, confirmLabel: String = "CONFIRM", onConfirm: () -&gt; Unit, onDismiss: () -&gt; Unit )</ID>
+    <ID>LongParameterList:DaexComponents.kt$( icon: @Composable (Color) -&gt; Unit, title: String, modifier: Modifier = Modifier, subtitle: String? = null, actionLabel: String? = null, onAction: (() -&gt; Unit)? = null )</ID>
+    <ID>LongParameterList:DaexComponents.kt$( onClick: () -&gt; Unit, modifier: Modifier = Modifier, enabled: Boolean = true, backgroundColor: Color = DaexTheme.colors.primary, useDefaultPadding: Boolean = true, shape: androidx.compose.ui.graphics.Shape = RoundedCornerShape(8.dp), content: @Composable () -&gt; Unit )</ID>
+    <ID>LongParameterList:DaexComponents.kt$( value: String, onValueChange: (String) -&gt; Unit, modifier: Modifier = Modifier, placeholder: String = "", enabled: Boolean = true, keyboardOptions: KeyboardOptions = KeyboardOptions.Default, keyboardActions: KeyboardActions = KeyboardActions.Default, textStyle: TextStyle = DaexTheme.typography.body1.copy(color = DaexTheme.colors.onBackground), backgroundColor: Color = DaexTheme.colors.surface, minLines: Int = 1, maxLines: Int = Int.MAX_VALUE )</ID>
+    <ID>LongParameterList:DaexService.kt$DaexService$( messages: List&lt;Message&gt;, systemContext: String = "", isReasoningEnabled: Boolean = true, temperature: Float = 0.7f, topK: Int = 40, topP: Float = 0.9f, customSystemPrompt: String = "", isToolCallingEnabled: Boolean = false, disabledToolIds: Set&lt;String&gt; = emptySet(), onRequestPermission: (suspend (String, String) -&gt; Boolean)? = null, onStatusUpdate: ((String?) -&gt; Unit)? = null, maxTokens: Int = 1024, isLiveVoiceActive: Boolean = false, conversationId: String? = null, onToken: (String) -&gt; Unit )</ID>
+    <ID>LongParameterList:DaexService.kt$DaexServiceImpl$( messages: List&lt;Message&gt;, systemContext: String, isReasoningEnabled: Boolean, temperature: Float, topK: Int, topP: Float, customSystemPrompt: String, isToolCallingEnabled: Boolean, disabledToolIds: Set&lt;String&gt;, onRequestPermission: (suspend (String, String) -&gt; Boolean)?, onStatusUpdate: ((String?) -&gt; Unit)?, maxTokens: Int, isLiveVoiceActive: Boolean, conversationId: String?, allowReuse: Boolean, onToken: (String) -&gt; Unit )</ID>
+    <ID>LongParameterList:DocumentLibraryModal.kt$( visible: Boolean, onClose: () -&gt; Unit, uploadedFiles: List&lt;String&gt;, attachedFiles: List&lt;String&gt;, onToggleAttachment: (String) -&gt; Unit, onDeleteFromLibrary: (String) -&gt; Unit, onUploadNew: () -&gt; Unit )</ID>
+    <ID>LongParameterList:ExecutionScreen.kt$( chatViewModel: ChatViewModel, audioSessionViewModel: AudioSessionViewModel, ttsViewModel: TtsViewModel, settingsViewModel: SettingsViewModel, modelManager: ModelManager, onBack: () -&gt; Unit, onOpenGallery: () -&gt; Unit, onOpenSettings: () -&gt; Unit )</ID>
+    <ID>LongParameterList:MessageLine.kt$( message: Message, isLastModel: Boolean = false, isGenerating: Boolean = false, tokenSpeed: Double = 0.0, activePermission: PermissionRequest? = null, isSpeaking: Boolean = false, onSpeak: (() -&gt; Unit)? = null, onTogglePin: (() -&gt; Unit)? = null )</ID>
+    <ID>LongParameterList:ModelManager.kt$ModelManager$( url: String, partFile: File, finalFile: File, fallbackSize: Long, isActive: () -&gt; Boolean, onChunk: (bytesWritten: Long, expectedTotal: Long) -&gt; Unit )</ID>
+    <ID>LongParameterList:ModelSelectorModal.kt$( visible: Boolean, onClose: () -&gt; Unit, onSelect: (Model) -&gt; Unit, onOpenMarketplace: () -&gt; Unit, downloadedModelIds: Set&lt;String&gt;, onDelete: ((Model) -&gt; Unit)? = null )</ID>
+    <ID>LongParameterList:SettingsScreen.kt$( label: String, value: Float, valueRange: ClosedFloatingPointRange&lt;Float&gt;, valueFormatter: (Float) -&gt; String, onValueChange: (Float) -&gt; Unit, primaryColor: Color, subtitle: String? = null, settingsViewModel: SettingsViewModel? = null )</ID>
+    <ID>LongParameterList:SettingsScreen.kt$( settingsViewModel: SettingsViewModel, ttsViewModel: TtsViewModel, chatViewModel: ChatViewModel, modelManager: ModelManager, onBack: () -&gt; Unit, onOpenGallery: () -&gt; Unit, onReplayOnboarding: () -&gt; Unit )</ID>
+    <ID>LongParameterList:Sidebar.kt$( visible: Boolean, onClose: () -&gt; Unit, onNewConversation: () -&gt; Unit, onOpenSettings: () -&gt; Unit, onOpenGallery: () -&gt; Unit, onOpenSavedPrompts: () -&gt; Unit = {}, chatViewModel: ChatViewModel )</ID>
+    <ID>LoopWithTooManyJumpStatements:ChatViewModel.kt$ChatViewModel$for</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$0xFF</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$0xff</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$10</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$11</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$12</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$13</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$14</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$15</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$16</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$16000</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$17</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$18</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$19</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$20</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$21</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$22</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$23</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$24</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$25</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$26</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$27</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$28</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$29</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$3</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$30</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$31</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$32</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$32768.0</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$33</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$34</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$35</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$36</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$37</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$38</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$39</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$4</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$40</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$4096</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$41</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$42</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$43</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$44</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$5</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$500L</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$6</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$7</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$8</ID>
+    <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$9</ID>
+    <ID>MagicNumber:AudioSessionViewModel.kt$AudioSessionViewModel$300L</ID>
+    <ID>MagicNumber:AudioSessionViewModel.kt$AudioSessionViewModel$400L</ID>
+    <ID>MagicNumber:AudioSessionViewModel.kt$AudioSessionViewModel$44</ID>
+    <ID>MagicNumber:AudioSessionViewModel.kt$AudioSessionViewModel$500L</ID>
+    <ID>MagicNumber:ChangelogModal.kt$0.8f</ID>
+    <ID>MagicNumber:ChangelogModal.kt$0.9f</ID>
+    <ID>MagicNumber:ChangelogModal.kt$3</ID>
+    <ID>MagicNumber:ChangelogModal.kt$4</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$0.20</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$10</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$100</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$15</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$20</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$250</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$3</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$30</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$4</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$44</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$512</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$800</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$8192</ID>
+    <ID>MagicNumber:ChatViewModel.kt$ChatViewModel$90000</ID>
+    <ID>MagicNumber:ConfirmDialog.kt$0.9f</ID>
+    <ID>MagicNumber:CrashReportModal.kt$0.9f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$0.18f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$0.26f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$0.6f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$0.8f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$1.2f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$1.5f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$1000</ID>
+    <ID>MagicNumber:DaexAnimations.kt$100f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$16f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$18f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$2.4f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$2.5f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$2000</ID>
+    <ID>MagicNumber:DaexAnimations.kt$20f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$26f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$3</ID>
+    <ID>MagicNumber:DaexAnimations.kt$300</ID>
+    <ID>MagicNumber:DaexAnimations.kt$3000</ID>
+    <ID>MagicNumber:DaexAnimations.kt$30f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$32f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$34f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$3f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$4000</ID>
+    <ID>MagicNumber:DaexAnimations.kt$40f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$44f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$46f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$48f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$49f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$500</ID>
+    <ID>MagicNumber:DaexAnimations.kt$5000</ID>
+    <ID>MagicNumber:DaexAnimations.kt$50f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$54f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$55f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$58f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$60f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$62f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$64f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$67f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$68f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$70f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$72f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$73f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$74f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$76f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$78f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$80f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$82f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$84f</ID>
+    <ID>MagicNumber:DaexAnimations.kt$&lt;no name provided&gt;$0.1f</ID>
+    <ID>MagicNumber:DaexApplication.kt$DaexApplication$10</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.015f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.01f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.02f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.06f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.08f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.12f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.14f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.15f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.1f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.25f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.27f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.28f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.2f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.32f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.35f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.36f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.3f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.44f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.45f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.48f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.4f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.52f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.54f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.55f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.58f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.5f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.64f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.65f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.68f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.6f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.75f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.85f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.88f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.8f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.95f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0.9f</ID>
+    <ID>MagicNumber:DaexComponents.kt$0xFFFFFFFF</ID>
+    <ID>MagicNumber:DaexComponents.kt$1.5f</ID>
+    <ID>MagicNumber:DaexComponents.kt$10</ID>
+    <ID>MagicNumber:DaexComponents.kt$1800</ID>
+    <ID>MagicNumber:DaexComponents.kt$2.5f</ID>
+    <ID>MagicNumber:DaexComponents.kt$3.0f</ID>
+    <ID>MagicNumber:DaexCoreMemory.kt$DaexCoreMemoryImpl$200</ID>
+    <ID>MagicNumber:DaexCoreMemory.kt$DaexCoreMemoryImpl$3</ID>
+    <ID>MagicNumber:DaexEmbedder.kt$DaexEmbedder$1e-9f</ID>
+    <ID>MagicNumber:DaexEmbedder.kt$DaexEmbedder$30</ID>
+    <ID>MagicNumber:DaexEmbedder.kt$DaexEmbedder$5</ID>
+    <ID>MagicNumber:DaexFtsDatabaseHelper.kt$DaexFtsDatabaseHelper$3</ID>
+    <ID>MagicNumber:DaexFtsDatabaseHelper.kt$DaexFtsDatabaseHelper$4</ID>
+    <ID>MagicNumber:DaexMemory.kt$DaexMemory$10</ID>
+    <ID>MagicNumber:DaexMemory.kt$DaexMemory$50</ID>
+    <ID>MagicNumber:DaexMemory.kt$DaexMemory$60.0</ID>
+    <ID>MagicNumber:DaexMessageFtsHelper.kt$DaexMessageFtsHelper$3</ID>
+    <ID>MagicNumber:DaexPreferences.kt$DaexPreferences$0.7f</ID>
+    <ID>MagicNumber:DaexPreferences.kt$DaexPreferences$0.9f</ID>
+    <ID>MagicNumber:DaexPreferences.kt$DaexPreferences$0xFF00FFFF</ID>
+    <ID>MagicNumber:DaexPreferences.kt$DaexPreferences$1024</ID>
+    <ID>MagicNumber:DaexPreferences.kt$DaexPreferences$40</ID>
+    <ID>MagicNumber:DaexRag.kt$DaexRagImpl$100</ID>
+    <ID>MagicNumber:DaexRag.kt$DaexRagImpl$1000</ID>
+    <ID>MagicNumber:DaexRag.kt$DaexRagImpl$15</ID>
+    <ID>MagicNumber:DaexRag.kt$DaexRagImpl$150</ID>
+    <ID>MagicNumber:DaexRag.kt$DaexRagImpl$20</ID>
+    <ID>MagicNumber:DaexRag.kt$DaexRagImpl$200</ID>
+    <ID>MagicNumber:DaexRag.kt$DaexRagImpl$300</ID>
+    <ID>MagicNumber:DaexRag.kt$DaexRagImpl$50</ID>
+    <ID>MagicNumber:DaexRag.kt$DaexRagImpl$500_000</ID>
+    <ID>MagicNumber:DaexRag.kt$DaexRagImpl$50_000</ID>
+    <ID>MagicNumber:DaexRag.kt$DaexRagImpl$60</ID>
+    <ID>MagicNumber:DaexRag.kt$DaexRagImpl$60.0</ID>
+    <ID>MagicNumber:DaexRag.kt$DaexRagImpl$600</ID>
+    <ID>MagicNumber:DaexService.kt$DaexServiceImpl$1.3</ID>
+    <ID>MagicNumber:DaexService.kt$DaexServiceImpl$10.0</ID>
+    <ID>MagicNumber:DaexService.kt$DaexServiceImpl$1000</ID>
+    <ID>MagicNumber:DaexService.kt$DaexServiceImpl$1000.0</ID>
+    <ID>MagicNumber:DaexService.kt$DaexServiceImpl$256</ID>
+    <ID>MagicNumber:DaexService.kt$DaexServiceImpl$3600</ID>
+    <ID>MagicNumber:DaexService.kt$DaexServiceImpl$4.0</ID>
+    <ID>MagicNumber:DaexService.kt$DaexServiceImpl$44</ID>
+    <ID>MagicNumber:DaexService.kt$DaexServiceImpl$512</ID>
+    <ID>MagicNumber:DaexService.kt$DaexServiceImpl$60</ID>
+    <ID>MagicNumber:DaexService.kt$DaexServiceImpl$86400</ID>
+    <ID>MagicNumber:DaexSkillManager.kt$DaexSkillManagerImpl$3</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFF000000</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFF00FFFF</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFF0D0D0D</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFF0F172A</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFF16A34A</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFF334155</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFF4ADE80</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFFD97706</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFFDC2626</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFFE2E8F0</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFFEF4444</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFFF59E0B</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFFF8FAFC</ID>
+    <ID>MagicNumber:DaexTheme.kt$0xFFFFFFFF</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0.35f</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0.75f</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF00FFFF</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF0891B2</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF16A34A</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF1D4ED8</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF3B82F6</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF4ADE80</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF7C3AED</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFFA855F7</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFFD6002F</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFFD97706</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFFF59E0B</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFFFF003C</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$1.1f</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$3</ID>
+    <ID>MagicNumber:DeviceToolSets.kt$BatteryStatusTool$100</ID>
+    <ID>MagicNumber:DeviceToolSets.kt$StorageStatusTool$1024.0</ID>
+    <ID>MagicNumber:DocumentLibraryModal.kt$0.6f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$0.001f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$0.002f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$0.15f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$0.1f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$0.38f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$0.5f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$0.6f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$0.7f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$0.85f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$0.8f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$0xFF06B6D4</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$0xFF6366F1</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$0xFFA855F7</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$1.1f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$100f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$150</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$15f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$200</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$200f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$20f</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$300</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$350</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$500</ID>
+    <ID>MagicNumber:ExecutionScreen.kt$&lt;no name provided&gt;$0.1f</ID>
+    <ID>MagicNumber:GalleryScreen.kt$100f</ID>
+    <ID>MagicNumber:KokoroTtsService.kt$KokoroTtsService$1000L</ID>
+    <ID>MagicNumber:KokoroTtsService.kt$KokoroTtsService$100L</ID>
+    <ID>MagicNumber:KokoroTtsService.kt$KokoroTtsService$10L</ID>
+    <ID>MagicNumber:KokoroTtsService.kt$KokoroTtsService$15</ID>
+    <ID>MagicNumber:KokoroTtsService.kt$KokoroTtsService$200</ID>
+    <ID>MagicNumber:KokoroTtsService.kt$KokoroTtsService$200L</ID>
+    <ID>MagicNumber:KokoroTtsService.kt$KokoroTtsService$24000</ID>
+    <ID>MagicNumber:KokoroTtsService.kt$KokoroTtsService$2500L</ID>
+    <ID>MagicNumber:KokoroTtsService.kt$KokoroTtsService$300</ID>
+    <ID>MagicNumber:KokoroTtsService.kt$KokoroTtsService$3400L</ID>
+    <ID>MagicNumber:KokoroTtsService.kt$KokoroTtsService$4096</ID>
+    <ID>MagicNumber:KokoroTtsService.kt$KokoroTtsService$4800</ID>
+    <ID>MagicNumber:KokoroTtsService.kt$KokoroTtsService$5000L</ID>
+    <ID>MagicNumber:LandingScreen.kt$0.15f</ID>
+    <ID>MagicNumber:LandingScreen.kt$0.25f</ID>
+    <ID>MagicNumber:LandingScreen.kt$1.5f</ID>
+    <ID>MagicNumber:LandingScreen.kt$100</ID>
+    <ID>MagicNumber:LandingScreen.kt$1000</ID>
+    <ID>MagicNumber:LandingScreen.kt$100f</ID>
+    <ID>MagicNumber:LandingScreen.kt$1024.0</ID>
+    <ID>MagicNumber:LandingScreen.kt$200</ID>
+    <ID>MagicNumber:LandingScreen.kt$3</ID>
+    <ID>MagicNumber:LandingScreen.kt$350</ID>
+    <ID>MagicNumber:LandingScreen.kt$4</ID>
+    <ID>MagicNumber:LandingScreen.kt$4000</ID>
+    <ID>MagicNumber:LandingScreen.kt$5</ID>
+    <ID>MagicNumber:LandingScreen.kt$500</ID>
+    <ID>MagicNumber:LandingScreen.kt$5f</ID>
+    <ID>MagicNumber:LandingScreen.kt$6</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$20</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$200</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$250</ID>
+    <ID>MagicNumber:MainActivity.kt$MainActivity$300</ID>
+    <ID>MagicNumber:MemoryEditorModal.kt$0.4f</ID>
+    <ID>MagicNumber:MemoryEditorModal.kt$0.5f</ID>
+    <ID>MagicNumber:MemoryEditorModal.kt$0.9f</ID>
+    <ID>MagicNumber:MemoryEditorModal.kt$220</ID>
+    <ID>MagicNumber:MemoryEditorModal.kt$280</ID>
+    <ID>MagicNumber:MessageLine.kt$0.5f</ID>
+    <ID>MagicNumber:MessageLine.kt$0.8f</ID>
+    <ID>MagicNumber:MessageLine.kt$0xFFA855F7</ID>
+    <ID>MagicNumber:MessageLine.kt$1200</ID>
+    <ID>MagicNumber:MessageLine.kt$1600</ID>
+    <ID>MagicNumber:MessageLine.kt$3</ID>
+    <ID>MagicNumber:MessageLine.kt$3f</ID>
+    <ID>MagicNumber:MessageLine.kt$400</ID>
+    <ID>MagicNumber:MessageLine.kt$4f</ID>
+    <ID>MagicNumber:MessageLine.kt$800</ID>
+    <ID>MagicNumber:ModelDownloadService.kt$ModelDownloadService$100</ID>
+    <ID>MagicNumber:ModelManager.kt$ModelManager$0.9</ID>
+    <ID>MagicNumber:ModelManager.kt$ModelManager$100</ID>
+    <ID>MagicNumber:ModelManager.kt$ModelManager$1024.0</ID>
+    <ID>MagicNumber:ModelManager.kt$ModelManager$206</ID>
+    <ID>MagicNumber:ModelManager.kt$ModelManager$416</ID>
+    <ID>MagicNumber:ModelManager.kt$ModelManager$8192</ID>
+    <ID>MagicNumber:ModelManager.kt$ModelManager$99</ID>
+    <ID>MagicNumber:ModelSelectorModal.kt$0.6f</ID>
+    <ID>MagicNumber:SavedPromptLibraryModal.kt$0.6f</ID>
+    <ID>MagicNumber:SettingsScreen.kt$0.5f</ID>
+    <ID>MagicNumber:SettingsScreen.kt$0xFF00FFFF</ID>
+    <ID>MagicNumber:SettingsScreen.kt$0xFF3B82F6</ID>
+    <ID>MagicNumber:SettingsScreen.kt$0xFF4ADE80</ID>
+    <ID>MagicNumber:SettingsScreen.kt$0xFFA855F7</ID>
+    <ID>MagicNumber:SettingsScreen.kt$0xFFF59E0B</ID>
+    <ID>MagicNumber:SettingsScreen.kt$0xFFFF003C</ID>
+    <ID>MagicNumber:SettingsScreen.kt$0xFFFFFF</ID>
+    <ID>MagicNumber:SettingsScreen.kt$10</ID>
+    <ID>MagicNumber:SettingsScreen.kt$100f</ID>
+    <ID>MagicNumber:SettingsScreen.kt$1024.0</ID>
+    <ID>MagicNumber:SettingsScreen.kt$3</ID>
+    <ID>MagicNumber:SettingsScreen.kt$4</ID>
+    <ID>MagicNumber:SettingsScreen.kt$5</ID>
+    <ID>MagicNumber:SettingsScreen.kt$6</ID>
+    <ID>MagicNumber:SettingsScreen.kt$7</ID>
+    <ID>MagicNumber:SettingsScreen.kt$8</ID>
+    <ID>MagicNumber:SettingsScreen.kt$9</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$0.3f</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$0.5f</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$0.7f</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$0.8f</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$0.9f</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$0xFF00FFFF</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$10</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$100</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$1024</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$200</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$30</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$35</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$40</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$50</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$60</ID>
+    <ID>MagicNumber:SettingsViewModel.kt$SettingsViewModel$80</ID>
+    <ID>MagicNumber:Sidebar.kt$300</ID>
+    <ID>MagicNumber:SpeechManager.kt$SpeechManager.&lt;no name provided&gt;$12f</ID>
+    <ID>MagicNumber:TtsViewModel.kt$TtsViewModel$100</ID>
+    <ID>MatchingDeclarationName:GalleryScreen.kt$SortOrder</ID>
+    <ID>MaxLineLength:AudioRecorder.kt$AudioRecorder$Log.d("AudioRecorder", "Audio recorded successfully to ${outputFile.absolutePath}, size=$totalBytesWritten")</ID>
+    <ID>MaxLineLength:AudioRecorder.kt$AudioRecorder$Log.i("AudioRecorder", "VAD: Speech started. Wrote pre-roll buffers to WAV file.")</ID>
+    <ID>MaxLineLength:AudioSessionViewModel.kt$AudioSessionViewModel$android.util.Log.w("AudioSessionViewModel", "Cannot start live voice session: TTS is enabled but not downloaded.")</ID>
+    <ID>MaxLineLength:AudioSessionViewModel.kt$AudioSessionViewModel$android.widget.Toast.makeText(ctx, "TTS voice engine is not downloaded yet. Please download it in Settings.", android.widget.Toast.LENGTH_LONG).show()</ID>
+    <ID>MaxLineLength:AudioSessionViewModel.kt$AudioSessionViewModel$val</ID>
+    <ID>MaxLineLength:AudioSessionViewModel.kt$AudioSessionViewModel$val audioManager = ctx.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager</ID>
+    <ID>MaxLineLength:ChangelogModal.kt$style = DaexTheme.typography.h2.copy(color = DaexTheme.colors.onBackground.copy(alpha = 0.5f))</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$"[SYSTEM_LOG]: MEMORY UPDATED — learned: " + curationResult.learnedBullets.joinToString("; ")</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$.</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$android.util.Log.d("ChatCompaction", "Middle region contains $middleTokens tokens. Summary budget: $targetTokens tokens.")</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$android.util.Log.i("ChatViewModel", "Context pressure warning: $currentTokens tokens. Triggering compaction check...")</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$android.util.Log.i("ChatViewModel", "Local pruning reduced tokens to $prunedTokens. Saving pruned logs...")</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$android.util.Log.i("ChatViewModel", "Submitting queued audio chunk from during-generation speech")</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$android.util.Log.i("ChatViewModel", "submitAudioPrompt: generation in progress — queueing chunk for next turn")</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$if</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$isReasoningEnabled = if (isLiveVoiceActive()) false else settingsViewModel.isReasoningEnabled.value</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$it.role == "system" &amp;&amp; it.content.startsWith("[SYSTEM_LOG]:") &amp;&amp; it.content.endsWith("...")</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$modelMsg = oldModelMsg.copy(content = "", thoughtContent = null, tokensPerSecond = 0.0, timestamp = System.currentTimeMillis() + 1)</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$private suspend</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$summary = "[CONTEXT COMPACTION]:\n- ACTIVE GOAL: General conversation\n- STATE: A conversation segment of ${middleMessages.size} turns took place. Topics covered: $topics\n- NEXT: Continue conversation"</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$systemContext += "Use the above document excerpts to help answer the user's query. If the excerpts are not relevant, ignore them.\n"</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$systemContext += "Use the above excerpts to answer the user's question about your own capabilities accurately.\n"</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$systemContext += "\n\nIMPORTANT: You are in a live voice session. Keep your response conversational, friendly, and direct. Keep your response to around 1 to 3 sentences (under 60 words). Do not use lists, bullet points, or structured formatting."</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$systemContext += "\n\nYou have domain-specific \"skills\" (additional instructions/parameters) available. If you need a special skill or want to see what is available, call the listSkills() tool. If you find a matching skill, call the loadSkill(skillName) tool to retrieve its instructions.\n"</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$val summaryText = "[Verbose tool output pruned: ${lines.size} lines, first line: ${lines.firstOrNull()}]"</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$val text = com.itextpdf.kernel.pdf.canvas.parser.PdfTextExtractor.getTextFromPage(page)</ID>
+    <ID>MaxLineLength:ChatViewModel.kt$ChatViewModel$val topics = middleMessages.filter { it.role == "user" }.take(3).joinToString(", ") { it.content.take(30) + "..." }</ID>
+    <ID>MaxLineLength:CrashLogWriter.kt$CrashLogWriter$/** Writes a crash report to cacheDir/logs and prunes older ones. Safe to call from an uncaught-exception handler. */</ID>
+    <ID>MaxLineLength:CrashLogWriter.kt$CrashLogWriter$appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE}, SDK ${Build.VERSION.SDK_INT})")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$Log.w("DaexCoreMemory", "Compactor output didn't look like valid markdown structure, skipping overwrite. Output: ${cleaned.take(200)}")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append(" * '## Key Facts &amp; Preferences' for durable facts about the user's routine, hobbies, device settings, or general preferences.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append(" * '## User Profile' for the user's name, personal traits, communication habits, and persistent preferences.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append(" 1) user: \"do you remember things between conversations?\" / assistant explains its own memory and search features → unchanged, not 'user asked about memory'.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append(" 2) user: \"what tools can you use on my device?\" / assistant lists its own tools → unchanged, not 'user inquired about available tools'.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("- DO NOT record temporary debug sessions, transient tasks, or ephemeral conversation history.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("- DO NOT record the fact that you were asked or forced to update your memory, or that a memory compaction occurred.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("- DO NOT record the subject/topic of a question the user asked — only standalone facts the user stated about themselves.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("- DO NOT record tool availability, MCP servers, or system commands (e.g. \"saive-finance MCP is available\").\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("- DO NOT record what DAEX/Icarus can do or how its features work (RAG, memory, tools, voice, etc.) — that describes the app, not the user.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("- Keep the entire markdown file strictly under a 2,000-character budget. If the list is getting long, aggressively merge related bullets and prune older/completed or less relevant details.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("- Maintain the exact headers '# Core Memory', '## User Profile', and '## Key Facts &amp; Preferences'.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("CRITICAL: Only record facts about who the user IS (name, traits, circumstances, routines, opinions, life details they shared about themselves). ")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("Examples of conversations with NOTHING to record, because they're about the app, not the user:\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("If the conversation reveals no new durable fact about the user, output the CURRENT MEMORY FILE unchanged, verbatim — that is the correct and expected outcome most of the time, not a failure. Do not force a new bullet just because compaction ran.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("Never record facts about DAEX, Icarus, or how the app works, even if that was the topic of conversation — the assistant explaining its own features is not a fact about the user. ")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("Only note something if the user stated it about themselves directly (e.g. 'I'm a nurse', 'I love hiking'), or the same personal detail comes up across multiple turns.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("Output ONLY the updated markdown file — nothing else. No preamble, no explanation, no commentary.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("Reminder: if this conversation was about DAEX/Icarus itself rather than the user's own life, output the current memory file unchanged. Do not log the topic of a question as a fact.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("The TOPIC of a question is never itself a fact — do not write bullets like 'User asked about X', 'User inquired about Y', or 'User wanted to know Z'. ")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$append("You are a memory curator. Your ONLY job is to maintain a clean markdown file of durable facts about the USER — the human on the other end of the conversation, never the AI assistant itself.\n")</ID>
+    <ID>MaxLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$if</ID>
+    <ID>MaxLineLength:DaexEmbedder.kt$DaexEmbedder$?:</ID>
+    <ID>MaxLineLength:DaexEmbedder.kt$DaexEmbedder$Log.d("DaexEmbedder", "Embedding text='${text.take(30).replace("\n", " ")}' -&gt; raw norm=$norm, size=${floatArray.size}, first 5=[${floatArray.take(5).joinToString(", ")}]")</ID>
+    <ID>MaxLineLength:DaexFtsDatabaseHelper.kt$DaexFtsDatabaseHelper$Log.d("DaexFtsDatabaseHelper", "Successfully opened and initialized Bundled SQLite connection at: ${dbFile.absolutePath}")</ID>
+    <ID>MaxLineLength:DaexMemory.kt$DaexMemory$.</ID>
+    <ID>MaxLineLength:DaexMemory.kt$DaexMemory$android.util.Log.d("DaexMemory", "saveMessage convId=$conversationId, messageId=${message.id}, role=${message.role}")</ID>
+    <ID>MaxLineLength:DaexMemory.kt$DaexMemory$equal(ConversationEntity_.uuid, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>MaxLineLength:DaexMemory.kt$DaexMemory$equal(MessageEntity_.conversationId, conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>MaxLineLength:DaexMemory.kt$DaexMemory$equal(MessageEntity_.conversationId, entity.conversationId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>MaxLineLength:DaexMemory.kt$DaexMemory$suspend</ID>
+    <ID>MaxLineLength:DaexMemory.kt$DaexMemory$val cond = MessageEntity_.uuid.equal(match.messageId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>MaxLineLength:DaexMemory.kt$DaexMemory$val isExactMatch = queryText.isNotBlank() &amp;&amp; entity.content.trim().equals(queryText.trim(), ignoreCase = true)</ID>
+    <ID>MaxLineLength:DaexMessageFtsHelper.kt$DaexMessageFtsHelper$Log.d("DaexMessageFts", "Successfully opened and initialized message FTS5 connection at: ${dbFile.absolutePath}")</ID>
+    <ID>MaxLineLength:DaexRag.kt$DaexRag$suspend fun ingestFile(fileName: String, content: String, isSystem: Boolean = false, onProgress: (Int, Int) -&gt; Unit = { _, _ -&gt; })</ID>
+    <ID>MaxLineLength:DaexRag.kt$DaexRag$suspend fun queryDocuments(query: String, maxResults: Int = 5, activeFileNames: List&lt;String&gt; = emptyList()): List&lt;String&gt;</ID>
+    <ID>MaxLineLength:DaexRag.kt$DaexRagImpl$Log.d("DaexRag", " FTS match #$i (score=${res.score}): [Index ${res.chunkIndex}] ${res.content.take(60).replace("\n", " ")}...")</ID>
+    <ID>MaxLineLength:DaexRag.kt$DaexRagImpl$Log.d("DaexRag", " Vector match #$i (score=${res.score}): [Index ${entity.chunkIndex}] ${entity.content.take(60).replace("\n", " ")}...")</ID>
+    <ID>MaxLineLength:DaexRag.kt$DaexRagImpl$Log.d("DaexRag", "Ingesting file '$fileName' (size: $contentLength chars): ${chunks.size} chunks (maxSize: $maxChunkSize, overlap: $overlap)")</ID>
+    <ID>MaxLineLength:DaexRag.kt$DaexRagImpl$equal(DocumentChunkEntity_.documentId, documentId, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>MaxLineLength:DaexRag.kt$DaexRagImpl$equal(DocumentChunkEntity_.fileName, fileName, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>MaxLineLength:DaexRag.kt$DaexRagImpl$override suspend</ID>
+    <ID>MaxLineLength:DaexRag.kt$DaexRagImpl$val cond = DocumentChunkEntity_.fileName.equal(fileName, io.objectbox.query.QueryBuilder.StringOrder.CASE_SENSITIVE)</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexService$suspend fun initContext(modelPath: String, backendType: BackendType, isSpeculativeDecodingEnabled: Boolean = true): BackendType</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$// com.google.ai.edge.litertlm.Engine.setNativeMinLogSeverity(com.google.ai.edge.litertlm.LogSeverity.FATAL)</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$Log.d("DaexService", "Initializing LiteRT-LM Engine with model: $modelPath (backend=$backendType, speculative=$isSpeculativeDecodingEnabled)")</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$Log.i(TAG, "generateResponse: isToolCallingEnabled=$isToolCallingEnabled, temperature=$temperature, topK=$topK, topP=$topP, customPromptLength=${customSystemPrompt.length}")</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$Log.w("DaexService", "Failed to initialize with speculative decoding, retrying with it disabled", specEx)</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$Log.w("DaexService", "NPU initialization failed (missing TF_LITE_AUX), attempting fallback to GPU", e)</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$append("Additional instructions from the user (apply on top of the above; they do not override your core identity or the timestamp rule):\n")</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$append("Chat history turns are prefixed with relative timestamps like '[5m ago]'. Do not add timestamp prefixes to your own response.\n\n")</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$append("The above is your persistent memory. Use it to personalize your responses. Do NOT mention your memory or refer to it, and do NOT attempt to update it yourself.\n")</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$append("Your name is Icarus. You are DAEX's on-device assistant. Respond with precision and directness; avoid all meta-commentary unless asked.\n")</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$append("\nIMPORTANT CONSTRAINT: The user has requested a concise response. Keep your reasoning and final response relatively brief.\n")</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$append("\nIMPORTANT CONSTRAINT: The user has requested an extremely brief response. Keep both your internal thinking/reasoning and final response very short, concise, and direct (under 50 words).\n")</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$board.contains("gs")</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$com.google.ai.edge.litertlm.ExperimentalFlags.enableSpeculativeDecoding = isSpeculativeDecodingEnabled</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$if ("launchApp" !in disabledToolIds) add(tool(LaunchAppTool(context, onRequestPermission, onStatusUpdate)))</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$if ("recallMemory" !in disabledToolIds &amp;&amp; daexMemory != null) add(tool(RecallMemoryTool(daexMemory, onStatusUpdate)))</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$maxNumTokens = 4096</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$override suspend</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$val fallbackText = if (msg.content.isNotBlank()) msg.content else "[Voice Audio Unavailable]"</ID>
+    <ID>MaxLineLength:DaexService.kt$DaexServiceImpl$val formatter = java.text.SimpleDateFormat("EEEE, MMMM d, yyyy, h:mm a", java.util.Locale.getDefault())</ID>
+    <ID>MaxLineLength:DeviceToolSets.kt$DeviceInfoTool$val result = "Device: ${Build.MANUFACTURER} ${Build.MODEL}, Android SDK: ${Build.VERSION.SDK_INT}, OS Version: ${Build.VERSION.RELEASE}"</ID>
+    <ID>MaxLineLength:DeviceToolSets.kt$LaunchAppTool$@ToolParam(description = "The display name of the application to launch (e.g. 'Spotify', 'YouTube')") appName: String</ID>
+    <ID>MaxLineLength:DeviceToolSets.kt$SendEmailTool$@Tool(description = "Send an email. Launches the native device email client pre-filled with recipient, subject, and body.")</ID>
+    <ID>MaxLineLength:DeviceToolSets.kt$SkillTools$@Tool(description = "List all available modular skills and their descriptions. Use this to find out what capabilities are available to be loaded via loadSkill.")</ID>
+    <ID>MaxLineLength:DeviceToolSets.kt$SkillTools$@Tool(description = "Retrieve the full instructions and parameters for a specific skill. Call this when you need details on how to use a skill that is not currently loaded in your context.")</ID>
+    <ID>MaxLineLength:DeviceToolSets.kt$ToolRegistry$ToolRegistryEntry("recallMemory", "Recall Past Conversations", "Search conversation history for relevant context", defaultEnabled = true)</ID>
+    <ID>MaxLineLength:DeviceToolSets.kt$ToolRegistry$ToolRegistryEntry("sendEmail", "Send Email", "Open the email client with a prefilled message", defaultEnabled = false)</ID>
+    <ID>MaxLineLength:DeviceToolSets.kt$ToolRegistry$ToolRegistryEntry("skills", "Modular Skills", "Discover and load domain-specific skill instructions", defaultEnabled = true)</ID>
+    <ID>MaxLineLength:DocumentLibraryModal.kt$.</ID>
+    <ID>MaxLineLength:DocumentLibraryModal.kt$color = if (isAttached) DaexTheme.colors.primary.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.08f)</ID>
+    <ID>MaxLineLength:DocumentLibraryModal.kt$style = DaexTheme.typography.caption.copy(color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 10.sp)</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$.</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$BasicText(text = "+", style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.primary, fontSize = 18.sp))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$BasicText(text = "CPU Backend", style = DaexTheme.typography.body2.copy(color = if (selectedBackend == BackendType.CPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = if (selectedBackend == BackendType.CPU) FontWeight.Bold else FontWeight.Normal))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$BasicText(text = "Downloading model... $downloadProgress%", style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.warning, fontSize = 12.sp))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$BasicText(text = "GPU Offload", style = DaexTheme.typography.body2.copy(color = if (selectedBackend == BackendType.GPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = if (selectedBackend == BackendType.GPU) FontWeight.Bold else FontWeight.Normal))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$BasicText(text = "Loading engine into memory...", style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.warning, fontSize = 12.sp))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$BasicText(text = "Model not loaded — tap to initialize", style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.warning, fontSize = 12.sp))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$BasicText(text = "NPU Acceleration", style = DaexTheme.typography.body2.copy(color = if (selectedBackend == BackendType.NPU) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.8f), fontSize = 11.sp, fontWeight = if (selectedBackend == BackendType.NPU) FontWeight.Bold else FontWeight.Normal))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$BasicText(text = "RETRY", modifier = Modifier.clickable { (currentModel ?: selectedModel).let { settingsViewModel.loadModel(it) } }, style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.primary, fontSize = 12.sp))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$BasicText(text = "Vectorizing file...", style = DaexTheme.typography.caption.copy(color = DaexTheme.colors.warning))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$BasicText(text = attachedFiles[index], style = DaexTheme.typography.caption.copy(color = DaexTheme.colors.primary))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$BasicText(text = errorMessage ?: "Model error", modifier = Modifier.weight(1f), style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.error, fontSize = 12.sp))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$BasicText(text = if (isReasoningEnabled) "REASONING" else "FAST", style = DaexTheme.typography.mono.copy(color = if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.6f), fontSize = 10.sp, letterSpacing = 1.sp))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$Box</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$Box(modifier = Modifier.fillMaxWidth(downloadProgress / 100f).fillMaxHeight().background(DaexTheme.colors.warning))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.4f)))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (selectedBackend == BackendType.CPU) DaexTheme.colors.primary else Color.Transparent))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (selectedBackend == BackendType.GPU) DaexTheme.colors.primary else Color.Transparent))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(if (selectedBackend == BackendType.NPU) DaexTheme.colors.primary else Color.Transparent))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$CircularProgressIndicator(modifier = Modifier.size(14.dp), color = DaexTheme.colors.warning, strokeWidth = 2.dp)</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = DaexTheme.colors.warning)</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$Crossfade</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$DaexMicIcon(color = if (isVoiceSessionActive) DaexTheme.colors.primary else if (micBlocked) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary, modifier = Modifier.size(18.dp))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$DaexSendIcon(color = if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.onPrimary, modifier = Modifier.size(16.dp))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$DaexStopIcon(color = DaexTheme.colors.onPrimary, modifier = Modifier.size(16.dp))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$LazyRow</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$Row</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$android.widget.Toast.makeText(context, "Microphone permission is required for voice mode.", android.widget.Toast.LENGTH_LONG).show()</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$android.widget.Toast.makeText(context, "TTS voice engine is not downloaded yet. Please download it in Settings.", android.widget.Toast.LENGTH_LONG).show()</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$audioSessionViewModel.startLiveVoiceSession { recognizedText -&gt; inputText = recognizedText }</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$backgroundColor = if (isVoiceSessionActive) Color.Transparent else if (isGenerating) DaexTheme.colors.primary else if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.1f) else DaexTheme.colors.primary</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$color = DaexTheme.colors.primary.copy(alpha = if (currentModel != null) 0.6f else 0.4f)</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$cornerRadius = androidx.compose.ui.geometry.CornerRadius(28.dp.toPx(), 28.dp.toPx())</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$dragOffset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$enabled = !isGenerating &amp;&amp; !isVectorizing &amp;&amp; isModelReady &amp;&amp; transitionProgress &lt; 0.5f</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$enabled = !isGenerating &amp;&amp; isModelReady &amp;&amp; voiceState != VoiceState.LISTENING &amp;&amp; transitionProgress &lt; 0.5f</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$enabled = (isGenerating || isModelReady) &amp;&amp; (isGenerating || inputText.isNotEmpty() || (!isVoiceSessionActive &amp;&amp; voiceState != VoiceState.PROCESSING)) &amp;&amp; transitionProgress &lt; 0.5f</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$if</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$isGenerating &amp;&amp; lastMsg != null &amp;&amp; lastMsg.role == "model" &amp;&amp; lastMsg.content.isEmpty() &amp;&amp; !lastMsg.thoughtContent.isNullOrEmpty()</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$isTtsEnabled &amp;&amp; !isTtsDownloaded -&gt; "Download TTS engine in settings to start..."</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$modelStatus == ModelStatus.LOADING || modelStatus == ModelStatus.DOWNLOADING || isReflecting || isVectorizing -&gt; DaexTheme.colors.warning</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$modifier = Modifier.clip(RoundedCornerShape(16.dp)).background(DaexTheme.colors.primary.copy(alpha = 0.12f)).border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(16.dp)).padding(horizontal = 10.dp, vertical = 4.dp)</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$onClick = { settingsViewModel.triggerHapticFeedback(context); documentLibraryVisible = true }</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$rawDragOffset = (rawDragOffset + dragAmount).coerceIn(-maxDragDistancePx, 0f)</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$renderEffect = android.graphics.RenderEffect.createBlurEffect(20f, 20f, android.graphics.Shader.TileMode.DECAL).asComposeRenderEffect()</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$val</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$val isLastModel = msg.role == "model" &amp;&amp; visibleMessages.subList(index + 1, visibleMessages.size).none { it.role == "model" }</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO)</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$val showBadgeDropdown = modelStatus == ModelStatus.READY &amp;&amp; !isGenerating &amp;&amp; !isReflecting &amp;&amp; !isVectorizing</ID>
+    <ID>MaxLineLength:ExecutionScreen.kt$width = if (isVoiceSessionActive) 1.dp else (0.5.dp + (1.dp * dragProgress).coerceAtMost(1.dp))</ID>
+    <ID>MaxLineLength:FtsQuerySanitizer.kt$FtsQuerySanitizer$"couldnt"</ID>
+    <ID>MaxLineLength:FtsQuerySanitizer.kt$FtsQuerySanitizer$"further"</ID>
+    <ID>MaxLineLength:FtsQuerySanitizer.kt$FtsQuerySanitizer$"into"</ID>
+    <ID>MaxLineLength:FtsQuerySanitizer.kt$FtsQuerySanitizer$"not"</ID>
+    <ID>MaxLineLength:FtsQuerySanitizer.kt$FtsQuerySanitizer$"same"</ID>
+    <ID>MaxLineLength:FtsQuerySanitizer.kt$FtsQuerySanitizer$"theyre"</ID>
+    <ID>MaxLineLength:FtsQuerySanitizer.kt$FtsQuerySanitizer$"who"</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$!hasEnoughStorage -&gt; "NOT ENOUGH FREE STORAGE — FREE UP ${modelManager.formatBytes(storageShortfall).uppercase()}"</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$)</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$.</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$board.contains("sm8650") || board.contains("pineapple") || hardware.contains("sm8650") || model.contains("s928")</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$board.contains("sm8850") || board.contains("cliffs") || hardware.contains("sm8850") || model.contains("s948")</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$color = if (canDownload) DaexTheme.colors.onPrimary else DaexTheme.colors.onSurface.copy(alpha = 0.2f)</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$color = if (canDownload) DaexTheme.colors.success.copy(alpha = 0.6f) else Color.Red.copy(alpha = 0.6f)</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$color = if (isCurrent) DaexTheme.colors.primary.copy(alpha = 0.4f) else DaexTheme.colors.onSurface.copy(alpha = 0.08f)</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$color = if (isOtherDownloadInFlight) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.primary</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$color = if (selected) DaexTheme.colors.primary.copy(alpha = 0.4f) else DaexTheme.colors.onSurface.copy(alpha = 0.1f)</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$private</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$val matchesBackend = selectedBackendFilter == null || model.supportedBackends.contains(selectedBackendFilter)</ID>
+    <ID>MaxLineLength:GalleryScreen.kt$val matchesHardware = model.targetHardware == null || isTargetHardwareCompatible(model.targetHardware, deviceSpecs)</ID>
+    <ID>MaxLineLength:KokoroTtsService.kt$KokoroTtsService$android.util.Log.i("KokoroTtsService", "Extracting espeak-ng-data from assets to $localDataDir...")</ID>
+    <ID>MaxLineLength:KokoroTtsService.kt$KokoroTtsService$android.util.Log.w("KokoroTtsService", "Cannot initialize Kokoro TTS engine: model files are not downloaded yet.")</ID>
+    <ID>MaxLineLength:KokoroTtsService.kt$KokoroTtsService$if</ID>
+    <ID>MaxLineLength:KokoroTtsService.kt$KokoroTtsService$val durationMs = retriever.extractMetadata(android.media.MediaMetadataRetriever.METADATA_KEY_DURATION)?.toLongOrNull()</ID>
+    <ID>MaxLineLength:LandingScreen.kt$"Checking GPU rendering pipeline (Vulkan Level 12)... ${if (specs.hasVulkan) "SUPPORTED" else "UNSUPPORTED"}"</ID>
+    <ID>MaxLineLength:LandingScreen.kt$"Scanning Qualcomm/Tensor NPU Hardware... ${if (specs.socModel.isNotEmpty()) specs.socModel else "Generic chip"}"</ID>
+    <ID>MaxLineLength:LandingScreen.kt$)</ID>
+    <ID>MaxLineLength:LandingScreen.kt$.</ID>
+    <ID>MaxLineLength:LandingScreen.kt$ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED</ID>
+    <ID>MaxLineLength:LandingScreen.kt$Pair("CHAIN OF THOUGHT REASONING", "DAEX displays real-time execution thoughts. Watch the reasoning channel process concepts live before the final response is composed.")</ID>
+    <ID>MaxLineLength:LandingScreen.kt$Pair("LIVE VOICE MODE", "Speak naturally and Icarus answers out loud with a fully on-device voice — hands-free conversation with automatic turn detection.")</ID>
+    <ID>MaxLineLength:LandingScreen.kt$Pair("LOCAL RAG KNOWLEDGE BASES", "Vectorize local PDF or text files entirely offline. An on-device embedding engine indexes your documents so answers can be grounded in your own content.")</ID>
+    <ID>MaxLineLength:LandingScreen.kt$Pair("SECURE SYSTEM CALLS", "Icarus can trigger sandboxed device actions — with your approval. Its toolkit is modular and grows over time.")</ID>
+    <ID>MaxLineLength:LandingScreen.kt$Pair("TOTAL RECALL", "Every conversation is saved on-device and searchable. Icarus maintains a curated core memory of what matters to you — and can recall past sessions when relevant.")</ID>
+    <ID>MaxLineLength:LandingScreen.kt$Row</ID>
+    <ID>MaxLineLength:LandingScreen.kt$board.contains("sm8650") || board.contains("pineapple") || hardware.contains("sm8650") || model.contains("s928")</ID>
+    <ID>MaxLineLength:LandingScreen.kt$board.contains("sm8850") || board.contains("cliffs") || hardware.contains("sm8850") || model.contains("s948")</ID>
+    <ID>MaxLineLength:LandingScreen.kt$color = if (canProceed) DaexTheme.colors.onPrimary else DaexTheme.colors.onSurface.copy(alpha = 0.2f)</ID>
+    <ID>MaxLineLength:LandingScreen.kt$color = if (consoleLines[index].startsWith("SUCCESS")) DaexTheme.colors.success else Color.White.copy(alpha = 0.8f)</ID>
+    <ID>MaxLineLength:LandingScreen.kt$color = if (selectedSize == size) DaexTheme.colors.primary else Color.White.copy(alpha = 0.4f)</ID>
+    <ID>MaxLineLength:LandingScreen.kt$color = if (selectedSize == size) DaexTheme.colors.primary.copy(alpha = 0.5f) else Color.Transparent</ID>
+    <ID>MaxLineLength:LandingScreen.kt$color = if (selectedVariantIndex == idx) DaexTheme.colors.primary else Color.White.copy(alpha = 0.4f)</ID>
+    <ID>MaxLineLength:LandingScreen.kt$color = if (selectedVariantIndex == idx) DaexTheme.colors.primary.copy(alpha = 0.5f) else Color.Transparent</ID>
+    <ID>MaxLineLength:LandingScreen.kt$description = "DAEX functions with zero network connectivity. Perfect for high-privacy environments and guaranteed system access anywhere."</ID>
+    <ID>MaxLineLength:LandingScreen.kt$description = "Engineered to map local AI model operations directly to your device CPU, GPU, and hardware Neural Processing Units (NPUs)."</ID>
+    <ID>MaxLineLength:LandingScreen.kt$description = "Neural model execution runs entirely inside your device sandbox. No chat logs or inputs are ever leaked to external cloud networks."</ID>
+    <ID>MaxLineLength:LandingScreen.kt$notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)</ID>
+    <ID>MaxLineLength:LandingScreen.kt$style = DaexTheme.typography.mono.copy(color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.sp)</ID>
+    <ID>MaxLineLength:LandingScreen.kt$style = DaexTheme.typography.mono.copy(color = Color.White.copy(alpha = 0.4f), fontSize = 8.sp)</ID>
+    <ID>MaxLineLength:LandingScreen.kt$style = DaexTheme.typography.mono.copy(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp)</ID>
+    <ID>MaxLineLength:LandingScreen.kt$style = DaexTheme.typography.mono.copy(color = Color.White.copy(alpha = 0.4f), fontSize = 9.sp, fontWeight = FontWeight.Bold)</ID>
+    <ID>MaxLineLength:LandingScreen.kt$style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.primary, fontSize = 9.sp, fontWeight = FontWeight.Bold)</ID>
+    <ID>MaxLineLength:LandingScreen.kt$style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.primary, fontWeight = FontWeight.Bold, fontSize = 12.sp)</ID>
+    <ID>MaxLineLength:LandingScreen.kt$text = "Chunk, embed, and search your local PDF and text documents offline. References are injected directly into LLM prompts without cloud server processing."</ID>
+    <ID>MaxLineLength:LandingScreen.kt$text = "Formulating local security policy response...\nChecking privacy sandbox compliance..."</ID>
+    <ID>MaxLineLength:LandingScreen.kt$text = "Icarus executes secure functions on your device environment — with per-tool controls you can toggle anytime. Everything is processed locally."</ID>
+    <ID>MaxLineLength:LandingScreen.kt$text = "Your facts, topics of interest, and system settings are compiled silently into a local file after conversations. Zero data transfers occur external to the device."</ID>
+    <ID>MaxLineLength:LandingScreen.kt$text = if (modelStatus == ModelStatus.DOWNLOADING) "DOWNLOADING LIBS..." else "INITIALIZING SYSTEMS..."</ID>
+    <ID>MaxLineLength:MemoryEditorModal.kt$val screenHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { configuration.screenHeightDp.dp.toPx() }</ID>
+    <ID>MaxLineLength:MessageLine.kt$Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(DaexTheme.colors.onSurface.copy(alpha = 0.06f)))</ID>
+    <ID>MaxLineLength:MessageLine.kt$color = if (isGenerating) Color(0xFFA855F7) else DaexTheme.colors.onSurface.copy(alpha = 0.35f)</ID>
+    <ID>MaxLineLength:MessageLine.kt$color = if (isSpeaking) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.4f)</ID>
+    <ID>MaxLineLength:MessageLine.kt$color = if (message.isPinned) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.25f)</ID>
+    <ID>MaxLineLength:MessageLine.kt$color = if (message.isPinned) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.4f)</ID>
+    <ID>MaxLineLength:MessageLine.kt$shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp, bottomStart = 24.dp, bottomEnd = 0.dp)</ID>
+    <ID>MaxLineLength:MessageLine.kt$val dotAlpha = if (isThinkingOrGenerating) breathingAlpha else (if (isGenerating) 1f else 0.5f)</ID>
+    <ID>MaxLineLength:ModelBank.kt$ModelBank$downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it.litertlm"</ID>
+    <ID>MaxLineLength:ModelBank.kt$ModelBank$downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it_Google_Tensor_G5.litertlm"</ID>
+    <ID>MaxLineLength:ModelBank.kt$ModelBank$downloadUrl = "https://huggingface.co/litert-community/gemma-4-E2B-it-litert-lm/resolve/main/gemma-4-E2B-it_qualcomm_sm8750.litertlm"</ID>
+    <ID>MaxLineLength:ModelBank.kt$ModelBank$downloadUrl = "https://huggingface.co/litert-community/gemma-4-E4B-it-litert-lm/resolve/main/gemma-4-E4B-it.litertlm"</ID>
+    <ID>MaxLineLength:ModelBank.kt$ModelBank$downloadUrl = "https://storage.googleapis.com/mediapipe-models/text_embedder/bert_embedder/float32/1/bert_embedder.tflite"</ID>
+    <ID>MaxLineLength:ModelDownloadService.kt$ModelDownloadService$GenerativeDownloadStatus(requestId, ModelBank.embeddingModel.id, DownloadPhase.DOWNLOADING, progress.percent)</ID>
+    <ID>MaxLineLength:ModelDownloadService.kt$ModelDownloadService$GenerativeDownloadStatus(requestId, ModelBank.embeddingModel.id, DownloadPhase.ERROR, error = "An embedding model download is already in progress.")</ID>
+    <ID>MaxLineLength:ModelDownloadService.kt$ModelDownloadService$GenerativeDownloadStatus(requestId, model.id, DownloadPhase.ERROR, error = "A model download is already in progress.")</ID>
+    <ID>MaxLineLength:ModelDownloadService.kt$ModelDownloadService$KokoroDownloadStatus(requestId, DownloadPhase.ERROR, error = "A TTS download is already in progress.")</ID>
+    <ID>MaxLineLength:ModelDownloadService.kt$ModelDownloadService$ModelDownloadState.updateEmbedding(GenerativeDownloadStatus(requestId, ModelBank.embeddingModel.id, DownloadPhase.COMPLETED, 100))</ID>
+    <ID>MaxLineLength:ModelDownloadService.kt$ModelDownloadService$ModelDownloadState.updateEmbedding(GenerativeDownloadStatus(requestId, ModelBank.embeddingModel.id, DownloadPhase.DOWNLOADING, 0))</ID>
+    <ID>MaxLineLength:ModelDownloadService.kt$ModelDownloadService$ModelDownloadState.updateEmbedding(GenerativeDownloadStatus(requestId, ModelBank.embeddingModel.id, phase, error = e.message))</ID>
+    <ID>MaxLineLength:ModelDownloadService.kt$ModelDownloadService$ModelDownloadState.updateGenerative(GenerativeDownloadStatus(requestId, model.id, DownloadPhase.COMPLETED, 100))</ID>
+    <ID>MaxLineLength:ModelDownloadService.kt$ModelDownloadService$ModelDownloadState.updateGenerative(GenerativeDownloadStatus(requestId, model.id, DownloadPhase.DOWNLOADING, 0))</ID>
+    <ID>MaxLineLength:ModelDownloadService.kt$ModelDownloadService$ModelDownloadState.updateGenerative(GenerativeDownloadStatus(requestId, model.id, phase, error = e.message))</ID>
+    <ID>MaxLineLength:ModelDownloadService.kt$ModelDownloadService$ModelDownloadState.updateKokoro(KokoroDownloadStatus(requestId, DownloadPhase.DOWNLOADING, percent))</ID>
+    <ID>MaxLineLength:ModelManager.kt$ModelManager$throw Exception("Device does not meet the required ${formatBytes(model.requiredRAM)} of RAM for this model.")</ID>
+    <ID>MaxLineLength:ModelSelectorModal.kt$style = DaexTheme.typography.body1.copy(color = Color.White, fontWeight = FontWeight.Bold)</ID>
+    <ID>MaxLineLength:RecallMemoryTool.kt$RecallMemoryTool$@Tool(description = "Search the user's past conversations (beyond what's in the current chat) for relevant context. Use this when the user references something discussed before that isn't in the visible history.")</ID>
+    <ID>MaxLineLength:RecallMemoryTool.kt$RecallMemoryTool$@ToolParam(description = "What to search for, e.g. the topic or question to recall past context about") query: String</ID>
+    <ID>MaxLineLength:SavedPromptLibraryModal.kt$.</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$.</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(DaexTheme.colors.onSurface.copy(alpha = 0.08f)))</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness)))</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$color = DaexTheme.colors.onSurface.copy(alpha = if (enabled) 0.9f else 0.4f)</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$color = if (displayColor == Color.White) Color.Black else Color.White</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$color = if (isActive) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.5f)</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$settingsViewModel.triggerHapticFeedback(context, force = true, type = com.daex.android.ui.viewmodels.HapticType.TICK)</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$style = DaexTheme.typography.body2.copy(color = DaexTheme.colors.onBackground)</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$style = DaexTheme.typography.body2.copy(color = DaexTheme.colors.onSurface.copy(alpha = 0.3f))</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.onSurface.copy(alpha = 0.5f), fontSize = 11.sp)</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.primary, fontWeight = FontWeight.Bold)</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$text = "${profile.region} • ${if (profile.gender.contains("Female")) "♀" else "♂"}"</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$text = "Icarus has a fixed core personality — instructions here are appended on top, not a replacement."</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$val borderCl = if (isSelected) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.15f)</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$val cardBg = if (isSelected) DaexTheme.colors.primary.copy(alpha = 0.15f) else DaexTheme.colors.background</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$val customDisplayColor = if (isCustomActive) DaexTheme.getAdjustedColor(primaryColor, isDark) else Color.Transparent</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$val freeStorageGb = String.format(java.util.Locale.US, "%.1f", specs.freeStorage / (1024.0 * 1024.0 * 1024.0))</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$val pickedColor = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness)))</ID>
+    <ID>MaxLineLength:SettingsScreen.kt$val ramGb = String.format(java.util.Locale.US, "%.1f", specs.totalRAM / (1024.0 * 1024.0 * 1024.0))</ID>
+    <ID>MaxLineLength:SettingsViewModel.kt$SettingsViewModel$HapticType.DOUBLE_CLICK -&gt; VibrationEffect.createPredefined(VibrationEffect.EFFECT_DOUBLE_CLICK)</ID>
+    <ID>MaxLineLength:SettingsViewModel.kt$SettingsViewModel$HapticType.HEAVY_CLICK -&gt; VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK)</ID>
+    <ID>MaxLineLength:SettingsViewModel.kt$SettingsViewModel$VibrationEffect.createWaveform(longArrayOf(0, 30, 80, 40), intArrayOf(0, 200, 0, 100), -1)</ID>
+    <ID>MaxLineLength:SettingsViewModel.kt$SettingsViewModel$android.util.Log.d("DaexAutoload", "Model loaded successfully. Saving configuration to preferences: id=${model.id}, backend=${actualBackend.name}")</ID>
+    <ID>MaxLineLength:SettingsViewModel.kt$SettingsViewModel$fun</ID>
+    <ID>MaxLineLength:SettingsViewModel.kt$SettingsViewModel$private fun isBusy()</ID>
+    <ID>MaxLineLength:SettingsViewModel.kt$SettingsViewModel$private suspend</ID>
+    <ID>MaxLineLength:SettingsViewModel.kt$SettingsViewModel$val actualBackend = daexService.initContext(modelPath, targetBackend, _isSpeculativeDecodingEnabled.value)</ID>
+    <ID>MaxLineLength:SettingsViewModel.kt$SettingsViewModel$val vibrator = targetContext.getSystemService(android.content.Context.VIBRATOR_SERVICE) as? android.os.Vibrator</ID>
+    <ID>MaxLineLength:Sidebar.kt$.</ID>
+    <ID>MaxLineLength:Sidebar.kt$BasicText("Delete Session", style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.error))</ID>
+    <ID>MaxLineLength:Sidebar.kt$BasicText("Pin (Coming Soon)", style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.onSurface.copy(alpha=0.5f)))</ID>
+    <ID>MaxLineLength:Sidebar.kt$color = if (isSelected) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.7f)</ID>
+    <ID>MaxLineLength:TtsViewModel.kt$TtsViewModel$private suspend</ID>
+    <ID>MaxLineLength:TtsViewModel.kt$TtsViewModel$val status = awaitKokoroDownload(existing.requestId) { percent -&gt; _ttsDownloadProgress.value = percent }</ID>
+    <ID>MaxLineLength:TtsViewModel.kt$TtsViewModel$val terminal = ModelDownloadState.kokoro.first { it?.requestId == requestId &amp;&amp; it.phase != DownloadPhase.DOWNLOADING }!!</ID>
+    <ID>MaximumLineLength:AudioRecorder.kt$AudioRecorder$ </ID>
+    <ID>MaximumLineLength:AudioSessionViewModel.kt$AudioSessionViewModel$ </ID>
+    <ID>MaximumLineLength:ChangelogModal.kt$ </ID>
+    <ID>MaximumLineLength:ChatViewModel.kt$ChatViewModel$ </ID>
+    <ID>MaximumLineLength:CrashLogWriter.kt$CrashLogWriter$ </ID>
+    <ID>MaximumLineLength:DaexCoreMemory.kt$DaexCoreMemoryImpl$ </ID>
+    <ID>MaximumLineLength:DaexEmbedder.kt$DaexEmbedder$ </ID>
+    <ID>MaximumLineLength:DaexFtsDatabaseHelper.kt$DaexFtsDatabaseHelper$ </ID>
+    <ID>MaximumLineLength:DaexMemory.kt$DaexMemory$ </ID>
+    <ID>MaximumLineLength:DaexMessageFtsHelper.kt$DaexMessageFtsHelper$ </ID>
+    <ID>MaximumLineLength:DaexRag.kt$DaexRag$ </ID>
+    <ID>MaximumLineLength:DaexRag.kt$DaexRagImpl$ </ID>
+    <ID>MaximumLineLength:DaexService.kt$DaexService$ </ID>
+    <ID>MaximumLineLength:DaexService.kt$DaexServiceImpl$ </ID>
+    <ID>MaximumLineLength:DeviceToolSets.kt$DeviceInfoTool$ </ID>
+    <ID>MaximumLineLength:DeviceToolSets.kt$LaunchAppTool$ </ID>
+    <ID>MaximumLineLength:DeviceToolSets.kt$SendEmailTool$ </ID>
+    <ID>MaximumLineLength:DeviceToolSets.kt$SkillTools$ </ID>
+    <ID>MaximumLineLength:DeviceToolSets.kt$ToolRegistry$ </ID>
+    <ID>MaximumLineLength:DocumentLibraryModal.kt$ </ID>
+    <ID>MaximumLineLength:ExecutionScreen.kt$ </ID>
+    <ID>MaximumLineLength:FtsQuerySanitizer.kt$FtsQuerySanitizer$ </ID>
+    <ID>MaximumLineLength:GalleryScreen.kt$ </ID>
+    <ID>MaximumLineLength:GalleryScreen.kt$private</ID>
+    <ID>MaximumLineLength:KokoroTtsService.kt$KokoroTtsService$ </ID>
+    <ID>MaximumLineLength:LandingScreen.kt$ </ID>
+    <ID>MaximumLineLength:MemoryEditorModal.kt$ </ID>
+    <ID>MaximumLineLength:MessageLine.kt$ </ID>
+    <ID>MaximumLineLength:ModelBank.kt$ModelBank$ </ID>
+    <ID>MaximumLineLength:ModelDownloadService.kt$ModelDownloadService$ </ID>
+    <ID>MaximumLineLength:ModelManager.kt$ModelManager$ </ID>
+    <ID>MaximumLineLength:ModelSelectorModal.kt$ </ID>
+    <ID>MaximumLineLength:RecallMemoryTool.kt$RecallMemoryTool$ </ID>
+    <ID>MaximumLineLength:SavedPromptLibraryModal.kt$ </ID>
+    <ID>MaximumLineLength:SettingsScreen.kt$ </ID>
+    <ID>MaximumLineLength:SettingsViewModel.kt$SettingsViewModel$ </ID>
+    <ID>MaximumLineLength:Sidebar.kt$ </ID>
+    <ID>MaximumLineLength:TtsViewModel.kt$TtsViewModel$ </ID>
+    <ID>MultiLineIfElse:AudioRecorder.kt$AudioRecorder$min</ID>
+    <ID>MultiLineIfElse:DaexMemory.kt$DaexMemory$emptyList()</ID>
+    <ID>MultiLineIfElse:DaexMemory.kt$DaexMemory$emptyMap()</ID>
+    <ID>MultiLineIfElse:DaexMemory.kt$DaexMemory$null</ID>
+    <ID>MultiLineIfElse:ExecutionScreen.kt$null</ID>
+    <ID>MultiLineIfElse:GalleryScreen.kt$null</ID>
+    <ID>MultiLineIfElse:LandingScreen.kt$0f</ID>
+    <ID>MultiLineIfElse:ModelManager.kt$ModelManager$0</ID>
+    <ID>MultiLineIfElse:ModelManager.kt$ModelManager$null</ID>
+    <ID>NestedBlockDepth:ChatViewModel.kt$ChatViewModel$private fun parseThinkTags(rawText: String): Pair&lt;String, String?&gt;</ID>
+    <ID>NestedBlockDepth:DaexRag.kt$DaexRagImpl$private fun chunkText(text: String, maxChunkSize: Int = 300, overlap: Int = 50): List&lt;String&gt;</ID>
+    <ID>NestedBlockDepth:DaexService.kt$DaexServiceImpl$private fun prepareDispatchLibrary(): String</ID>
+    <ID>NestedBlockDepth:DaexSkillManager.kt$DaexSkillManagerImpl$override fun getSkillCatalog(): String</ID>
+    <ID>NestedBlockDepth:DeviceToolSets.kt$LaunchAppTool$@Tool(description = "Launch an installed application on the device by its name") fun launchApp( @ToolParam(description = "The display name of the application to launch (e.g. 'Spotify', 'YouTube')") appName: String ): String</ID>
+    <ID>NestedBlockDepth:KokoroTtsService.kt$KokoroTtsService$private fun copyAssetFile(srcPath: String, destFile: File)</ID>
+    <ID>NestedBlockDepth:KokoroTtsService.kt$KokoroTtsService$private suspend fun drainPlayback()</ID>
+    <ID>NestedBlockDepth:ModelManager.kt$ModelManager$private suspend fun downloadWithResume( url: String, partFile: File, finalFile: File, fallbackSize: Long, isActive: () -&gt; Boolean, onChunk: (bytesWritten: Long, expectedTotal: Long) -&gt; Unit )</ID>
+    <ID>NestedBlockDepth:SettingsViewModel.kt$SettingsViewModel$fun triggerHapticFeedback(context: android.content.Context? = null, force: Boolean = false, type: HapticType = HapticType.CLICK)</ID>
+    <ID>NewLineAtEndOfFile:DaexRag.kt$com.daex.android.data.DaexRag.kt</ID>
+    <ID>NewLineAtEndOfFile:ExecutionScreen.kt$com.daex.android.ui.ExecutionScreen.kt</ID>
+    <ID>NewLineAtEndOfFile:KokoroTtsService.kt$com.daex.android.framework.KokoroTtsService.kt</ID>
+    <ID>NoBlankLineBeforeRbrace:ChatViewModel.kt$ChatViewModel$ </ID>
+    <ID>NoBlankLineBeforeRbrace:DaexFtsDatabaseHelper.kt$DaexFtsDatabaseHelper$ </ID>
+    <ID>NoBlankLineBeforeRbrace:DaexService.kt$DaexServiceImpl.Companion$ </ID>
+    <ID>NoBlankLineBeforeRbrace:KokoroTtsService.kt$KokoroTtsService$ </ID>
+    <ID>NoBlankLineBeforeRbrace:SettingsScreen.kt$ </ID>
+    <ID>NoConsecutiveBlankLines:DaexComponents.kt$ </ID>
+    <ID>NoConsecutiveBlankLines:ExecutionScreen.kt$ </ID>
+    <ID>NoConsecutiveBlankLines:ModelBank.kt$ </ID>
+    <ID>NoConsecutiveBlankLines:SettingsScreen.kt$ </ID>
+    <ID>NoEmptyFirstLineInMethodBlock:SuggestedPrompts.kt$ </ID>
+    <ID>NoMultipleSpaces:ExecutionScreen.kt$ </ID>
+    <ID>NoMultipleSpaces:SettingsScreen.kt$ </ID>
+    <ID>NoTrailingSpaces:DaexAnimations.kt$ </ID>
+    <ID>NoTrailingSpaces:DaexComponents.kt$ </ID>
+    <ID>NoTrailingSpaces:DaexMemory.kt$DaexMemory$ </ID>
+    <ID>NoTrailingSpaces:DaexMemory.kt$DaexMemory$// If the user's current question matched a previous question (even if skipped above), </ID>
+    <ID>NoTrailingSpaces:DaexRag.kt$DaexRagImpl$ </ID>
+    <ID>NoTrailingSpaces:DaexService.kt$DaexServiceImpl$ </ID>
+    <ID>NoTrailingSpaces:DaexSkillManager.kt$DaexSkillManagerImpl$ </ID>
+    <ID>NoTrailingSpaces:Entities.kt$MessageEntity$ </ID>
+    <ID>NoTrailingSpaces:ExecutionScreen.kt$ </ID>
+    <ID>NoTrailingSpaces:GalleryScreen.kt$ </ID>
+    <ID>NoTrailingSpaces:KokoroTtsService.kt$KokoroTtsService$ </ID>
+    <ID>NoTrailingSpaces:LandingScreen.kt$ </ID>
+    <ID>NoTrailingSpaces:MainActivity.kt$MainActivity$ </ID>
+    <ID>NoTrailingSpaces:MemoryEditorModal.kt$ </ID>
+    <ID>NoTrailingSpaces:MessageLine.kt$ </ID>
+    <ID>NoTrailingSpaces:ModelSelectorModal.kt$ </ID>
+    <ID>NoTrailingSpaces:SettingsScreen.kt$ </ID>
+    <ID>NoTrailingSpaces:Sidebar.kt$ </ID>
+    <ID>NoTrailingSpaces:SuggestedPrompts.kt$ </ID>
+    <ID>NoUnusedImports:ChangelogModal.kt$com.daex.android.ui.ChangelogModal.kt</ID>
+    <ID>NoUnusedImports:DaexAnimations.kt$com.daex.android.ui.components.DaexAnimations.kt</ID>
+    <ID>NoUnusedImports:DaexMemory.kt$com.daex.android.data.DaexMemory.kt</ID>
+    <ID>NoUnusedImports:DaexService.kt$com.daex.android.framework.DaexService.kt</ID>
+    <ID>NoUnusedImports:DaexTheme.kt$com.daex.android.ui.theme.DaexTheme.kt</ID>
+    <ID>NoUnusedImports:DeviceService.kt$com.daex.android.framework.DeviceService.kt</ID>
+    <ID>NoUnusedImports:ExecutionScreen.kt$com.daex.android.ui.ExecutionScreen.kt</ID>
+    <ID>NoUnusedImports:GalleryScreen.kt$com.daex.android.ui.GalleryScreen.kt</ID>
+    <ID>NoUnusedImports:LandingScreen.kt$com.daex.android.ui.LandingScreen.kt</ID>
+    <ID>NoUnusedImports:MemoryEditorModal.kt$com.daex.android.ui.MemoryEditorModal.kt</ID>
+    <ID>NoUnusedImports:ModelSelectorModal.kt$com.daex.android.ui.ModelSelectorModal.kt</ID>
+    <ID>NoUnusedImports:SettingsScreen.kt$com.daex.android.ui.SettingsScreen.kt</ID>
+    <ID>NoUnusedImports:SettingsViewModel.kt$com.daex.android.ui.viewmodels.SettingsViewModel.kt</ID>
+    <ID>NoUnusedImports:Sidebar.kt$com.daex.android.ui.Sidebar.kt</ID>
+    <ID>NoUnusedImports:SuggestedPrompts.kt$com.daex.android.ui.components.SuggestedPrompts.kt</ID>
+    <ID>NoWildcardImports:ChangelogModal.kt$import androidx.compose.animation.core.*</ID>
+    <ID>NoWildcardImports:ChangelogModal.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>NoWildcardImports:ChangelogModal.kt$import androidx.compose.runtime.*</ID>
+    <ID>NoWildcardImports:DaexAnimations.kt$import androidx.compose.animation.core.*</ID>
+    <ID>NoWildcardImports:DaexAnimations.kt$import androidx.compose.runtime.*</ID>
+    <ID>NoWildcardImports:DaexPreferences.kt$import androidx.datastore.preferences.core.*</ID>
+    <ID>NoWildcardImports:DocumentLibraryModal.kt$import androidx.compose.animation.core.*</ID>
+    <ID>NoWildcardImports:DocumentLibraryModal.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>NoWildcardImports:DocumentLibraryModal.kt$import androidx.compose.runtime.*</ID>
+    <ID>NoWildcardImports:ExecutionScreen.kt$import androidx.compose.animation.core.*</ID>
+    <ID>NoWildcardImports:ExecutionScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>NoWildcardImports:ExecutionScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>NoWildcardImports:ExecutionScreen.kt$import com.daex.android.ui.components.*</ID>
+    <ID>NoWildcardImports:GalleryScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>NoWildcardImports:GalleryScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>NoWildcardImports:KokoroTtsService.kt$import kotlinx.coroutines.*</ID>
+    <ID>NoWildcardImports:LandingScreen.kt$import androidx.compose.animation.core.*</ID>
+    <ID>NoWildcardImports:LandingScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>NoWildcardImports:LandingScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>NoWildcardImports:MemoryEditorModal.kt$import androidx.compose.animation.core.*</ID>
+    <ID>NoWildcardImports:MemoryEditorModal.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>NoWildcardImports:MemoryEditorModal.kt$import androidx.compose.runtime.*</ID>
+    <ID>NoWildcardImports:MessageLine.kt$import androidx.compose.animation.core.*</ID>
+    <ID>NoWildcardImports:MessageLine.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>NoWildcardImports:ModelSelectorModal.kt$import androidx.compose.animation.core.*</ID>
+    <ID>NoWildcardImports:ModelSelectorModal.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>NoWildcardImports:ModelSelectorModal.kt$import androidx.compose.runtime.*</ID>
+    <ID>NoWildcardImports:SavedPromptLibraryModal.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>NoWildcardImports:SettingsScreen.kt$import androidx.compose.animation.core.*</ID>
+    <ID>NoWildcardImports:SettingsScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>NoWildcardImports:SettingsScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>NoWildcardImports:Sidebar.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>NoWildcardImports:SuggestedPrompts.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>ParameterListWrapping:ChatViewModel.kt$ChatViewModel$(Int)</ID>
+    <ID>ParameterListWrapping:ChatViewModel.kt$ChatViewModel$(requestId: String, onProgress: (Int) -&gt; Unit)</ID>
+    <ID>ParameterListWrapping:DaexMemory.kt$DaexMemory$(query: String, maxResults: Int = 8)</ID>
+    <ID>ParameterListWrapping:DaexRag.kt$DaexRag$(Int, Int)</ID>
+    <ID>ParameterListWrapping:DaexRag.kt$DaexRag$(fileName: String, content: String, isSystem: Boolean = false, onProgress: (Int, Int) -&gt; Unit = { _, _ -&gt; })</ID>
+    <ID>ParameterListWrapping:DaexRag.kt$DaexRag$(query: String, maxResults: Int = 5, activeFileNames: List&lt;String&gt; = emptyList())</ID>
+    <ID>ParameterListWrapping:DaexService.kt$DaexService$(modelPath: String, backendType: BackendType, isSpeculativeDecodingEnabled: Boolean = true)</ID>
+    <ID>ParameterListWrapping:SettingsViewModel.kt$SettingsViewModel$(Int)</ID>
+    <ID>ParameterListWrapping:SettingsViewModel.kt$SettingsViewModel$(requestId: String, onProgress: (Int) -&gt; Unit)</ID>
+    <ID>ParameterWrapping:DeviceToolSets.kt$LaunchAppTool$@ToolParam(description = "The display name of the application to launch (e.g. 'Spotify', 'YouTube')") appName: String</ID>
+    <ID>ParameterWrapping:RecallMemoryTool.kt$RecallMemoryTool$@ToolParam(description = "What to search for, e.g. the topic or question to recall past context about") query: String</ID>
+    <ID>PropertyWrapping:MemoryEditorModal.kt$val screenHeightPx = with(androidx.compose.ui.platform.LocalDensity.current) { configuration.screenHeightDp.dp.toPx() }</ID>
+    <ID>PropertyWrapping:SettingsScreen.kt$val pickedColor = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness)))</ID>
+    <ID>PropertyWrapping:TtsViewModel.kt$TtsViewModel$val status = awaitKokoroDownload(existing.requestId) { percent -&gt; _ttsDownloadProgress.value = percent }</ID>
+    <ID>ReturnCount:DaexSkillManager.kt$DaexSkillManagerImpl$override fun loadSkillInstructions(skillName: String): String?</ID>
+    <ID>ReturnCount:DaexSkillManager.kt$DaexSkillManagerImpl$private fun parseFrontmatter(text: String): Pair&lt;String, String&gt;?</ID>
+    <ID>ReturnCount:DeviceToolSets.kt$LaunchAppTool$@Tool(description = "Launch an installed application on the device by its name") fun launchApp( @ToolParam(description = "The display name of the application to launch (e.g. 'Spotify', 'YouTube')") appName: String ): String</ID>
+    <ID>ReturnCount:GalleryScreen.kt$private fun isTargetHardwareCompatible(targetHardware: String, specs: com.daex.android.framework.DeviceSpecs?): Boolean</ID>
+    <ID>ReturnCount:LandingScreen.kt$private fun isTargetHardwareCompatible(targetHardware: String, specs: DeviceSpecs?): Boolean</ID>
+    <ID>ReturnCount:ModelDownloadService.kt$ModelDownloadService$private fun maybeUpdateEmbeddingNotification(percent: Int)</ID>
+    <ID>ReturnCount:ModelDownloadService.kt$ModelDownloadService$private fun maybeUpdateNotification(label: String, percent: Int, kokoro: Boolean)</ID>
+    <ID>ReturnCount:ModelManager.kt$ModelManager$private fun isFileValid(file: File, fallbackSize: Long): Boolean</ID>
+    <ID>ReturnCount:SettingsViewModel.kt$SettingsViewModel$fun setBackend(backend: BackendType, model: Model? = null)</ID>
+    <ID>ReturnCount:TtsViewModel.kt$TtsViewModel$fun speakMessage(message: Message, isLiveVoiceActive: Boolean)</ID>
+    <ID>SpacingAroundOperators:ExecutionScreen.kt$=</ID>
+    <ID>SpacingAroundOperators:Sidebar.kt$=</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:AudioRecorder.kt$AudioRecorder$@Volatile private var isRecording = false</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:AudioSessionViewModel.kt$AudioSessionViewModel$// Post-TTS cooldown consumed by the recorder's TTS gate: for 500ms after the // speaker actually goes silent, the VAD stays in COOLDOWN (stricter detection) // so the acoustic tail can't false-trigger a speech start. @Volatile private var ttsCooldownUntilMs = 0L</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:DaexFtsDatabaseHelper.kt$DaexFtsDatabaseHelper$@Volatile private var needsRebuild = false</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:KokoroTtsService.kt$KokoroTtsService$// Real durations measured from the assets at load time (they're multi-second // files, not the 250ms the old synth produced). @Volatile private var wakeChimeDurationMs = 2500L</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:KokoroTtsService.kt$KokoroTtsService$// While now &lt; this, the chime is audible on the speaker. The recorder's TTS // gate treats it like TTS playback so it can't false-trigger a speech start — // SoundPool audio is invisible to isSpeaking otherwise. @Volatile var chimeActiveUntilMs = 0L private set</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:KokoroTtsService.kt$KokoroTtsService$// load() returns a sound ID synchronously but decoding happens async on a // background thread; play() on a not-yet-decoded (or failed) sound is a silent // no-op. These track real readiness so we don't drop the very first playback. @Volatile private var wakeChimeReady = false</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:KokoroTtsService.kt$KokoroTtsService$@Volatile private var closeChimeDurationMs = 3400L</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:KokoroTtsService.kt$KokoroTtsService$@Volatile private var closeChimeId: Int = 0</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:KokoroTtsService.kt$KokoroTtsService$@Volatile private var closeChimeReady = false</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:KokoroTtsService.kt$KokoroTtsService$@Volatile private var stopped = false</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:KokoroTtsService.kt$KokoroTtsService$@Volatile private var wakeChimeId: Int = 0</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:ModelDownloadService.kt$ModelDownloadService$@Volatile private var embeddingJob: Job? = null</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:ModelDownloadService.kt$ModelDownloadService$@Volatile private var generativeJob: Job? = null</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:ModelDownloadService.kt$ModelDownloadService$@Volatile private var kokoroJob: Job? = null</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:ModelManager.kt$ModelManager$@Volatile private var activeEmbeddingDownloadId: String? = null</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:ModelManager.kt$ModelManager$@Volatile private var activeGenerativeDownloadId: String? = null</ID>
+    <ID>SpacingBetweenDeclarationsWithAnnotations:ModelManager.kt$ModelManager$@Volatile private var activeKokoroDownloadId: String? = null</ID>
+    <ID>SpacingBetweenDeclarationsWithComments:AudioSessionViewModel.kt$AudioSessionViewModel$// Debounce job for the SPEAKING → LISTENING state revert</ID>
+    <ID>SpacingBetweenDeclarationsWithComments:AudioSessionViewModel.kt$AudioSessionViewModel$// Post-TTS cooldown consumed by the recorder's TTS gate: for 500ms after the</ID>
+    <ID>SpacingBetweenDeclarationsWithComments:KokoroTtsService.kt$KokoroTtsService$// Real durations measured from the assets at load time (they're multi-second</ID>
+    <ID>SpacingBetweenDeclarationsWithComments:KokoroTtsService.kt$KokoroTtsService$// While now &lt; this, the chime is audible on the speaker. The recorder's TTS</ID>
+    <ID>SpacingBetweenDeclarationsWithComments:KokoroTtsService.kt$KokoroTtsService$// load() returns a sound ID synchronously but decoding happens async on a</ID>
+    <ID>StringTemplate:SettingsScreen.kt$${freeStorageGb}</ID>
+    <ID>StringTemplate:SettingsScreen.kt$${ramGb}</ID>
+    <ID>SwallowedException:AudioRecorder.kt$AudioRecorder$e: Exception</ID>
+    <ID>SwallowedException:ChatViewModel.kt$ChatViewModel$e: Exception</ID>
+    <ID>SwallowedException:CrashLogWriter.kt$CrashLogWriter$e: Exception</ID>
+    <ID>SwallowedException:DaexMessageFtsHelper.kt$DaexMessageFtsHelper$e: Exception</ID>
+    <ID>SwallowedException:DaexRag.kt$DaexRagImpl$e: Exception</ID>
+    <ID>SwallowedException:DaexService.kt$DaexServiceImpl$e: Exception</ID>
+    <ID>SwallowedException:DaexService.kt$DaexServiceImpl$e: Throwable</ID>
+    <ID>SwallowedException:DeviceService.kt$DeviceService$e: Exception</ID>
+    <ID>SwallowedException:KokoroTtsService.kt$KokoroTtsService$e: CancellationException</ID>
+    <ID>SwallowedException:KokoroTtsService.kt$KokoroTtsService$e: Exception</ID>
+    <ID>SwallowedException:MainActivity.kt$MainActivity$e: Exception</ID>
+    <ID>SwallowedException:SettingsScreen.kt$e: Exception</ID>
+    <ID>SwallowedException:SettingsViewModel.kt$SettingsViewModel$e: Exception</ID>
+    <ID>ThrowsCount:DaexEmbedder.kt$DaexEmbedder$suspend fun generateEmbedding(text: String, isQuery: Boolean = false): FloatArray</ID>
+    <ID>ThrowsCount:DaexService.kt$DaexServiceImpl$private suspend fun generateResponseAttempt( messages: List&lt;Message&gt;, systemContext: String, isReasoningEnabled: Boolean, temperature: Float, topK: Int, topP: Float, customSystemPrompt: String, isToolCallingEnabled: Boolean, disabledToolIds: Set&lt;String&gt;, onRequestPermission: (suspend (String, String) -&gt; Boolean)?, onStatusUpdate: ((String?) -&gt; Unit)?, maxTokens: Int, isLiveVoiceActive: Boolean, conversationId: String?, allowReuse: Boolean, onToken: (String) -&gt; Unit ): GenerationResult</ID>
+    <ID>ThrowsCount:ModelManager.kt$ModelManager$private suspend fun downloadWithResume( url: String, partFile: File, finalFile: File, fallbackSize: Long, isActive: () -&gt; Boolean, onChunk: (bytesWritten: Long, expectedTotal: Long) -&gt; Unit )</ID>
+    <ID>TooGenericExceptionCaught:AudioRecorder.kt$AudioRecorder$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:AudioSessionViewModel.kt$AudioSessionViewModel$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ChangelogModal.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ChatViewModel.kt$ChatViewModel$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:CrashLogWriter.kt$CrashLogWriter$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DaexCoreMemory.kt$DaexCoreMemoryImpl$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DaexEmbedder.kt$DaexEmbedder$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DaexFtsDatabaseHelper.kt$DaexFtsDatabaseHelper$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DaexFtsDatabaseHelper.kt$DaexFtsDatabaseHelper$rollbackEx: Exception</ID>
+    <ID>TooGenericExceptionCaught:DaexMemory.kt$DaexMemory$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DaexMessageFtsHelper.kt$DaexMessageFtsHelper$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DaexRag.kt$DaexRagImpl$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DaexService.kt$DaexServiceImpl$copyEx: Exception</ID>
+    <ID>TooGenericExceptionCaught:DaexService.kt$DaexServiceImpl$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DaexService.kt$DaexServiceImpl$e: Throwable</ID>
+    <ID>TooGenericExceptionCaught:DaexService.kt$DaexServiceImpl$specEx: Exception</ID>
+    <ID>TooGenericExceptionCaught:DaexService.kt$DaexServiceImpl$symEx: Exception</ID>
+    <ID>TooGenericExceptionCaught:DaexSkillManager.kt$DaexSkillManagerImpl$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DeviceService.kt$DeviceService$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DeviceToolSets.kt$LaunchAppTool$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DeviceToolSets.kt$RunIntentTool$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:DeviceToolSets.kt$SendEmailTool$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ExecutionScreen.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:KokoroTtsService.kt$KokoroTtsService$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:LogShareHelper.kt$LogShareHelper$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:MainActivity.kt$MainActivity$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:ModelDownloadService.kt$ModelDownloadService$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SettingsScreen.kt$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SettingsViewModel.kt$SettingsViewModel$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:SettingsViewModel.kt$SettingsViewModel$warmupEx: Exception</ID>
+    <ID>TooGenericExceptionCaught:SpeechManager.kt$SpeechManager$e: Exception</ID>
+    <ID>TooGenericExceptionCaught:TtsViewModel.kt$TtsViewModel$e: Exception</ID>
+    <ID>TooGenericExceptionThrown:DaexService.kt$DaexServiceImpl$throw Exception("Model not loaded.")</ID>
+    <ID>TooGenericExceptionThrown:ModelManager.kt$ModelManager$throw Exception("Device does not meet the required ${formatBytes(model.requiredRAM)} of RAM for this model.")</ID>
+    <ID>TooGenericExceptionThrown:ModelManager.kt$ModelManager$throw Exception("Empty response body from $url")</ID>
+    <ID>TooGenericExceptionThrown:ModelManager.kt$ModelManager$throw Exception("Failed to download from $url: ${response.code}")</ID>
+    <ID>TooManyFunctions:ChatViewModel.kt$ChatViewModel : ViewModel</ID>
+    <ID>TooManyFunctions:DaexComponents.kt$com.daex.android.ui.components.DaexComponents.kt</ID>
+    <ID>TooManyFunctions:DaexMemory.kt$DaexMemory</ID>
+    <ID>TooManyFunctions:DaexPreferences.kt$DaexPreferences</ID>
+    <ID>TooManyFunctions:KokoroTtsService.kt$KokoroTtsService</ID>
+    <ID>TooManyFunctions:LandingScreen.kt$com.daex.android.ui.LandingScreen.kt</ID>
+    <ID>TooManyFunctions:ModelDownloadService.kt$ModelDownloadService : Service</ID>
+    <ID>TooManyFunctions:ModelManager.kt$ModelManager</ID>
+    <ID>TooManyFunctions:SettingsViewModel.kt$SettingsViewModel : ViewModel</ID>
+    <ID>TooManyFunctions:TtsViewModel.kt$TtsViewModel : ViewModel</ID>
+    <ID>UnusedParameter:AudioSessionViewModel.kt$AudioSessionViewModel$onTextResult: (String) -&gt; Unit</ID>
+    <ID>UnusedParameter:ChatViewModel.kt$ChatViewModel$maxContextLimit: Int</ID>
+    <ID>UnusedParameter:DaexEmbedder.kt$DaexEmbedder$isQuery: Boolean = false</ID>
+    <ID>UnusedParameter:DeviceToolSets.kt$RunIntentTool$@ToolParam(description = "JSON parameters matching the target intent specification") parameters: String</ID>
+    <ID>UnusedParameter:ExecutionScreen.kt$modelManager: ModelManager</ID>
+    <ID>UnusedParameter:ExecutionScreen.kt$onBack: () -&gt; Unit</ID>
+    <ID>UnusedParameter:SettingsScreen.kt$modelManager: ModelManager</ID>
+    <ID>UnusedParameter:SettingsScreen.kt$onOpenGallery: () -&gt; Unit</ID>
+    <ID>UnusedPrivateProperty:ChatViewModel.kt$ChatViewModel$val headMessages = uncompactedMessages.take(2)</ID>
+    <ID>UnusedPrivateProperty:ChatViewModel.kt$ChatViewModel$val tailMessages = uncompactedMessages.takeLast(10)</ID>
+    <ID>UnusedPrivateProperty:LandingScreen.kt$val hasNpu = compatibleModels.any { it.supportedBackends.contains(BackendType.NPU) }</ID>
+    <ID>UnusedPrivateProperty:SettingsScreen.kt$val selectedModel = currentModel ?: ModelBank.generativeModels.first()</ID>
+    <ID>UseCheckOrError:DaexEmbedder.kt$DaexEmbedder$throw IllegalStateException("Embedder returned no embedding for input text.")</ID>
+    <ID>UseCheckOrError:DaexEmbedder.kt$DaexEmbedder$throw IllegalStateException("Embedding model is not available (not downloaded or failed to initialize).")</ID>
+    <ID>UseCheckOrError:ModelManager.kt$ModelManager$throw IllegalStateException("downloadEmbeddingModel is already active.")</ID>
+    <ID>UseCheckOrError:ModelManager.kt$ModelManager$throw IllegalStateException("downloadKokoro is already active.")</ID>
+    <ID>UseCheckOrError:ModelManager.kt$ModelManager$throw IllegalStateException("downloadModel is already active.")</ID>
+    <ID>WildcardImport:ChangelogModal.kt$import androidx.compose.animation.core.*</ID>
+    <ID>WildcardImport:ChangelogModal.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:ChangelogModal.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:DaexAnimations.kt$import androidx.compose.animation.core.*</ID>
+    <ID>WildcardImport:DaexAnimations.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:DaexPreferences.kt$import androidx.datastore.preferences.core.*</ID>
+    <ID>WildcardImport:DocumentLibraryModal.kt$import androidx.compose.animation.core.*</ID>
+    <ID>WildcardImport:DocumentLibraryModal.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:DocumentLibraryModal.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:ExecutionScreen.kt$import androidx.compose.animation.core.*</ID>
+    <ID>WildcardImport:ExecutionScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:ExecutionScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:ExecutionScreen.kt$import com.daex.android.ui.components.*</ID>
+    <ID>WildcardImport:GalleryScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:GalleryScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:KokoroTtsService.kt$import kotlinx.coroutines.*</ID>
+    <ID>WildcardImport:LandingScreen.kt$import androidx.compose.animation.core.*</ID>
+    <ID>WildcardImport:LandingScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:LandingScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:MemoryEditorModal.kt$import androidx.compose.animation.core.*</ID>
+    <ID>WildcardImport:MemoryEditorModal.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:MemoryEditorModal.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:MessageLine.kt$import androidx.compose.animation.core.*</ID>
+    <ID>WildcardImport:MessageLine.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:ModelSelectorModal.kt$import androidx.compose.animation.core.*</ID>
+    <ID>WildcardImport:ModelSelectorModal.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:ModelSelectorModal.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:SavedPromptLibraryModal.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:SettingsScreen.kt$import androidx.compose.animation.core.*</ID>
+    <ID>WildcardImport:SettingsScreen.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:SettingsScreen.kt$import androidx.compose.runtime.*</ID>
+    <ID>WildcardImport:Sidebar.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>WildcardImport:SuggestedPrompts.kt$import androidx.compose.foundation.layout.*</ID>
+    <ID>Wrapping:ChatViewModel.kt$ChatViewModel$(</ID>
+    <ID>Wrapping:DaexFtsDatabaseHelper.kt$DaexFtsDatabaseHelper$(</ID>
+    <ID>Wrapping:DaexFtsDatabaseHelper.kt$DaexFtsDatabaseHelper$it.step()</ID>
+    <ID>Wrapping:DaexMessageFtsHelper.kt$DaexMessageFtsHelper$(</ID>
+    <ID>Wrapping:DaexMessageFtsHelper.kt$DaexMessageFtsHelper$it.step()</ID>
+    <ID>Wrapping:ExecutionScreen.kt$(currentModel ?: selectedModel).let { settingsViewModel.loadModel(it) }</ID>
+    <ID>Wrapping:ExecutionScreen.kt$;</ID>
+    <ID>Wrapping:ExecutionScreen.kt$it.role == "model"</ID>
+    <ID>Wrapping:ExecutionScreen.kt$settingsViewModel.loadModel(it)</ID>
+    <ID>Wrapping:GalleryScreen.kt$/* No-op either way: the download proceeds regardless, this only affects whether its progress notification is visible. */</ID>
+    <ID>Wrapping:GalleryScreen.kt$;</ID>
+    <ID>Wrapping:LandingScreen.kt$/* No-op either way: the download proceeds regardless, this only affects whether its progress notification is visible. */</ID>
+  </CurrentIssues>
+</SmellBaseline>

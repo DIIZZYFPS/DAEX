@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "DaexAndroid"
 include(":app")
+include(":macrobenchmark")
