@@ -13,8 +13,10 @@ import org.junit.runner.RunWith
 /**
  * Real-device counterpart to [SuggestedPromptsTest], which runs the same composable under
  * Robolectric on the JVM. This exercises actual on-device rendering and touch dispatch rather
- * than Robolectric's simulation - real device/emulator only (`:app:connectedDebugAndroidTest`),
- * cannot run in this environment which has no adb/device access - reviewed for correctness only.
+ * than Robolectric's simulation - real device/emulator only (`:app:connectedDebugAndroidTest`).
+ * Verified passing on a real device (Galaxy S24 Ultra class hardware, API 37); required pinning
+ * a newer `androidx.test.espresso:espresso-core` (Compose's ui-test-junit4 transitively pulled in
+ * an older one that reflects into the since-removed `InputManager.getInstance()`).
  */
 @RunWith(AndroidJUnit4::class)
 class SuggestedPromptsInstrumentedTest {

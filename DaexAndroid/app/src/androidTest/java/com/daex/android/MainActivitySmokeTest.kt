@@ -11,8 +11,8 @@ import org.junit.runner.RunWith
  * (real ObjectBox, real ModelManager/DeviceService/DaexEmbedder, nothing mocked - unlike every
  * JVM test in this suite) and confirms it reaches a resumed state without crashing. This is the
  * only test in the whole suite that exercises the true on-device dependency graph end to end.
- * It requires a connected device or emulator (`:app:connectedDebugAndroidTest`) and cannot run in
- * this environment, which has no adb/device access - reviewed for correctness only.
+ * Requires a connected device or emulator (`:app:connectedDebugAndroidTest`) - verified passing
+ * on a real device (Galaxy S24 Ultra class hardware, API 37).
  */
 @RunWith(AndroidJUnit4::class)
 class MainActivitySmokeTest {

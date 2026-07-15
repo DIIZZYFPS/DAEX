@@ -169,6 +169,10 @@ dependencies {
     // ObjectBox Kotlin Extensions
     implementation("io.objectbox:objectbox-kotlin:4.0.0")
 
+    // Required by the :macrobenchmark module's default CompilationMode (installs a baseline
+    // profile before measuring) on API 34+; also speeds up real cold starts in production.
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+
     // PDF Parsing
     implementation("com.itextpdf:itext7-core:7.2.5")
 
@@ -201,14 +205,16 @@ dependencies {
     testImplementation("io.github.takahirom.roborazzi:roborazzi-junit-rule:1.58.0")
 
     // Instrumented tests (app/src/androidTest) - real device/emulator only, no JVM fallback.
-    // Written and reviewable for correctness in this environment, but not runnable here since
-    // there's no adb/device access; CI (or a local run with a connected device/emulator) should
-    // execute these via `:app:connectedDebugAndroidTest`.
+    // Verified running on a real device via `:app:connectedDebugAndroidTest`.
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    // Compose's ui-test-junit4 pulls in Espresso transitively for idle-sync; pinned explicitly
+    // since the older transitive version reflects into the since-removed
+    // InputManager.getInstance() and throws NoSuchMethodException on newer Android versions.
+    androidTestImplementation("androidx.test.espresso:espresso-core:3.7.0")
 
     detektPlugins("io.gitlab.arturbosch.detekt:detekt-formatting:1.23.8")
 }
