@@ -42,7 +42,7 @@
         </activity>
 
         <service
-            android:name=".services.ModelDownloadService"
+            android:name=".framework.ModelDownloadService"
             android:foregroundServiceType="dataSync"
             android:exported="false" />
 

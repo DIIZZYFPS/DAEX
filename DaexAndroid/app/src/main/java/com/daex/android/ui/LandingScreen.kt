@@ -29,19 +29,19 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.daex.android.services.DaexInferenceViewModel
-import com.daex.android.services.Model
-import com.daex.android.services.ModelBank
-import com.daex.android.services.ModelManager
-import com.daex.android.services.ModelStatus
-import com.daex.android.services.BackendType
-import com.daex.android.services.DeviceSpecs
+import com.daex.android.ui.viewmodels.SettingsViewModel
+import com.daex.android.ui.viewmodels.OnboardingViewModel
+import com.daex.android.domain.Model
+import com.daex.android.domain.ModelBank
+import com.daex.android.data.ModelManager
+import com.daex.android.ui.viewmodels.ModelStatus
+import com.daex.android.framework.BackendType
+import com.daex.android.framework.DeviceSpecs
 import com.daex.android.ui.components.AmbientAura
 import com.daex.android.ui.components.DaexButton
 import com.daex.android.ui.components.DaexLogo
 import com.daex.android.ui.components.drawVoiceWaveform
 import com.daex.android.ui.theme.DaexTheme
-import com.daex.android.services.DaexPreferences
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import kotlinx.coroutines.delay
@@ -51,16 +51,16 @@ import kotlinx.coroutines.launch
 @Composable
 fun LandingScreen(
     onContinue: () -> Unit,
-    daexPreferences: DaexPreferences,
-    viewModel: DaexInferenceViewModel,
+    onboardingViewModel: OnboardingViewModel,
+    settingsViewModel: SettingsViewModel,
     modelManager: ModelManager,
     isReplay: Boolean = false
 ) {
     val pagerState = rememberPagerState(pageCount = { 6 })
     val coroutineScope = rememberCoroutineScope()
-    val deviceSpecs = viewModel.deviceSpecs
-    val isAuraEnabled by viewModel.isAuraEnabled.collectAsState()
-    val modelStatus by viewModel.modelStatus.collectAsState()
+    val deviceSpecs = settingsViewModel.deviceSpecs
+    val isAuraEnabled by settingsViewModel.isAuraEnabled.collectAsState()
+    val modelStatus by settingsViewModel.modelStatus.collectAsState()
 
     // The workspace's ambient aura "wakes up" across the tour: absent on the welcome
     // slide, at full workspace strength by the final slide, so the transition into the
@@ -107,10 +107,10 @@ fun LandingScreen(
                     3 -> IcarusShowcaseSlide {
                         coroutineScope.launch { pagerState.animateScrollToPage(4) }
                     }
-                    4 -> EngineSelectorSlide(viewModel, modelManager, deviceSpecs) {
+                    4 -> EngineSelectorSlide(settingsViewModel, modelManager, deviceSpecs) {
                         coroutineScope.launch { pagerState.animateScrollToPage(5) }
                     }
-                    5 -> TutorialSlide(viewModel, daexPreferences, onContinue)
+                    5 -> TutorialSlide(settingsViewModel, onboardingViewModel, onContinue)
                 }
             }
 
@@ -503,7 +503,7 @@ private fun DiagnosticsSlide(
 // Slide 4: Engine Selection (Reusing the Collapsible Model Gallery Cards)
 @Composable
 private fun EngineSelectorSlide(
-    viewModel: DaexInferenceViewModel,
+    settingsViewModel: SettingsViewModel,
     modelManager: ModelManager,
     specs: DeviceSpecs?,
     onNext: () -> Unit
@@ -577,7 +577,7 @@ private fun EngineSelectorSlide(
                         item {
                             OnboardingFamilyCard(
                                 variants = variantsList,
-                                viewModel = viewModel,
+                                settingsViewModel = settingsViewModel,
                                 modelManager = modelManager,
                                 recommendedModel = recommendedModel,
                                 onSelectAndNext = onNext
@@ -619,7 +619,7 @@ private fun OnboardingProviderHeader(provider: String) {
 @Composable
 private fun OnboardingFamilyCard(
     variants: List<Model>,
-    viewModel: DaexInferenceViewModel,
+    settingsViewModel: SettingsViewModel,
     modelManager: ModelManager,
     recommendedModel: Model?,
     onSelectAndNext: () -> Unit
@@ -640,8 +640,8 @@ private fun OnboardingFamilyCard(
     val activeIndex = if (selectedVariantIndex in sizeVariants.indices) selectedVariantIndex else 0
     val activeModel = sizeVariants.getOrNull(activeIndex) ?: variants.first()
 
-    val modelStatus by viewModel.modelStatus.collectAsState()
-    val downloadProgress by viewModel.downloadProgress.collectAsState()
+    val modelStatus by settingsViewModel.modelStatus.collectAsState()
+    val downloadProgress by settingsViewModel.downloadProgress.collectAsState()
     
     var isDownloaded by remember(activeModel) { mutableStateOf(false) }
     var hasEnoughRAM by remember(activeModel) { mutableStateOf(true) }
@@ -866,7 +866,7 @@ private fun OnboardingFamilyCard(
                                 // and sets it as the current/last-used model either way - unlike
                                 // downloadModel() alone, which only downloaded the file and never
                                 // set it as current, so onboarding's choice was forgotten.
-                                viewModel.loadModel(activeModel)
+                                settingsViewModel.loadModel(activeModel)
                                 onSelectAndNext()
                             }
                             .padding(horizontal = 14.dp, vertical = 6.dp)
@@ -907,12 +907,12 @@ private fun OnboardingMarketTag(label: String) {
 // Slide 5: Initializing Core Memory & Tutorials Pager
 @Composable
 private fun TutorialSlide(
-    viewModel: DaexInferenceViewModel,
-    daexPreferences: DaexPreferences,
+    settingsViewModel: SettingsViewModel,
+    onboardingViewModel: OnboardingViewModel,
     onContinue: () -> Unit
 ) {
-    val modelStatus by viewModel.modelStatus.collectAsState()
-    val downloadProgress by viewModel.downloadProgress.collectAsState()
+    val modelStatus by settingsViewModel.modelStatus.collectAsState()
+    val downloadProgress by settingsViewModel.downloadProgress.collectAsState()
     val coroutineScope = rememberCoroutineScope()
 
     var tutorialPageIndex by remember { mutableStateOf(0) }
@@ -1036,7 +1036,7 @@ private fun TutorialSlide(
         DaexButton(
             onClick = {
                 coroutineScope.launch {
-                    daexPreferences.completeLandingPage()
+                    onboardingViewModel.completeOnboarding()
                     onContinue()
                 }
             },

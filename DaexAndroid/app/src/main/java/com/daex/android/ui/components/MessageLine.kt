@@ -21,8 +21,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.daex.android.services.Message
-import com.daex.android.services.PermissionRequest
+import com.daex.android.framework.Message
+import com.daex.android.domain.PermissionRequest
 import com.daex.android.ui.theme.DaexTheme
 import com.mikepenz.markdown.m3.Markdown
 

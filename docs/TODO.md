@@ -1,13 +1,13 @@
 # DAEX Agent Overhaul Roadmap
 
 ## IMPORTANT: Do First
-- [ ] **Audio & VAD Simplification**
-  - [ ] Remove experimental barge-in code, `smoothedTtsRms` envelope follower, and dynamic echo thresholds from `AudioRecorder.kt` and `DaexInferenceViewModel.kt`.
-  - [ ] Revert VAD to use static `speechThreshold` and `silenceThreshold` to fix model deafness and improve baseline listening sensitivity.
-- [ ] **Architecture Restructuring & ViewModel Modularization**
-  - [ ] Reorganize app file structure to establish clean MVVM/Clean Architecture boundaries (`data/`, `domain/`, `framework/`, `ui/` packages).
-  - [ ] Relocate [DaexInferenceViewModel.kt](file:///c:/Users/dgods/Documents/stuff/DAEX/DaexAndroid/app/src/main/java/com/daex/android/services/DaexInferenceViewModel.kt) out of the `services/` directory into `ui/viewmodels/`.
-  - [ ] Decouple `DaexInferenceViewModel` into focused view models: `ChatViewModel`, `AudioSessionViewModel`, `SettingsViewModel`, `TtsViewModel`, and `OnboardingViewModel`.
+- [x] **Audio & VAD Simplification**
+  - [x] Remove experimental barge-in code, `smoothedTtsRms` envelope follower, and dynamic echo thresholds from `AudioRecorder.kt` and `DaexInferenceViewModel.kt`.
+  - [x] Revert VAD to use static `speechThreshold` and `silenceThreshold` to fix model deafness and improve baseline listening sensitivity.
+- [x] **Architecture Restructuring & ViewModel Modularization**
+  - [x] Reorganize app file structure to establish clean MVVM/Clean Architecture boundaries (`data/`, `domain/`, `framework/`, `ui/` packages).
+  - [x] Relocate `DaexInferenceViewModel.kt` out of the `services/` directory into `ui/viewmodels/` (as its 5 successor ViewModels below - the god object itself was decomposed rather than moved intact).
+  - [x] Decouple `DaexInferenceViewModel` into focused view models: [ChatViewModel](file:///c:/Users/dgods/Documents/stuff/DAEX/DaexAndroid/app/src/main/java/com/daex/android/ui/viewmodels/ChatViewModel.kt), [AudioSessionViewModel](file:///c:/Users/dgods/Documents/stuff/DAEX/DaexAndroid/app/src/main/java/com/daex/android/ui/viewmodels/AudioSessionViewModel.kt), [SettingsViewModel](file:///c:/Users/dgods/Documents/stuff/DAEX/DaexAndroid/app/src/main/java/com/daex/android/ui/viewmodels/SettingsViewModel.kt), [TtsViewModel](file:///c:/Users/dgods/Documents/stuff/DAEX/DaexAndroid/app/src/main/java/com/daex/android/ui/viewmodels/TtsViewModel.kt), and [OnboardingViewModel](file:///c:/Users/dgods/Documents/stuff/DAEX/DaexAndroid/app/src/main/java/com/daex/android/ui/viewmodels/OnboardingViewModel.kt).
 
 ## Phase 1: Agent Overhaul (Skills & Dynamic Compaction)
 

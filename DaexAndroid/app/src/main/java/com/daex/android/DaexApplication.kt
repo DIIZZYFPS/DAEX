@@ -1,8 +1,8 @@
 package com.daex.android
 
 import android.app.Application
-import com.daex.android.database.MyObjectBox
-import com.daex.android.services.CrashLogWriter
+import com.daex.android.data.CrashLogWriter
+import com.daex.android.data.MyObjectBox
 import io.objectbox.BoxStore
 
 class DaexApplication : Application() {

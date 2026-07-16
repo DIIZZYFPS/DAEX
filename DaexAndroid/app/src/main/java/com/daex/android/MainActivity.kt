@@ -12,12 +12,16 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.remember
-import com.daex.android.services.DaexInferenceViewModel
-import com.daex.android.services.DaexMemory
-import com.daex.android.services.DeviceService
-import com.daex.android.services.ModelManager
-import com.daex.android.services.DaexEmbedder
-import com.daex.android.services.DaexRagImpl
+import com.daex.android.ui.viewmodels.AudioSessionViewModel
+import com.daex.android.ui.viewmodels.ChatViewModel
+import com.daex.android.ui.viewmodels.OnboardingViewModel
+import com.daex.android.ui.viewmodels.SettingsViewModel
+import com.daex.android.ui.viewmodels.TtsViewModel
+import com.daex.android.data.DaexMemory
+import com.daex.android.framework.DeviceService
+import com.daex.android.data.ModelManager
+import com.daex.android.framework.DaexEmbedder
+import com.daex.android.data.DaexRagImpl
 import com.daex.android.ui.theme.DaexAppTheme
 import com.daex.android.ui.ExecutionScreen
 import com.daex.android.ui.GalleryScreen
@@ -38,8 +42,9 @@ import com.daex.android.ui.LandingScreen
 import com.daex.android.ui.CrashReportModal
 import com.daex.android.ui.ChangelogModal
 import com.daex.android.ui.compareSemVer
-import com.daex.android.services.CrashLogWriter
-import com.daex.android.services.DaexPreferences
+import com.daex.android.data.CrashLogWriter
+import com.daex.android.data.DaexPreferences
+import kotlinx.coroutines.flow.filterNotNull
 import java.io.File
 
 enum class Screen {
@@ -59,34 +64,66 @@ class MainActivity : ComponentActivity() {
         val modelManager = ModelManager(this)
         val daexEmbedder = DaexEmbedder(this, modelManager)
         val daexMemory = DaexMemory(boxStore, daexEmbedder, this.applicationContext)
-        val daexService = com.daex.android.services.DaexServiceImpl(this, daexMemory)
-        val daexCoreMemory = com.daex.android.services.DaexCoreMemoryImpl(this)
+        val daexService = com.daex.android.framework.DaexServiceImpl(this, daexMemory)
+        val daexCoreMemory = com.daex.android.framework.DaexCoreMemoryImpl(this)
         val daexRag = DaexRagImpl(this.applicationContext, boxStore, daexEmbedder)
-        val daexSkillManager = com.daex.android.services.DaexSkillManagerImpl(this)
+        val daexSkillManager = com.daex.android.data.DaexSkillManagerImpl(this)
 
         setContent {
             val daexPreferences = remember { DaexPreferences(this@MainActivity) }
-            val viewModel = remember { 
-                DaexInferenceViewModel(
+            // Construction order matters: each ViewModel below may take a hard reference to
+            // ones already constructed (Settings/Tts are the independent roots; Chat depends on
+            // both; AudioSession depends on Chat+Tts). Backward notifications (e.g. Settings
+            // telling Chat a model just finished loading) go through callback properties each
+            // later VM registers on the earlier one - see each class's own doc comment.
+            val settingsViewModel = remember {
+                SettingsViewModel(
                     daexService = daexService,
                     modelManager = modelManager,
                     deviceService = deviceService,
+                    preferences = daexPreferences,
+                    context = applicationContext
+                )
+            }
+            val ttsViewModel = remember {
+                TtsViewModel(
+                    modelManager = modelManager,
+                    preferences = daexPreferences,
+                    context = applicationContext
+                )
+            }
+            val chatViewModel = remember {
+                ChatViewModel(
+                    daexService = daexService,
+                    modelManager = modelManager,
                     daexMemory = daexMemory,
                     daexCoreMemory = daexCoreMemory,
                     preferences = daexPreferences,
                     daexRag = daexRag,
                     daexSkillManager = daexSkillManager,
-                    context = applicationContext
-                ) 
+                    context = applicationContext,
+                    settingsViewModel = settingsViewModel,
+                    ttsViewModel = ttsViewModel
+                )
+            }
+            val audioSessionViewModel = remember {
+                AudioSessionViewModel(
+                    context = applicationContext,
+                    chatViewModel = chatViewModel,
+                    ttsViewModel = ttsViewModel
+                )
+            }
+            val onboardingViewModel = remember {
+                OnboardingViewModel(preferences = daexPreferences)
             }
             var currentScreen by remember { mutableStateOf<Screen?>(null) }
             var pendingCrashFile by remember { mutableStateOf<File?>(null) }
             var autoChangelogVisible by remember { mutableStateOf(false) }
             var changelogSinceVersion by remember { mutableStateOf<String?>(null) }
-            var isOnboardingReplay by remember { mutableStateOf(false) }
+            val isOnboardingReplay by onboardingViewModel.isReplayMode.collectAsState()
 
             LaunchedEffect(Unit) {
-                val completed = daexPreferences.hasCompletedLandingFlow.first()
+                val completed = onboardingViewModel.hasCompletedOnboarding.filterNotNull().first()
                 currentScreen = if (completed) Screen.EXECUTION else Screen.LANDING
                 pendingCrashFile = CrashLogWriter.findPendingCrashLog(applicationContext)
 
@@ -107,8 +144,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
             
-            val primaryColor by viewModel.primaryColor.collectAsState()
-            val isDarkMode by viewModel.isDarkMode.collectAsState()
+            val primaryColor by settingsViewModel.primaryColor.collectAsState()
+            val isDarkMode by settingsViewModel.isDarkMode.collectAsState()
 
             val screen = currentScreen
             if (screen == null) {
@@ -133,24 +170,29 @@ class MainActivity : ComponentActivity() {
                             LandingScreen(
                                 onContinue = {
                                     if (isOnboardingReplay) {
-                                        isOnboardingReplay = false
+                                        onboardingViewModel.endReplay()
                                         currentScreen = Screen.SETTINGS
                                     } else {
                                         currentScreen = Screen.EXECUTION
                                     }
                                 },
-                                daexPreferences = daexPreferences,
-                                viewModel = viewModel,
+                                onboardingViewModel = onboardingViewModel,
+                                settingsViewModel = settingsViewModel,
                                 modelManager = modelManager,
                                 isReplay = isOnboardingReplay
                             )
                         }
                         Screen.EXECUTION -> {
                             ExecutionScreen(
-                                viewModel = viewModel,
+                                chatViewModel = chatViewModel,
+                                audioSessionViewModel = audioSessionViewModel,
+                                ttsViewModel = ttsViewModel,
+                                settingsViewModel = settingsViewModel,
                                 modelManager = modelManager,
                                 onBack = {
-                                    viewModel.disconnect()
+                                    settingsViewModel.unloadModel()
+                                    chatViewModel.clearMessages()
+                                    chatViewModel.clearError()
                                     currentScreen = Screen.LANDING
                                 },
                                 onOpenGallery = { currentScreen = Screen.GALLERY },
@@ -162,7 +204,7 @@ class MainActivity : ComponentActivity() {
                                 currentScreen = Screen.EXECUTION
                             }
                             GalleryScreen(
-                                viewModel = viewModel,
+                                settingsViewModel = settingsViewModel,
                                 modelManager = modelManager,
                                 onBack = { currentScreen = Screen.EXECUTION }
                             )
@@ -172,12 +214,14 @@ class MainActivity : ComponentActivity() {
                                 currentScreen = Screen.EXECUTION
                             }
                             SettingsScreen(
-                                viewModel = viewModel,
+                                settingsViewModel = settingsViewModel,
+                                ttsViewModel = ttsViewModel,
+                                chatViewModel = chatViewModel,
                                 modelManager = modelManager,
                                 onBack = { currentScreen = Screen.EXECUTION },
                                 onOpenGallery = { currentScreen = Screen.GALLERY },
                                 onReplayOnboarding = {
-                                    isOnboardingReplay = true
+                                    onboardingViewModel.startReplay()
                                     currentScreen = Screen.LANDING
                                 }
                             )

@@ -216,6 +216,11 @@ DaexAndroid/keystore/
 reflect_out.txt
 logcat_output.txt
 
+# ObjectBox desktop-native test artifacts, extracted next to the module by the
+# objectbox-linux/objectbox-windows testImplementation deps when running JVM unit tests locally.
+DaexAndroid/app/*.dll
+DaexAndroid/app/*.dylib
+
 # Kokoro TTS model weights
 DaexAndroid/app/src/main/assets/kokoro-en-v0_19/
 

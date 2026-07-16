@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- AGP auto-generates permissions for this `com.android.test` module by mirroring the
+         target app's declared permissions, but without the target's own maxSdkVersion caps. On
+         a device above API 32 the OS refuses to grant these legacy storage permissions at all
+         (the target app itself doesn't hold them there either - see app/src/benchmark's own
+         manifest override), and AndroidX Test's automatic pre-test permission grant fails the
+         whole run instead of no-op'ing on the refusal. Removing them here, where they're actually
+         declared, is what's needed - a same-named override in :app's benchmark build type alone
+         doesn't reach this module's independently generated manifest. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+</manifest>

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- AndroidX Test's automatic pre-test permission grant blindly requests every permission
+         declared in the manifest without checking maxSdkVersion applicability, and fails the
+         whole test run (rather than no-op'ing) when the OS refuses a maxSdkVersion-capped legacy
+         storage permission on a device above that cap - a known AndroidX Test/Macrobenchmark
+         rough edge, not an app defect. This build type is benchmark-only and never shipped, so
+         it's safe to drop these two already-inert (capped at API 32) permissions here instead of
+         touching the real app manifest. -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" tools:node="remove" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" tools:node="remove" />
+</manifest>

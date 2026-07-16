@@ -23,12 +23,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import com.daex.android.services.DaexInferenceViewModel
-import com.daex.android.services.Model
-import com.daex.android.services.ModelBank
-import com.daex.android.services.ModelManager
-import com.daex.android.services.ModelStatus
-import com.daex.android.services.BackendType
+import com.daex.android.ui.viewmodels.SettingsViewModel
+import com.daex.android.domain.Model
+import com.daex.android.domain.ModelBank
+import com.daex.android.data.ModelManager
+import com.daex.android.ui.viewmodels.ModelStatus
+import com.daex.android.framework.BackendType
 import com.daex.android.ui.components.DaexTextField
 import com.daex.android.ui.components.EmptyGalleryIcon
 import com.daex.android.ui.components.EmptyState
@@ -40,7 +40,7 @@ enum class SortOrder {
 
 @Composable
 fun GalleryScreen(
-    viewModel: DaexInferenceViewModel,
+    settingsViewModel: SettingsViewModel,
     modelManager: ModelManager,
     onBack: () -> Unit
 ) {
@@ -48,8 +48,8 @@ fun GalleryScreen(
     var selectedBackendFilter by remember { mutableStateOf<BackendType?>(null) }
     var sortBy by remember { mutableStateOf(SortOrder.NAME) }
 
-    val currentModel by viewModel.currentModel.collectAsState()
-    val deviceSpecs = viewModel.deviceSpecs
+    val currentModel by settingsViewModel.currentModel.collectAsState()
+    val deviceSpecs = settingsViewModel.deviceSpecs
 
     // Filter and Sort Models
     val filteredGenerativeModels = remember(searchQuery, selectedBackendFilter, sortBy, deviceSpecs) {
@@ -227,7 +227,7 @@ fun GalleryScreen(
                         item {
                             FamilyModelCard(
                                 variants = variantsList,
-                                viewModel = viewModel,
+                                settingsViewModel = settingsViewModel,
                                 modelManager = modelManager,
                                 currentModel = currentModel
                             )
@@ -268,7 +268,7 @@ private fun ProviderHeader(provider: String) {
 @Composable
 private fun FamilyModelCard(
     variants: List<Model>,
-    viewModel: DaexInferenceViewModel,
+    settingsViewModel: SettingsViewModel,
     modelManager: ModelManager,
     currentModel: Model?
 ) {
@@ -292,9 +292,9 @@ private fun FamilyModelCard(
     val activeIndex = if (selectedVariantIndex in sizeVariants.indices) selectedVariantIndex else 0
     val activeModel = sizeVariants.getOrNull(activeIndex) ?: variants.first()
 
-    val modelStatus by viewModel.modelStatus.collectAsState()
-    val downloadProgress by viewModel.downloadProgress.collectAsState()
-    val downloadingModelId by viewModel.downloadingModelId.collectAsState()
+    val modelStatus by settingsViewModel.modelStatus.collectAsState()
+    val downloadProgress by settingsViewModel.downloadProgress.collectAsState()
+    val downloadingModelId by settingsViewModel.downloadingModelId.collectAsState()
 
     val isCurrent = currentModel?.id == activeModel.id
     val isThisDownloading = isCurrent && modelStatus == ModelStatus.DOWNLOADING
@@ -531,7 +531,7 @@ private fun FamilyModelCard(
                                     ) {
                                         notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
                                     }
-                                    viewModel.loadModel(activeModel)
+                                    settingsViewModel.loadModel(activeModel)
                                 }
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
@@ -549,7 +549,7 @@ private fun FamilyModelCard(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
                                 .border(1.dp, DaexTheme.colors.primary.copy(alpha = if (isOtherDownloadInFlight) 0.1f else 0.3f), RoundedCornerShape(10.dp))
-                                .clickable(enabled = !isOtherDownloadInFlight) { viewModel.loadModel(activeModel) }
+                                .clickable(enabled = !isOtherDownloadInFlight) { settingsViewModel.loadModel(activeModel) }
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             BasicText(
@@ -710,7 +710,7 @@ private fun MarketTag(label: String) {
     }
 }
 
-private fun isTargetHardwareCompatible(targetHardware: String, specs: com.daex.android.services.DeviceSpecs?): Boolean {
+private fun isTargetHardwareCompatible(targetHardware: String, specs: com.daex.android.framework.DeviceSpecs?): Boolean {
     if (specs == null) return false
     val target = targetHardware.lowercase().trim()
 
