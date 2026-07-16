@@ -1,5 +1,52 @@
 # Changelog
 
+## 1.0.0-beta
+
+**DAEX's first beta.** This release focuses on making conversations more useful to come back to, giving you more control over what the assistant can do, and a round of polish and stability fixes across the app.
+
+### Features
+
+- **Search across all your conversations** — find anything you've discussed before, not just in the current chat
+- **Saved prompts library** — pin any response to build a personal collection you can revisit or reuse later
+- **Per-tool permissions** — choose exactly which on-device abilities the assistant can use (checking battery, storage, launching apps, sending email, and more); riskier ones are off by default
+- **Refreshed look** — updated color system, onboarding flow, and empty states
+
+### Improvements
+
+- **More transparent memory** — clearer visibility into what DAEX remembers about you between conversations
+- **Reliable first-launch grounding** — the assistant now reliably answers questions about its own capabilities from the very first conversation
+- **Smoother voice mode listening** — fixed a microphone sensitivity issue that could occur during audio playback
+
+### Bug Fixes
+
+- Fixed choppy text rendering during long responses
+- Fixed several crashes related to background processing and local data storage
+- Fixed a text input bug where multi-line messages could overflow the input bar
+- Redacted sensitive data from debug logs for better privacy
+
+### Under the Hood
+
+- Major internal restructuring for long-term maintainability — no visible change today, but paves the way for faster, safer updates going forward
+- Added a full automated test suite covering core logic, on-device storage, UI, and startup performance, verified on real hardware
+
+---
+
+## [0.4.0](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.3.5...DaexAndroid-v0.4.0) (2026-07-11)
+
+### Features
+
+- **DAEX Live** — real-time, hands-free voice conversations. Just start talking; the assistant listens and responds naturally without you tapping a button between turns. You can even interrupt it mid-response by speaking, and it'll stop and listen instead of talking over you.
+
+---
+
+## [0.3.5](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.3.4...DaexAndroid-v0.3.5) (2026-06-25)
+
+### Bug Fixes
+
+- Upgraded the search index from FTS4 to FTS5 for more accurate cross-conversation search results
+
+---
+
 ## [0.3.4](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.3.3...DaexAndroid-v0.3.4) (2026-06-17)
 
 ### Engine Migration
