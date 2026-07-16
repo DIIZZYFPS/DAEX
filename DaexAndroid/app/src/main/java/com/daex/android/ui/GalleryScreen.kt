@@ -1,5 +1,7 @@
 package com.daex.android.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.background
@@ -16,16 +18,20 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.daex.android.services.DaexInferenceViewModel
-import com.daex.android.services.Model
-import com.daex.android.services.ModelBank
-import com.daex.android.services.ModelManager
-import com.daex.android.services.ModelStatus
-import com.daex.android.services.BackendType
+import androidx.core.content.ContextCompat
+import com.daex.android.ui.viewmodels.SettingsViewModel
+import com.daex.android.domain.Model
+import com.daex.android.domain.ModelBank
+import com.daex.android.data.ModelManager
+import com.daex.android.ui.viewmodels.ModelStatus
+import com.daex.android.framework.BackendType
 import com.daex.android.ui.components.DaexTextField
+import com.daex.android.ui.components.EmptyGalleryIcon
+import com.daex.android.ui.components.EmptyState
 import com.daex.android.ui.theme.DaexTheme
 
 enum class SortOrder {
@@ -34,7 +40,7 @@ enum class SortOrder {
 
 @Composable
 fun GalleryScreen(
-    viewModel: DaexInferenceViewModel,
+    settingsViewModel: SettingsViewModel,
     modelManager: ModelManager,
     onBack: () -> Unit
 ) {
@@ -42,8 +48,8 @@ fun GalleryScreen(
     var selectedBackendFilter by remember { mutableStateOf<BackendType?>(null) }
     var sortBy by remember { mutableStateOf(SortOrder.NAME) }
 
-    val currentModel by viewModel.currentModel.collectAsState()
-    val deviceSpecs = viewModel.deviceSpecs
+    val currentModel by settingsViewModel.currentModel.collectAsState()
+    val deviceSpecs = settingsViewModel.deviceSpecs
 
     // Filter and Sort Models
     val filteredGenerativeModels = remember(searchQuery, selectedBackendFilter, sortBy, deviceSpecs) {
@@ -193,17 +199,21 @@ fun GalleryScreen(
         ) {
             if (groupedModels.isEmpty()) {
                 item {
+                    val hasActiveFilter = searchQuery.isNotEmpty() || selectedBackendFilter != null
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(vertical = 64.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        BasicText(
-                            text = "No compatible engines found",
-                            style = DaexTheme.typography.body2.copy(
-                                color = DaexTheme.colors.onBackground.copy(alpha = 0.4f)
-                            )
+                        EmptyState(
+                            icon = { color -> EmptyGalleryIcon(color = color, modifier = Modifier.size(40.dp)) },
+                            title = "No compatible engines found",
+                            subtitle = "Try a different search or filter",
+                            actionLabel = if (hasActiveFilter) "Clear filters" else null,
+                            onAction = if (hasActiveFilter) {
+                                { searchQuery = ""; selectedBackendFilter = null }
+                            } else null
                         )
                     }
                 }
@@ -217,7 +227,7 @@ fun GalleryScreen(
                         item {
                             FamilyModelCard(
                                 variants = variantsList,
-                                viewModel = viewModel,
+                                settingsViewModel = settingsViewModel,
                                 modelManager = modelManager,
                                 currentModel = currentModel
                             )
@@ -258,10 +268,15 @@ private fun ProviderHeader(provider: String) {
 @Composable
 private fun FamilyModelCard(
     variants: List<Model>,
-    viewModel: DaexInferenceViewModel,
+    settingsViewModel: SettingsViewModel,
     modelManager: ModelManager,
     currentModel: Model?
 ) {
+    val context = LocalContext.current
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { /* No-op either way: the download proceeds regardless, this only affects whether its progress notification is visible. */ }
+
     // Unique Size names in this family (e.g. "E2B", "E4B")
     val sizes = remember(variants) { variants.map { it.sizeName }.distinct() }
     var selectedSize by remember(sizes) { mutableStateOf(sizes.firstOrNull() ?: "") }
@@ -277,15 +292,23 @@ private fun FamilyModelCard(
     val activeIndex = if (selectedVariantIndex in sizeVariants.indices) selectedVariantIndex else 0
     val activeModel = sizeVariants.getOrNull(activeIndex) ?: variants.first()
 
-    val modelStatus by viewModel.modelStatus.collectAsState()
-    val downloadProgress by viewModel.downloadProgress.collectAsState()
-    
+    val modelStatus by settingsViewModel.modelStatus.collectAsState()
+    val downloadProgress by settingsViewModel.downloadProgress.collectAsState()
+    val downloadingModelId by settingsViewModel.downloadingModelId.collectAsState()
+
     val isCurrent = currentModel?.id == activeModel.id
     val isThisDownloading = isCurrent && modelStatus == ModelStatus.DOWNLOADING
+    // Blocks starting a second download/deploy while a different model's download is
+    // already in flight - loadModel() has no such guard itself, it would just overwrite
+    // the shared currentModel/engine state mid-download.
+    val isOtherDownloadInFlight = downloadingModelId != null && downloadingModelId != activeModel.id
 
     var isDownloaded by remember(activeModel) { mutableStateOf(false) }
-    var isHardwareCapable by remember(activeModel) { mutableStateOf(true) }
+    var hasEnoughRAM by remember(activeModel) { mutableStateOf(true) }
+    var hasEnoughStorage by remember(activeModel) { mutableStateOf(true) }
+    var storageShortfall by remember(activeModel) { mutableStateOf(0L) }
     var isAnyVariantDownloaded by remember(variants) { mutableStateOf(false) }
+    val canDownload = hasEnoughRAM && hasEnoughStorage
 
     // Collapsible State (Default expanded if this family is currently selected/active)
     var isExpanded by remember(variants, currentModel) {
@@ -294,7 +317,10 @@ private fun FamilyModelCard(
 
     LaunchedEffect(activeModel) {
         isDownloaded = modelManager.isModelDownloaded(activeModel)
-        isHardwareCapable = modelManager.checkSpecSupport(activeModel).supported
+        val spec = modelManager.checkSpecSupport(activeModel)
+        hasEnoughRAM = spec.hasEnoughRAM
+        hasEnoughStorage = spec.hasEnoughStorage
+        storageShortfall = (activeModel.size - spec.freeSpace).coerceAtLeast(0L)
     }
 
     LaunchedEffect(variants, modelStatus) {
@@ -429,13 +455,17 @@ private fun FamilyModelCard(
                         modifier = Modifier
                             .size(6.dp)
                             .clip(CircleShape)
-                            .background(if (isHardwareCapable) DaexTheme.colors.success else Color.Red)
+                            .background(if (canDownload) DaexTheme.colors.success else Color.Red)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     BasicText(
-                        text = if (isHardwareCapable) "COMPATIBLE WITH THIS DEVICE" else "INCOMPATIBLE WITH HARDWARE",
+                        text = when {
+                            !hasEnoughRAM -> "INCOMPATIBLE WITH HARDWARE"
+                            !hasEnoughStorage -> "NOT ENOUGH FREE STORAGE — FREE UP ${modelManager.formatBytes(storageShortfall).uppercase()}"
+                            else -> "COMPATIBLE WITH THIS DEVICE"
+                        },
                         style = DaexTheme.typography.mono.copy(
-                            color = if (isHardwareCapable) DaexTheme.colors.success.copy(alpha = 0.6f) else Color.Red.copy(alpha = 0.6f),
+                            color = if (canDownload) DaexTheme.colors.success.copy(alpha = 0.6f) else Color.Red.copy(alpha = 0.6f),
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -494,14 +524,21 @@ private fun FamilyModelCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .background(if (isHardwareCapable) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.05f))
-                                .clickable(enabled = isHardwareCapable) { viewModel.loadModel(activeModel) }
+                                .background(if (canDownload && !isOtherDownloadInFlight) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha = 0.05f))
+                                .clickable(enabled = canDownload && !isOtherDownloadInFlight) {
+                                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+                                        ContextCompat.checkSelfPermission(context, android.Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+                                    ) {
+                                        notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                                    }
+                                    settingsViewModel.loadModel(activeModel)
+                                }
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             BasicText(
                                 text = "DOWNLOAD",
                                 style = DaexTheme.typography.mono.copy(
-                                    color = if (isHardwareCapable) DaexTheme.colors.onPrimary else DaexTheme.colors.onSurface.copy(alpha = 0.2f),
+                                    color = if (canDownload) DaexTheme.colors.onPrimary else DaexTheme.colors.onSurface.copy(alpha = 0.2f),
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp
                                 )
@@ -511,14 +548,14 @@ private fun FamilyModelCard(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(10.dp))
-                                .border(1.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(10.dp))
-                                .clickable { viewModel.loadModel(activeModel) }
+                                .border(1.dp, DaexTheme.colors.primary.copy(alpha = if (isOtherDownloadInFlight) 0.1f else 0.3f), RoundedCornerShape(10.dp))
+                                .clickable(enabled = !isOtherDownloadInFlight) { settingsViewModel.loadModel(activeModel) }
                                 .padding(horizontal = 16.dp, vertical = 8.dp)
                         ) {
                             BasicText(
                                 text = if (isCurrent) "RE-INITIALIZE" else "DEPLOY",
                                 style = DaexTheme.typography.mono.copy(
-                                    color = DaexTheme.colors.primary,
+                                    color = if (isOtherDownloadInFlight) DaexTheme.colors.primary.copy(alpha = 0.3f) else DaexTheme.colors.primary,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 11.sp
                                 )
@@ -673,7 +710,7 @@ private fun MarketTag(label: String) {
     }
 }
 
-private fun isTargetHardwareCompatible(targetHardware: String, specs: com.daex.android.services.DeviceSpecs?): Boolean {
+private fun isTargetHardwareCompatible(targetHardware: String, specs: com.daex.android.framework.DeviceSpecs?): Boolean {
     if (specs == null) return false
     val target = targetHardware.lowercase().trim()
 

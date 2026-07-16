@@ -17,7 +17,9 @@ import androidx.compose.material.DropdownMenuItem
 import androidx.compose.material.Text
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,11 +29,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.daex.android.services.DaexInferenceViewModel
+import com.daex.android.ui.viewmodels.ChatViewModel
+import com.daex.android.ui.components.EmptyChatIcon
+import com.daex.android.ui.components.EmptyState
 import com.daex.android.ui.theme.DaexTheme
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -42,10 +48,18 @@ fun Sidebar(
     onNewConversation: () -> Unit,
     onOpenSettings: () -> Unit,
     onOpenGallery: () -> Unit,
-    viewModel: DaexInferenceViewModel
+    onOpenSavedPrompts: () -> Unit = {},
+    chatViewModel: ChatViewModel
 ) {
-    val conversations by viewModel.conversations.collectAsState()
-    val currentConvId by viewModel.currentConversationId.collectAsState()
+    val conversations by chatViewModel.conversations.collectAsState()
+    val currentConvId by chatViewModel.currentConversationId.collectAsState()
+    val searchResults by chatViewModel.conversationSearchResults.collectAsState()
+
+    var searchQuery by remember { mutableStateOf("") }
+    LaunchedEffect(searchQuery) {
+        chatViewModel.searchConversations(searchQuery)
+    }
+    val displayedConversations = searchResults ?: conversations
 
     AnimatedVisibility(
         visible = visible,
@@ -106,8 +120,40 @@ fun Sidebar(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
+                // Cross-conversation search - hybrid vector+BM25, purely user-initiated
+                // (see ChatViewModel.searchConversations); nothing here ever gets
+                // silently injected into a chat's context.
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(DaexTheme.colors.onSurface.copy(alpha = 0.05f))
+                        .border(0.5.dp, DaexTheme.colors.onSurface.copy(alpha = 0.1f), RoundedCornerShape(8.dp))
+                        .padding(horizontal = 12.dp, vertical = 10.dp)
+                ) {
+                    BasicTextField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = TextStyle(color = DaexTheme.colors.onSurface, fontSize = 13.sp),
+                        cursorBrush = SolidColor(DaexTheme.colors.primary),
+                        singleLine = true
+                    )
+                    if (searchQuery.isEmpty()) {
+                        BasicText(
+                            text = "Search conversations...",
+                            style = DaexTheme.typography.body2.copy(
+                                color = DaexTheme.colors.onSurface.copy(alpha = 0.3f),
+                                fontSize = 13.sp
+                            )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
                 BasicText(
-                    text = "RECENT EXECUTIONS",
+                    text = if (searchResults != null) "SEARCH RESULTS" else "RECENT EXECUTIONS",
                     style = DaexTheme.typography.mono.copy(
                         color = DaexTheme.colors.onSurface.copy(alpha = 0.3f),
                         fontSize = 10.sp,
@@ -116,12 +162,40 @@ fun Sidebar(
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp)
                 )
 
+                if (searchResults != null && searchResults!!.isEmpty()) {
+                    BasicText(
+                        text = "No matching conversations",
+                        style = DaexTheme.typography.body2.copy(
+                            color = DaexTheme.colors.onSurface.copy(alpha = 0.3f),
+                            fontSize = 12.sp
+                        ),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 12.dp)
+                    )
+                }
+
                 // Conversation List
+                if (searchResults == null && conversations.isEmpty()) {
+                    Box(
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        EmptyState(
+                            icon = { color -> EmptyChatIcon(color = color, modifier = Modifier.size(40.dp)) },
+                            title = "No conversations yet",
+                            subtitle = "Start a session to begin",
+                            actionLabel = "New Session",
+                            onAction = {
+                                onNewConversation()
+                                onClose()
+                            }
+                        )
+                    }
+                } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(conversations) { conv ->
+                    items(displayedConversations, key = { it.id }) { conv ->
                         val isSelected = conv.id == currentConvId
                         var showMenu by remember { mutableStateOf(false) }
                         
@@ -132,7 +206,7 @@ fun Sidebar(
                                 .background(if (isSelected) DaexTheme.colors.onSurface.copy(alpha = 0.05f) else Color.Transparent)
                                 .combinedClickable(
                                     onClick = { 
-                                        viewModel.selectConversation(conv.id)
+                                        chatViewModel.selectConversation(conv.id)
                                         onClose()
                                     },
                                     onLongClick = {
@@ -169,7 +243,7 @@ fun Sidebar(
                                     BasicText("Pin (Coming Soon)", style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.onSurface.copy(alpha=0.5f)))
                                 }
                                 DropdownMenuItem(onClick = { 
-                                    viewModel.deleteConversation(conv.id)
+                                    chatViewModel.deleteConversation(conv.id)
                                     showMenu = false 
                                 }) {
                                     BasicText("Delete Session", style = DaexTheme.typography.body1.copy(color = DaexTheme.colors.error))
@@ -178,14 +252,20 @@ fun Sidebar(
                         }
                     }
                 }
-                
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
-                
+
+                SidebarItem(label = "Saved Prompts", icon = "◆") {
+                    onOpenSavedPrompts()
+                    onClose()
+                }
+
                 SidebarItem(label = "Marketplace", icon = "▤") {
                     onOpenGallery()
                     onClose()
                 }
-                
+
                 SidebarItem(label = "Settings", icon = "⚙") {
                     onOpenSettings()
                 }

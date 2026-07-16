@@ -23,9 +23,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.daex.android.services.Model
-import com.daex.android.services.ModelBank
-import com.daex.android.services.ModelManager
+import com.daex.android.domain.Model
+import com.daex.android.domain.ModelBank
+import com.daex.android.data.ModelManager
 import com.daex.android.ui.theme.DaexTheme
 
 @Composable

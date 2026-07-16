@@ -36,17 +36,73 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      - name: Build Android App (APK)
+      - name: Decode signing keystore
+        if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
+        working-directory: DaexAndroid
+        run: |
+          mkdir -p keystore
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > keystore/daex-release.jks
+          cat > keystore.properties <<EOF
+          storeFile=keystore/daex-release.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=daex-release
+          keyPassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          EOF
+
+      - name: Build Android App (APK + AAB)
         if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
         run: |
           cd DaexAndroid
           chmod +x gradlew
-          ./gradlew assembleRelease assembleDebug
+          ./gradlew assembleRelease assembleDebug bundleRelease
+
+      - name: Remove signing keystore
+        if: ${{ always() && steps.release.outputs['DaexAndroid--release_created'] }}
+        working-directory: DaexAndroid
+        run: rm -rf keystore keystore.properties
+
+      # Play Store's "What's new" text is a separate field from this repo's CHANGELOG.md, with no
+      # automation of its own - this derives it from the same release-please changelog data so it
+      # never goes stale, and writes it to the path/filename convention Google's own Play-publish
+      # tooling (fastlane, r0adkll/upload-google-play, Triple-T) expects, so wiring up an actual
+      # auto-publish step later needs zero extra plumbing. This is a mechanical extract of the
+      # latest CHANGELOG.md section (developer-changelog style, not polished consumer copy, and
+      # not yet trimmed to Play's 500-character-per-locale limit) - review/rewrite it before it's
+      # ever actually used to publish a release.
+      - name: Derive Play Store "What's new" text
+        if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
+        working-directory: DaexAndroid
+        run: |
+          mkdir -p distribution/whatsnew
+          awk '/^## \[/{n++; if (n==2) exit} n>=1' CHANGELOG.md > distribution/whatsnew/whatsnew-en-US
+
+      - name: Commit "What's new" text
+        if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add DaexAndroid/distribution/whatsnew/whatsnew-en-US
+          git diff --cached --quiet || git commit -m "chore: update Play Store what's new for ${{ steps.release.outputs['DaexAndroid--tag_name'] }}"
+          git push
+
+      # Targets "internal" specifically, not production - promotion to a wider track stays a
+      # deliberate manual step in Play Console, not something CI decides on its own.
+      - name: Publish AAB to Play Store (internal track)
+        if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.daex.android
+          releaseFiles: DaexAndroid/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          whatsNewDirectory: DaexAndroid/distribution/whatsnew
 
       - name: Upload APKs to GitHub Release
         if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
         run: |
-          gh release upload ${{ steps.release.outputs['DaexAndroid--tag_name'] }} DaexAndroid/app/build/outputs/apk/release/app-release-unsigned.apk
+          gh release upload ${{ steps.release.outputs['DaexAndroid--tag_name'] }} DaexAndroid/app/build/outputs/apk/release/app-release.apk
           gh release upload ${{ steps.release.outputs['DaexAndroid--tag_name'] }} DaexAndroid/app/build/outputs/apk/debug/app-debug.apk

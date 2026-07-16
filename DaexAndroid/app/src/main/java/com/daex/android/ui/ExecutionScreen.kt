@@ -32,12 +32,15 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Path
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import com.daex.android.services.DaexInferenceViewModel
-import com.daex.android.services.ModelBank
-import com.daex.android.services.ModelManager
-import com.daex.android.services.ModelStatus
-import com.daex.android.services.PermissionRequest
-import com.daex.android.services.VoiceState
+import com.daex.android.ui.viewmodels.AudioSessionViewModel
+import com.daex.android.ui.viewmodels.ChatViewModel
+import com.daex.android.ui.viewmodels.SettingsViewModel
+import com.daex.android.ui.viewmodels.TtsViewModel
+import com.daex.android.domain.ModelBank
+import com.daex.android.data.ModelManager
+import com.daex.android.ui.viewmodels.ModelStatus
+import com.daex.android.domain.PermissionRequest
+import com.daex.android.ui.viewmodels.VoiceState
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.togetherWith
@@ -49,7 +52,7 @@ import androidx.compose.animation.Crossfade
 import androidx.compose.animation.ExperimentalAnimationApi
 import androidx.compose.ui.draw.alpha
 import com.daex.android.ui.components.*
-import com.daex.android.services.BackendType
+import com.daex.android.framework.BackendType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -91,36 +94,42 @@ fun TelemetryTicker(systemState: String, textColor: Color) {
 
 @Composable
 fun ExecutionScreen(
-    viewModel: DaexInferenceViewModel,
+    chatViewModel: ChatViewModel,
+    audioSessionViewModel: AudioSessionViewModel,
+    ttsViewModel: TtsViewModel,
+    settingsViewModel: SettingsViewModel,
     modelManager: ModelManager,
     onBack: () -> Unit,
     onOpenGallery: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    val messages by viewModel.messages.collectAsState()
-    val activePermission by viewModel.activePermission.collectAsState()
-    val isGenerating by viewModel.isGenerating.collectAsState()
-    val isReflecting by viewModel.isReflecting.collectAsState()
-    val modelStatus by viewModel.modelStatus.collectAsState()
-    val downloadProgress by viewModel.downloadProgress.collectAsState()
-    val currentModel by viewModel.currentModel.collectAsState()
-    val tokenSpeed by viewModel.tokenSpeed.collectAsState()
-    val hardwareState by viewModel.hardwareState.collectAsState()
-    val errorMessage by viewModel.errorMessage.collectAsState()
-    val isReasoningEnabled by viewModel.isReasoningEnabled.collectAsState()
-    val isVectorizing by viewModel.isVectorizing.collectAsState()
-    val uploadedFiles by viewModel.uploadedFiles.collectAsState()
-    val attachedFiles by viewModel.attachedFiles.collectAsState()
-    val downloadedModelIds by viewModel.downloadedModelIds.collectAsState()
+    val messages by chatViewModel.messages.collectAsState()
+    val activePermission by chatViewModel.activePermission.collectAsState()
+    val isGenerating by chatViewModel.isGenerating.collectAsState()
+    val isReflecting by chatViewModel.isReflecting.collectAsState()
+    val modelStatus by settingsViewModel.modelStatus.collectAsState()
+    val downloadProgress by settingsViewModel.downloadProgress.collectAsState()
+    val currentModel by settingsViewModel.currentModel.collectAsState()
+    val tokenSpeed by chatViewModel.tokenSpeed.collectAsState()
+    val hardwareState by settingsViewModel.hardwareState.collectAsState()
+    val errorMessage by settingsViewModel.errorMessage.collectAsState()
+    val isReasoningEnabled by settingsViewModel.isReasoningEnabled.collectAsState()
+    val isVectorizing by chatViewModel.isVectorizing.collectAsState()
+    val uploadedFiles by chatViewModel.uploadedFiles.collectAsState()
+    val attachedFiles by chatViewModel.attachedFiles.collectAsState()
+    val downloadedModelIds by settingsViewModel.downloadedModelIds.collectAsState()
     var documentLibraryVisible by remember { mutableStateOf(false) }
-    val isAuraEnabled by viewModel.isAuraEnabled.collectAsState()
-    val voiceState by viewModel.voiceState.collectAsState()
-    val voiceAmplitude by viewModel.voiceAmplitude.collectAsState()
-    val selectedBackend by viewModel.selectedBackend.collectAsState()
-    val suggestedPrompts by viewModel.suggestedPrompts.collectAsState()
-    val isVoiceSessionActive by viewModel.isLiveVoiceActive.collectAsState()
-    val isTtsEnabled by viewModel.isTtsEnabled.collectAsState()
-    val isTtsDownloaded by viewModel.isTtsDownloaded.collectAsState()
+    var savedPromptLibraryVisible by remember { mutableStateOf(false) }
+    val pinnedMessages by chatViewModel.pinnedMessages.collectAsState()
+    val isAuraEnabled by settingsViewModel.isAuraEnabled.collectAsState()
+    val voiceState by audioSessionViewModel.voiceState.collectAsState()
+    val voiceAmplitude by audioSessionViewModel.voiceAmplitude.collectAsState()
+    val selectedBackend by settingsViewModel.selectedBackend.collectAsState()
+    val suggestedPrompts by chatViewModel.suggestedPrompts.collectAsState()
+    val isVoiceSessionActive by audioSessionViewModel.isLiveVoiceActive.collectAsState()
+    val isTtsEnabled by ttsViewModel.isTtsEnabled.collectAsState()
+    val isTtsDownloaded by ttsViewModel.isTtsDownloaded.collectAsState()
+    val speakingMessageId by ttsViewModel.speakingMessageId.collectAsState()
     
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -234,10 +243,12 @@ fun ExecutionScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            viewModel.triggerHapticFeedback(context)
-            viewModel.startLiveVoiceSession { recognizedText ->
+            settingsViewModel.triggerHapticFeedback(context)
+            audioSessionViewModel.startLiveVoiceSession { recognizedText ->
                 inputText = recognizedText
             }
+        } else {
+            android.widget.Toast.makeText(context, "Microphone permission is required for voice mode.", android.widget.Toast.LENGTH_LONG).show()
         }
     }
 
@@ -308,7 +319,7 @@ fun ExecutionScreen(
                 if (fileName == null) fileName = uri.path?.substringAfterLast('/')
                 val finalFileName = fileName ?: "uploaded_file"
                 
-                viewModel.uploadFile(uri, finalFileName)
+                chatViewModel.uploadFile(uri, finalFileName)
             } catch (e: Exception) {
                 android.util.Log.e("ExecutionScreen", "Failed to initiate file upload", e)
             }
@@ -316,8 +327,8 @@ fun ExecutionScreen(
     }
 
     LaunchedEffect(Unit) {
-        viewModel.refreshUploadedFiles()
-        viewModel.refreshDownloadedModels()
+        chatViewModel.refreshUploadedFiles()
+        settingsViewModel.refreshDownloadedModels()
     }
     var selectedModel by remember { mutableStateOf(ModelBank.generativeModels.first()) }
     
@@ -463,7 +474,7 @@ fun ExecutionScreen(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
                         .clickable {
-                            viewModel.triggerHapticFeedback(context)
+                            settingsViewModel.triggerHapticFeedback(context)
                             sidebarVisible = true
                         }
                         .padding(8.dp)
@@ -475,7 +486,7 @@ fun ExecutionScreen(
                         .align(Alignment.Center)
                         .clickable {
                             if (!isGenerating && !isReflecting && !isVectorizing) {
-                                viewModel.triggerHapticFeedback(context)
+                                settingsViewModel.triggerHapticFeedback(context)
                                 selectorVisible = true
                             }
                         }
@@ -575,7 +586,7 @@ fun ExecutionScreen(
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .clickable {
                                                     backendMenuExpanded = false
-                                                    viewModel.setBackend(BackendType.CPU)
+                                                    settingsViewModel.setBackend(BackendType.CPU)
                                                 }
                                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically
@@ -592,7 +603,7 @@ fun ExecutionScreen(
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .clickable {
                                                     backendMenuExpanded = false
-                                                    viewModel.setBackend(BackendType.GPU)
+                                                    settingsViewModel.setBackend(BackendType.GPU)
                                                 }
                                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically
@@ -609,7 +620,7 @@ fun ExecutionScreen(
                                                 .clip(RoundedCornerShape(8.dp))
                                                 .clickable {
                                                     backendMenuExpanded = false
-                                                    viewModel.setBackend(BackendType.NPU)
+                                                    settingsViewModel.setBackend(BackendType.NPU)
                                                 }
                                                 .padding(horizontal = 12.dp, vertical = 8.dp),
                                             verticalAlignment = Alignment.CenterVertically
@@ -654,11 +665,11 @@ fun ExecutionScreen(
                         ModelStatus.ERROR -> {
                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                                 BasicText(text = errorMessage ?: "Model error", modifier = Modifier.weight(1f), style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.error, fontSize = 12.sp))
-                                BasicText(text = "RETRY", modifier = Modifier.clickable { (currentModel ?: selectedModel).let { viewModel.loadModel(it) } }, style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.primary, fontSize = 12.sp))
+                                BasicText(text = "RETRY", modifier = Modifier.clickable { (currentModel ?: selectedModel).let { settingsViewModel.loadModel(it) } }, style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.primary, fontSize = 12.sp))
                             }
                         }
                         else -> {
-                            Box(modifier = Modifier.fillMaxWidth().clickable { (currentModel ?: selectedModel).let { viewModel.loadModel(it) } }, contentAlignment = Alignment.Center) {
+                            Box(modifier = Modifier.fillMaxWidth().clickable { (currentModel ?: selectedModel).let { settingsViewModel.loadModel(it) } }, contentAlignment = Alignment.Center) {
                                 BasicText(text = "Model not loaded — tap to initialize", style = DaexTheme.typography.mono.copy(color = DaexTheme.colors.warning, fontSize = 12.sp))
                             }
                         }
@@ -672,11 +683,11 @@ fun ExecutionScreen(
                         SuggestedPrompts(
                             prompts = suggestedPrompts,
                             onSelectPrompt = {
-                                viewModel.triggerHapticFeedback(context)
+                                settingsViewModel.triggerHapticFeedback(context)
                                 if (isModelReady && !isGenerating) {
-                                    viewModel.submitPrompt(it)
+                                    chatViewModel.submitPrompt(it)
                                 } else if (!isModelReady) {
-                                    (currentModel ?: selectedModel).let { model -> viewModel.loadModel(model) }
+                                    (currentModel ?: selectedModel).let { model -> settingsViewModel.loadModel(model) }
                                 }
                             }
                         )
@@ -689,7 +700,20 @@ fun ExecutionScreen(
                         ) {
                             itemsIndexed(visibleMessages) { index, msg ->
                                 val isLastModel = msg.role == "model" && visibleMessages.subList(index + 1, visibleMessages.size).none { it.role == "model" }
-                                MessageLine(message = msg, isLastModel = isLastModel, isGenerating = isGenerating, tokenSpeed = tokenSpeed, activePermission = if (isLastModel) activePermission else null)
+                                MessageLine(
+                                    message = msg,
+                                    isLastModel = isLastModel,
+                                    isGenerating = isGenerating,
+                                    tokenSpeed = tokenSpeed,
+                                    activePermission = if (isLastModel) activePermission else null,
+                                    isSpeaking = msg.id == speakingMessageId,
+                                    onSpeak = if (isVoiceSessionActive || msg.role != "model") null else {
+                                        { ttsViewModel.speakMessage(msg, isVoiceSessionActive) }
+                                    },
+                                    onTogglePin = if (msg.role == "user" || msg.role == "model") {
+                                        { chatViewModel.togglePin(msg) }
+                                    } else null
+                                )
                             }
                             item { Spacer(modifier = Modifier.height(1.dp).fillMaxWidth()) }
                         }
@@ -732,8 +756,8 @@ fun ExecutionScreen(
                                 .background(if (isReasoningEnabled) DaexTheme.colors.primary.copy(alpha=0.15f) else DaexTheme.colors.onSurface.copy(alpha=0.1f))
                                 .border(0.5.dp, if (isReasoningEnabled) DaexTheme.colors.primary else DaexTheme.colors.onSurface.copy(alpha=0.2f), RoundedCornerShape(16.dp))
                                 .clickable {
-                                    viewModel.triggerHapticFeedback(context)
-                                    viewModel.toggleReasoning()
+                                    settingsViewModel.triggerHapticFeedback(context)
+                                    settingsViewModel.toggleReasoning()
                                 }
                                 .padding(horizontal = 12.dp, vertical = 6.dp)
                         ) {
@@ -811,7 +835,7 @@ fun ExecutionScreen(
                         Box(
                             modifier = Modifier
                                 .width(barWidth)
-                                .height(52.dp)
+                                .heightIn(min = 52.dp, max = 200.dp)
                                 .align(Alignment.Center)
                                 .pointerInput(Unit) {
                                     detectHorizontalDragGestures(
@@ -839,8 +863,8 @@ fun ExecutionScreen(
                                                         dragOffset.animateTo(-maxDragDistancePx, tween(200))
                                                         val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO)
                                                         if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                                                            viewModel.triggerHapticFeedback(context)
-                                                            viewModel.startLiveVoiceSession { recognizedText -> inputText = recognizedText }
+                                                            settingsViewModel.triggerHapticFeedback(context)
+                                                            audioSessionViewModel.startLiveVoiceSession { recognizedText -> inputText = recognizedText }
                                                         } else {
                                                             recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                                                             dragOffset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
@@ -855,8 +879,8 @@ fun ExecutionScreen(
                                             if (currentIsVoiceSessionActive) {
                                                 if (dragAmount > 10f) {
                                                     change.consume()
-                                                    viewModel.triggerHapticFeedback(context)
-                                                    viewModel.stopLiveVoiceSession()
+                                                    settingsViewModel.triggerHapticFeedback(context)
+                                                    audioSessionViewModel.stopLiveVoiceSession()
                                                 }
                                             } else {
                                                 if (isDragging && currentIsModelReady && !currentIsGenerating && (!currentIsTtsEnabled || currentIsTtsDownloaded)) {
@@ -870,8 +894,8 @@ fun ExecutionScreen(
                                                             dragOffset.animateTo(-maxDragDistancePx, tween(150))
                                                             val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO)
                                                             if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                                                                viewModel.triggerHapticFeedback(context)
-                                                                viewModel.startLiveVoiceSession { recognizedText -> inputText = recognizedText }
+                                                                settingsViewModel.triggerHapticFeedback(context)
+                                                                audioSessionViewModel.startLiveVoiceSession { recognizedText -> inputText = recognizedText }
                                                             } else {
                                                                 recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                                                                 dragOffset.animateTo(0f, spring(stiffness = Spring.StiffnessMediumLow))
@@ -910,57 +934,17 @@ fun ExecutionScreen(
 
                                         val waveAlpha = if (isVoiceSessionActive) 1f else voiceModeProgress
                                         if (waveAlpha > 0f) {
-                                            val baseLineY = size.height * 0.5f
-                                            val widthF = size.width
-                                            val piF = kotlin.math.PI.toFloat()
-
                                             val activeAmplitude = if (isVoiceSessionActive && (voiceState == VoiceState.PROCESSING || isGenerating)) {
                                                 0.15f + 0.1f * kotlin.math.sin(wavePhase * 2.0f)
                                             } else {
                                                 smoothedAmplitude
                                             }
-
-                                            val path1 = Path()
-                                            val amplitude1 = 4.dp.toPx() + (activeAmplitude * 10.dp.toPx())
-                                            path1.moveTo(0f, size.height)
-                                            for (x in 0..size.width.toInt() step 10) {
-                                                val xf = x.toFloat()
-                                                val envelope = kotlin.math.sin(xf / widthF * piF)
-                                                val sineVal = kotlin.math.sin(xf * 0.01f + wavePhase)
-                                                val y = baseLineY + sineVal * amplitude1 * 0.4f * envelope
-                                                path1.lineTo(xf, y)
-                                            }
-                                            path1.lineTo(size.width, size.height)
-                                            path1.close()
-                                            drawPath(path = path1, brush = Brush.verticalGradient(colors = listOf(auraColor.copy(alpha = waveAlpha * 0.25f), Color.Transparent), startY = baseLineY - amplitude1, endY = size.height))
-
-                                            val path2 = Path()
-                                            val amplitude2 = 6.dp.toPx() + (activeAmplitude * 14.dp.toPx())
-                                            path2.moveTo(0f, size.height)
-                                            for (x in 0..size.width.toInt() step 10) {
-                                                val xf = x.toFloat()
-                                                val envelope = kotlin.math.sin(xf / widthF * piF)
-                                                val sineVal = kotlin.math.sin(xf * 0.015f - wavePhase * 2.0f + 1.0f)
-                                                val y = baseLineY + sineVal * amplitude2 * 0.6f * envelope
-                                                path2.lineTo(xf, y)
-                                            }
-                                            path2.lineTo(size.width, size.height)
-                                            path2.close()
-                                            drawPath(path = path2, brush = Brush.verticalGradient(colors = listOf(auraColor.copy(alpha = waveAlpha * 0.40f), Color.Transparent), startY = baseLineY - amplitude2, endY = size.height))
-
-                                            val path3 = Path()
-                                            val amplitude3 = 8.dp.toPx() + (activeAmplitude * 18.dp.toPx())
-                                            path3.moveTo(0f, size.height)
-                                            for (x in 0..size.width.toInt() step 10) {
-                                                val xf = x.toFloat()
-                                                val envelope = kotlin.math.sin(xf / widthF * piF)
-                                                val sineVal = kotlin.math.sin(xf * 0.02f + wavePhase * 3.0f + 2.5f)
-                                                val y = baseLineY + sineVal * amplitude3 * 0.8f * envelope
-                                                path3.lineTo(xf, y)
-                                            }
-                                            path3.lineTo(size.width, size.height)
-                                            path3.close()
-                                            drawPath(path = path3, brush = Brush.verticalGradient(colors = listOf(auraColor.copy(alpha = waveAlpha * 0.60f), Color.Transparent), startY = baseLineY - amplitude3, endY = size.height))
+                                            drawVoiceWaveform(
+                                                phase = wavePhase,
+                                                amplitude = activeAmplitude,
+                                                color = auraColor,
+                                                alpha = waveAlpha
+                                            )
                                         }
                                     }
                                     .border(
@@ -979,7 +963,7 @@ fun ExecutionScreen(
                             )
 
                             Row(
-                                modifier = Modifier.matchParentSize().padding(4.dp),
+                                modifier = Modifier.fillMaxWidth().padding(4.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 val textFieldWeight = (1f - transitionProgress).coerceAtLeast(0.001f)
@@ -987,7 +971,6 @@ fun ExecutionScreen(
                                 Row(
                                     modifier = Modifier
                                         .weight(textFieldWeight)
-                                        .fillMaxHeight()
                                         // DIIZZY: Layout freeze to prevent text squishing on compress
                                         .requiredWidth(maxBarWidth - 64.dp)
                                         .graphicsLayer {
@@ -996,7 +979,7 @@ fun ExecutionScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     DaexButton(
-                                        onClick = { viewModel.triggerHapticFeedback(context); documentLibraryVisible = true },
+                                        onClick = { settingsViewModel.triggerHapticFeedback(context); documentLibraryVisible = true },
                                         enabled = !isGenerating && !isVectorizing && isModelReady && transitionProgress < 0.5f,
                                         modifier = Modifier.size(36.dp),
                                         backgroundColor = Color.Transparent,
@@ -1018,7 +1001,9 @@ fun ExecutionScreen(
                                         modifier = Modifier.weight(1f),
                                         placeholder = placeholderText,
                                         enabled = !isGenerating && isModelReady && voiceState != VoiceState.LISTENING && transitionProgress < 0.5f,
-                                        backgroundColor = Color.Transparent
+                                        backgroundColor = Color.Transparent,
+                                        minLines = 1,
+                                        maxLines = 6
                                     )
                                 }
 
@@ -1026,7 +1011,6 @@ fun ExecutionScreen(
 
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxHeight()
                                         .graphicsLayer {
                                             alpha = (1f - transitionProgress).coerceIn(0f, 1f)
                                             // DIIZZY: Subtle visual shift for gesture pull feeling
@@ -1037,28 +1021,28 @@ fun ExecutionScreen(
                                     DaexButton(
                                         onClick = {
                                             if (isGenerating) {
-                                                viewModel.triggerHapticFeedback(context)
-                                                viewModel.cancelGeneration()
+                                                settingsViewModel.triggerHapticFeedback(context)
+                                                chatViewModel.cancelGeneration()
                                                 val lastUserMsg = messages.lastOrNull { it.role == "user" }
                                                 if (lastUserMsg != null) inputText = lastUserMsg.content
                                             } else if (inputText.isNotEmpty()) {
-                                                viewModel.triggerHapticFeedback(context)
-                                                viewModel.submitPrompt(inputText)
+                                                settingsViewModel.triggerHapticFeedback(context)
+                                                chatViewModel.submitPrompt(inputText)
                                                 inputText = ""
                                             } else if (!isTtsEnabled || isTtsDownloaded) {
-                                                viewModel.triggerHapticFeedback(context)
+                                                settingsViewModel.triggerHapticFeedback(context)
                                                 val permissionCheck = androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.RECORD_AUDIO)
                                                 if (permissionCheck == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                                                    viewModel.startLiveVoiceSession { recognizedText -> inputText = recognizedText }
+                                                    audioSessionViewModel.startLiveVoiceSession { recognizedText -> inputText = recognizedText }
                                                 } else {
                                                     recordAudioPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
                                                 }
                                             } else {
-                                                viewModel.triggerHapticFeedback(context)
+                                                settingsViewModel.triggerHapticFeedback(context)
                                                 android.widget.Toast.makeText(context, "TTS voice engine is not downloaded yet. Please download it in Settings.", android.widget.Toast.LENGTH_LONG).show()
                                             }
                                         },
-                                        enabled = (isGenerating || isModelReady) && (isGenerating || inputText.isNotEmpty() || voiceState != VoiceState.PROCESSING) && transitionProgress < 0.5f,
+                                        enabled = (isGenerating || isModelReady) && (isGenerating || inputText.isNotEmpty() || (!isVoiceSessionActive && voiceState != VoiceState.PROCESSING)) && transitionProgress < 0.5f,
                                         modifier = Modifier.size(44.dp),
                                         backgroundColor = if (isVoiceSessionActive) Color.Transparent else if (isGenerating) DaexTheme.colors.primary else if (!isModelReady) DaexTheme.colors.primary.copy(alpha = 0.1f) else DaexTheme.colors.primary,
                                         useDefaultPadding = false,
@@ -1093,30 +1077,51 @@ fun ExecutionScreen(
             visible = selectorVisible,
             onClose = { selectorVisible = false },
             onSelect = { 
-                viewModel.triggerHapticFeedback(context)
+                settingsViewModel.triggerHapticFeedback(context)
                 selectedModel = it
                 selectorVisible = false
-                viewModel.loadModel(it)
+                settingsViewModel.loadModel(it)
             },
             onOpenMarketplace = { selectorVisible = false; onOpenGallery() },
             downloadedModelIds = downloadedModelIds,
-            onDelete = { viewModel.deleteModel(it) }
+            onDelete = { settingsViewModel.deleteModel(it) }
         )
 
         Sidebar(
             visible = sidebarVisible,
             onClose = { sidebarVisible = false },
-            onNewConversation = { sidebarVisible = false; viewModel.clearMessages() },
+            onNewConversation = { sidebarVisible = false; chatViewModel.clearMessages() },
             onOpenSettings = { sidebarVisible = false; onOpenSettings() },
             onOpenGallery = onOpenGallery,
-            viewModel = viewModel
+            onOpenSavedPrompts = {
+                chatViewModel.refreshPinnedMessages()
+                savedPromptLibraryVisible = true
+            },
+            chatViewModel = chatViewModel
+        )
+
+        SavedPromptLibraryModal(
+            visible = savedPromptLibraryVisible,
+            onClose = { savedPromptLibraryVisible = false },
+            pinnedMessages = pinnedMessages,
+            onUsePrompt = { msg ->
+                savedPromptLibraryVisible = false
+                settingsViewModel.triggerHapticFeedback(context)
+                if (isModelReady && !isGenerating) {
+                    chatViewModel.clearMessages()
+                    chatViewModel.submitPrompt(msg.content)
+                } else if (!isModelReady) {
+                    (currentModel ?: selectedModel).let { model -> settingsViewModel.loadModel(model) }
+                }
+            },
+            onUnpin = { msg -> chatViewModel.togglePin(msg) }
         )
 
         MemoryEditorModal(
             visible = memoryEditorVisible,
             onClose = { memoryEditorVisible = false },
-            initialContent = viewModel.coreMemoryText.collectAsState().value,
-            onSave = { viewModel.saveCoreMemory(it); memoryEditorVisible = false }
+            initialContent = chatViewModel.coreMemoryText.collectAsState().value,
+            onSave = { chatViewModel.saveCoreMemory(it); memoryEditorVisible = false }
         )
 
         DocumentLibraryModal(
@@ -1124,8 +1129,8 @@ fun ExecutionScreen(
             onClose = { documentLibraryVisible = false },
             uploadedFiles = uploadedFiles,
             attachedFiles = attachedFiles,
-            onToggleAttachment = { viewModel.toggleAttachedFile(it) },
-            onDeleteFromLibrary = { viewModel.deleteUploadedFile(it) },
+            onToggleAttachment = { chatViewModel.toggleAttachedFile(it) },
+            onDeleteFromLibrary = { chatViewModel.deleteUploadedFile(it) },
             onUploadNew = { filePickerLauncher.launch("*/*") }
         )
     }

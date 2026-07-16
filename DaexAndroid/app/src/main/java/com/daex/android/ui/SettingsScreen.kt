@@ -2,6 +2,10 @@ package com.daex.android.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,62 +23,73 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.daex.android.services.DaexInferenceViewModel
-import com.daex.android.services.Model
-import com.daex.android.services.ModelBank
-import com.daex.android.services.ModelManager
-import com.daex.android.services.ModelStatus
-import com.daex.android.services.HapticType
+import com.daex.android.ui.viewmodels.ChatViewModel
+import com.daex.android.ui.viewmodels.SettingsViewModel
+import com.daex.android.ui.viewmodels.TtsViewModel
+import com.daex.android.domain.Model
+import com.daex.android.domain.ModelBank
+import com.daex.android.data.ModelManager
+import com.daex.android.ui.viewmodels.ModelStatus
+import com.daex.android.ui.viewmodels.HapticType
+import com.daex.android.framework.ToolRegistry
+import com.daex.android.ui.components.ConfirmDialog
 import com.daex.android.ui.components.DaexSwitch
 import com.daex.android.ui.theme.DaexTheme
 
 @Composable
 fun SettingsScreen(
-    viewModel: DaexInferenceViewModel,
+    settingsViewModel: SettingsViewModel,
+    ttsViewModel: TtsViewModel,
+    chatViewModel: ChatViewModel,
     modelManager: ModelManager,
     onBack: () -> Unit,
-    onOpenGallery: () -> Unit
+    onOpenGallery: () -> Unit,
+    onReplayOnboarding: () -> Unit
 ) {
     val context = LocalContext.current
 
-    val modelStatus by viewModel.modelStatus.collectAsState()
-    val currentModel by viewModel.currentModel.collectAsState()
+    val modelStatus by settingsViewModel.modelStatus.collectAsState()
+    val currentModel by settingsViewModel.currentModel.collectAsState()
     val selectedModel = currentModel ?: ModelBank.generativeModels.first()
 
-    val useGPU by viewModel.useGPU.collectAsState()
-    val isDark by viewModel.isDarkMode.collectAsState()
-    val primaryColor by viewModel.primaryColor.collectAsState()
-    val isSpeculativeDecodingEnabled by viewModel.isSpeculativeDecodingEnabled.collectAsState()
-    val inferenceTemperature by viewModel.inferenceTemperature.collectAsState()
-    val inferenceTopK by viewModel.inferenceTopK.collectAsState()
-    val inferenceTopP by viewModel.inferenceTopP.collectAsState()
-    val customSystemPrompt by viewModel.customSystemPrompt.collectAsState()
-    val isToolCallingEnabled by viewModel.isToolCallingEnabled.collectAsState()
-    val uploadedFiles by viewModel.uploadedFiles.collectAsState()
-    val downloadProgress by viewModel.downloadProgress.collectAsState()
-    val maxTokens by viewModel.maxTokens.collectAsState()
-    val isHapticEnabled by viewModel.isHapticEnabled.collectAsState()
-    val isAuraEnabled by viewModel.isAuraEnabled.collectAsState()
-    val isTtsEnabled by viewModel.isTtsEnabled.collectAsState()
-    val ttsVoiceId by viewModel.ttsVoiceId.collectAsState()
-    val isTtsDownloaded by viewModel.isTtsDownloaded.collectAsState()
-    val isTtsDownloading by viewModel.isTtsDownloading.collectAsState()
-    val ttsDownloadProgress by viewModel.ttsDownloadProgress.collectAsState()
+    val useGPU by settingsViewModel.useGPU.collectAsState()
+    val isDark by settingsViewModel.isDarkMode.collectAsState()
+    val primaryColor by settingsViewModel.primaryColor.collectAsState()
+    val isSpeculativeDecodingEnabled by settingsViewModel.isSpeculativeDecodingEnabled.collectAsState()
+    val inferenceTemperature by settingsViewModel.inferenceTemperature.collectAsState()
+    val inferenceTopK by settingsViewModel.inferenceTopK.collectAsState()
+    val inferenceTopP by settingsViewModel.inferenceTopP.collectAsState()
+    val customSystemPrompt by settingsViewModel.customSystemPrompt.collectAsState()
+    val isToolCallingEnabled by settingsViewModel.isToolCallingEnabled.collectAsState()
+    val disabledToolIds by settingsViewModel.disabledToolIds.collectAsState()
+    val uploadedFiles by chatViewModel.uploadedFiles.collectAsState()
+    val downloadProgress by settingsViewModel.downloadProgress.collectAsState()
+    val maxTokens by settingsViewModel.maxTokens.collectAsState()
+    val isHapticEnabled by settingsViewModel.isHapticEnabled.collectAsState()
+    val isAuraEnabled by settingsViewModel.isAuraEnabled.collectAsState()
+    val isTtsEnabled by ttsViewModel.isTtsEnabled.collectAsState()
+    val ttsVoiceId by ttsViewModel.ttsVoiceId.collectAsState()
+    val isTtsDownloaded by ttsViewModel.isTtsDownloaded.collectAsState()
+    val isTtsDownloading by ttsViewModel.isTtsDownloading.collectAsState()
+    val ttsDownloadProgress by ttsViewModel.ttsDownloadProgress.collectAsState()
 
     var selectedTab by remember { mutableIntStateOf(0) }
     val tabs = listOf("TUNING", "THEME", "SYSTEM")
 
     var memoryEditorVisible by remember { mutableStateOf(false) }
     var changelogVisible by remember { mutableStateOf(false) }
+    var clearHistoryConfirmVisible by remember { mutableStateOf(false) }
 
-    val downloadedModelIds by viewModel.downloadedModelIds.collectAsState()
+    val downloadedModelIds by settingsViewModel.downloadedModelIds.collectAsState()
 
     val packageInfo = remember(context) {
         try {
@@ -132,7 +147,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .weight(1f)
                         .clickable {
-                            viewModel.triggerHapticFeedback(context)
+                            settingsViewModel.triggerHapticFeedback(context)
                             selectedTab = index
                         }
                         .padding(vertical = 8.dp),
@@ -178,10 +193,10 @@ fun SettingsScreen(
                                 value = inferenceTemperature,
                                 valueRange = 0f..2f,
                                 valueFormatter = { String.format(java.util.Locale.US, "%.2f", it) },
-                                onValueChange = { viewModel.setInferenceTemperature(it) },
+                                onValueChange = { settingsViewModel.setInferenceTemperature(it) },
                                 primaryColor = DaexTheme.colors.primary,
                                 subtitle = "Strict (0.0) ─── Creative (2.0)",
-                                viewModel = viewModel
+                                settingsViewModel = settingsViewModel
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             SliderParameter(
@@ -189,9 +204,9 @@ fun SettingsScreen(
                                 value = inferenceTopK.toFloat(),
                                 valueRange = 1f..100f,
                                 valueFormatter = { it.toInt().toString() },
-                                onValueChange = { viewModel.setInferenceTopK(it.toInt()) },
+                                onValueChange = { settingsViewModel.setInferenceTopK(it.toInt()) },
                                 primaryColor = DaexTheme.colors.primary,
-                                viewModel = viewModel
+                                settingsViewModel = settingsViewModel
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             SliderParameter(
@@ -199,9 +214,9 @@ fun SettingsScreen(
                                 value = inferenceTopP,
                                 valueRange = 0f..1f,
                                 valueFormatter = { String.format(java.util.Locale.US, "%.2f", it) },
-                                onValueChange = { viewModel.setInferenceTopP(it) },
+                                onValueChange = { settingsViewModel.setInferenceTopP(it) },
                                 primaryColor = DaexTheme.colors.primary,
-                                viewModel = viewModel
+                                settingsViewModel = settingsViewModel
                             )
                             Spacer(modifier = Modifier.height(16.dp))
                             SliderParameter(
@@ -209,23 +224,32 @@ fun SettingsScreen(
                                 value = maxTokens.toFloat(),
                                 valueRange = 128f..4096f,
                                 valueFormatter = { it.toInt().toString() + " tokens" },
-                                onValueChange = { viewModel.setMaxTokens(it.toInt()) },
+                                onValueChange = { settingsViewModel.setMaxTokens(it.toInt()) },
                                 primaryColor = DaexTheme.colors.primary,
                                 subtitle = "Concise (128) ─── Detailed (4096)",
-                                viewModel = viewModel
+                                settingsViewModel = settingsViewModel
                             )
                         }
                     }
 
                     item {
-                        SectionHeader("SYSTEM PROMPT OVERRIDE")
+                        SectionHeader("YOUR INSTRUCTIONS")
                         SettingsCard {
                             BasicText(
-                                text = "CUSTOM SYSTEM PROMPT",
+                                text = "ADD TO ICARUS'S PERSONALITY",
                                 style = DaexTheme.typography.mono.copy(
                                     color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
                                     fontSize = 10.sp,
                                     letterSpacing = 1.sp
+                                ),
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                            BasicText(
+                                text = "Icarus has a fixed core personality — instructions here are appended on top, not a replacement.",
+                                style = DaexTheme.typography.body2.copy(
+                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.4f),
+                                    fontSize = 11.sp,
+                                    lineHeight = 15.sp
                                 ),
                                 modifier = Modifier.padding(bottom = 8.dp)
                             )
@@ -240,7 +264,7 @@ fun SettingsScreen(
                             ) {
                                 BasicTextField(
                                     value = customSystemPrompt,
-                                    onValueChange = { viewModel.setCustomSystemPrompt(it) },
+                                    onValueChange = { settingsViewModel.setCustomSystemPrompt(it) },
                                     modifier = Modifier.fillMaxSize(),
                                     textStyle = TextStyle(
                                         color = DaexTheme.colors.onBackground,
@@ -250,7 +274,7 @@ fun SettingsScreen(
                                 )
                                 if (customSystemPrompt.isEmpty()) {
                                     BasicText(
-                                        text = "Override default instruction set...",
+                                        text = "e.g. \"Always answer in bullet points\"",
                                         style = DaexTheme.typography.body2.copy(color = DaexTheme.colors.onSurface.copy(alpha = 0.3f))
                                     )
                                 }
@@ -265,7 +289,7 @@ fun SettingsScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clickable { 
-                                        viewModel.loadCoreMemory()
+                                        chatViewModel.loadCoreMemory()
                                         memoryEditorVisible = true 
                                     },
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -318,7 +342,7 @@ fun SettingsScreen(
                                 }
                                 DaexSwitch(
                                     checked = isSpeculativeDecodingEnabled,
-                                    onCheckedChange = { viewModel.setSpeculativeDecodingEnabled(it) }
+                                    onCheckedChange = { settingsViewModel.setSpeculativeDecodingEnabled(it) }
                                 )
                             }
 
@@ -348,8 +372,46 @@ fun SettingsScreen(
                                 }
                                 DaexSwitch(
                                     checked = isToolCallingEnabled,
-                                    onCheckedChange = { viewModel.setToolCallingEnabled(it) }
+                                    onCheckedChange = { settingsViewModel.setToolCallingEnabled(it) }
                                 )
+                            }
+
+                            if (isToolCallingEnabled) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Box(modifier = Modifier.fillMaxWidth().height(0.5.dp).background(DaexTheme.colors.onSurface.copy(alpha = 0.08f)))
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                ToolRegistry.ALL.forEach { toolEntry ->
+                                    val enabled = toolEntry.id !in disabledToolIds
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            BasicText(
+                                                text = toolEntry.label,
+                                                style = DaexTheme.typography.mono.copy(
+                                                    color = DaexTheme.colors.onSurface.copy(alpha = if (enabled) 0.9f else 0.4f),
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.SemiBold
+                                                )
+                                            )
+                                            BasicText(
+                                                text = toolEntry.description,
+                                                style = DaexTheme.typography.mono.copy(
+                                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.35f),
+                                                    fontSize = 10.sp
+                                                ),
+                                                modifier = Modifier.padding(top = 2.dp)
+                                            )
+                                        }
+                                        DaexSwitch(
+                                            checked = enabled,
+                                            onCheckedChange = { settingsViewModel.setToolEnabled(toolEntry.id, it) }
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -381,7 +443,7 @@ fun SettingsScreen(
                                 }
                                 DaexSwitch(
                                     checked = isTtsEnabled,
-                                    onCheckedChange = { viewModel.setTtsEnabled(it) }
+                                    onCheckedChange = { ttsViewModel.setTtsEnabled(it) }
                                 )
                             }
 
@@ -410,7 +472,7 @@ fun SettingsScreen(
                                                 fontWeight = FontWeight.Bold
                                             ),
                                             modifier = Modifier
-                                                .clickable { viewModel.deleteTtsModel() }
+                                                .clickable { ttsViewModel.deleteTtsModel() }
                                                 .padding(vertical = 4.dp, horizontal = 8.dp)
                                         )
                                     }
@@ -449,8 +511,8 @@ fun SettingsScreen(
                                                     .background(cardBg)
                                                     .border(1.dp, borderCl, RoundedCornerShape(8.dp))
                                                     .clickable {
-                                                        viewModel.setTtsVoiceId(profile.id)
-                                                        viewModel.triggerHapticFeedback(context, force = true, type = com.daex.android.services.HapticType.TICK)
+                                                        ttsViewModel.setTtsVoiceId(profile.id)
+                                                        settingsViewModel.triggerHapticFeedback(context, force = true, type = com.daex.android.ui.viewmodels.HapticType.TICK)
                                                     }
                                                     .padding(12.dp),
                                                 horizontalAlignment = Alignment.CenterHorizontally
@@ -514,7 +576,7 @@ fun SettingsScreen(
                                                 .clip(RoundedCornerShape(12.dp))
                                                 .background(DaexTheme.colors.primary.copy(alpha = 0.1f))
                                                 .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(12.dp))
-                                                .clickable { viewModel.downloadTtsModel() }
+                                                .clickable { ttsViewModel.downloadTtsModel() }
                                                 .padding(16.dp),
                                             contentAlignment = Alignment.Center
                                         ) {
@@ -564,7 +626,7 @@ fun SettingsScreen(
                                 }
                                 DaexSwitch(
                                     checked = isDark,
-                                    onCheckedChange = { viewModel.setDarkMode(it) }
+                                    onCheckedChange = { settingsViewModel.setDarkMode(it) }
                                 )
                             }
 
@@ -588,6 +650,15 @@ fun SettingsScreen(
                                 Color(0xFFF59E0B), // Amber
                                 Color(0xFFFF003C)  // Cyber Red
                             )
+                            val isCustomActive = themeColors.none { it == primaryColor }
+                            var customPickerExpanded by remember { mutableStateOf(false) }
+                            val initialHsv = remember {
+                                FloatArray(3).also { android.graphics.Color.colorToHSV(primaryColor.toArgb(), it) }
+                            }
+                            var hue by remember { mutableStateOf(initialHsv[0]) }
+                            var saturation by remember { mutableStateOf(initialHsv[1]) }
+                            var brightness by remember { mutableStateOf(initialHsv[2]) }
+                            val pickedColor = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness)))
 
                             LazyRow(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -606,7 +677,14 @@ fun SettingsScreen(
                                                 color = if (isDark) Color.White else Color.Black,
                                                 shape = CircleShape
                                             )
-                                            .clickable { viewModel.setThemeColor(color) },
+                                            .clickable {
+                                                settingsViewModel.setThemeColor(color)
+                                                val hsv = FloatArray(3)
+                                                android.graphics.Color.colorToHSV(color.toArgb(), hsv)
+                                                hue = hsv[0]
+                                                saturation = hsv[1]
+                                                brightness = hsv[2]
+                                            },
                                         contentAlignment = Alignment.Center
                                     ) {
                                         if (isSelected) {
@@ -619,6 +697,136 @@ fun SettingsScreen(
                                             )
                                         }
                                     }
+                                }
+                                item {
+                                    val customDisplayColor = if (isCustomActive) DaexTheme.getAdjustedColor(primaryColor, isDark) else Color.Transparent
+                                    Box(
+                                        modifier = Modifier
+                                            .size(36.dp)
+                                            .clip(CircleShape)
+                                            .background(customDisplayColor)
+                                            .border(
+                                                width = if (isCustomActive) 3.dp else 1.dp,
+                                                color = if (isCustomActive) {
+                                                    if (isDark) Color.White else Color.Black
+                                                } else {
+                                                    DaexTheme.colors.onSurface.copy(alpha = 0.3f)
+                                                },
+                                                shape = CircleShape
+                                            )
+                                            .clickable { customPickerExpanded = !customPickerExpanded },
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        BasicText(
+                                            text = if (isCustomActive) "✓" else "+",
+                                            style = DaexTheme.typography.body1.copy(
+                                                color = if (isCustomActive) {
+                                                    if (customDisplayColor == Color.White) Color.Black else Color.White
+                                                } else {
+                                                    DaexTheme.colors.onSurface.copy(alpha = 0.5f)
+                                                },
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        )
+                                    }
+                                }
+                            }
+
+                            AnimatedVisibility(
+                                visible = customPickerExpanded,
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
+                                Column(modifier = Modifier.padding(top = 16.dp)) {
+                                    BasicText(
+                                        text = "#%06X".format(0xFFFFFF and pickedColor.toArgb()),
+                                        style = DaexTheme.typography.mono.copy(
+                                            color = pickedColor,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = 1.sp
+                                        ),
+                                        modifier = Modifier.padding(bottom = 12.dp)
+                                    )
+
+                                    fun applyPickedColor() {
+                                        settingsViewModel.setThemeColor(
+                                            Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness)))
+                                        )
+                                    }
+
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            BasicText(
+                                                text = "HUE",
+                                                style = DaexTheme.typography.mono.copy(
+                                                    color = DaexTheme.colors.onSurface.copy(alpha = 0.5f),
+                                                    fontSize = 11.sp
+                                                )
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(24.dp)
+                                                .padding(top = 6.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(
+                                                    Brush.horizontalGradient(
+                                                        listOf(
+                                                            Color.Red, Color.Yellow, Color.Green,
+                                                            Color.Cyan, Color.Blue, Color.Magenta, Color.Red
+                                                        )
+                                                    )
+                                                )
+                                        ) {
+                                            Slider(
+                                                value = hue,
+                                                onValueChange = {
+                                                    hue = it
+                                                    applyPickedColor()
+                                                },
+                                                valueRange = 0f..360f,
+                                                colors = SliderDefaults.colors(
+                                                    thumbColor = Color.White,
+                                                    activeTrackColor = Color.Transparent,
+                                                    inactiveTrackColor = Color.Transparent
+                                                ),
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    SliderParameter(
+                                        label = "Saturation",
+                                        value = saturation,
+                                        valueRange = 0f..1f,
+                                        valueFormatter = { "${(it * 100).toInt()}%" },
+                                        onValueChange = {
+                                            saturation = it
+                                            applyPickedColor()
+                                        },
+                                        primaryColor = pickedColor,
+                                        settingsViewModel = settingsViewModel
+                                    )
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+                                    SliderParameter(
+                                        label = "Brightness",
+                                        value = brightness,
+                                        valueRange = 0f..1f,
+                                        valueFormatter = { "${(it * 100).toInt()}%" },
+                                        onValueChange = {
+                                            brightness = it
+                                            applyPickedColor()
+                                        },
+                                        primaryColor = pickedColor,
+                                        settingsViewModel = settingsViewModel
+                                    )
                                 }
                             }
 
@@ -658,7 +866,7 @@ fun SettingsScreen(
                                 }
                                 DaexSwitch(
                                     checked = isAuraEnabled,
-                                    onCheckedChange = { viewModel.setAuraEnabled(it) }
+                                    onCheckedChange = { settingsViewModel.setAuraEnabled(it) }
                                 )
                             }
 
@@ -698,7 +906,7 @@ fun SettingsScreen(
                                 }
                                 DaexSwitch(
                                     checked = isHapticEnabled,
-                                    onCheckedChange = { viewModel.setHapticEnabled(it) }
+                                    onCheckedChange = { settingsViewModel.setHapticEnabled(it) }
                                 )
                             }
 
@@ -707,7 +915,7 @@ fun SettingsScreen(
                             ActionButton(
                                 text = "Test tactile haptic pulse",
                                 color = DaexTheme.colors.primary,
-                                onClick = { viewModel.triggerHapticFeedback(context, force = true) }
+                                onClick = { settingsViewModel.triggerHapticFeedback(context, force = true) }
                             )
                         }
                     }
@@ -716,7 +924,7 @@ fun SettingsScreen(
                 2 -> { // SYSTEM DIAGNOSTICS & ACTIONS
                     item {
                         SectionHeader("DEVICE METRICS DIAGNOSTICS")
-                        viewModel.deviceSpecs?.let { specs ->
+                        settingsViewModel.deviceSpecs?.let { specs ->
                             SettingsCard {
                                 val ramGb = String.format(java.util.Locale.US, "%.1f", specs.totalRAM / (1024.0 * 1024.0 * 1024.0))
                                 val freeStorageGb = String.format(java.util.Locale.US, "%.1f", specs.freeStorage / (1024.0 * 1024.0 * 1024.0))
@@ -781,7 +989,7 @@ fun SettingsScreen(
                                                     fontWeight = FontWeight.Bold
                                                 ),
                                                 modifier = Modifier
-                                                    .clickable { viewModel.deleteUploadedFile(fileName) }
+                                                    .clickable { chatViewModel.deleteUploadedFile(fileName) }
                                                     .padding(4.dp)
                                             )
                                         }
@@ -797,10 +1005,7 @@ fun SettingsScreen(
                             ActionButton(
                                 text = "Clear conversation history",
                                 color = DaexTheme.colors.error,
-                                onClick = { 
-                                    viewModel.deleteAllConversations()
-                                    onBack() 
-                                }
+                                onClick = { clearHistoryConfirmVisible = true }
                             )
                             Spacer(modifier = Modifier.height(10.dp))
                             ActionButton(
@@ -813,6 +1018,12 @@ fun SettingsScreen(
                                 text = "Display changelog history",
                                 color = DaexTheme.colors.primary,
                                 onClick = { changelogVisible = true }
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            ActionButton(
+                                text = "Replay onboarding tour",
+                                color = DaexTheme.colors.primary,
+                                onClick = onReplayOnboarding
                             )
                         }
                     }
@@ -848,15 +1059,15 @@ fun SettingsScreen(
         onSelect = {},
         onOpenMarketplace = {},
         downloadedModelIds = downloadedModelIds,
-        onDelete = { viewModel.deleteModel(it) }
+        onDelete = { settingsViewModel.deleteModel(it) }
     )
 
     MemoryEditorModal(
         visible = memoryEditorVisible,
         onClose = { memoryEditorVisible = false },
-        initialContent = viewModel.coreMemoryText.collectAsState().value,
+        initialContent = chatViewModel.coreMemoryText.collectAsState().value,
         onSave = { 
-            viewModel.saveCoreMemory(it)
+            chatViewModel.saveCoreMemory(it)
             memoryEditorVisible = false
         }
     )
@@ -864,6 +1075,18 @@ fun SettingsScreen(
     ChangelogModal(
         visible = changelogVisible,
         onClose = { changelogVisible = false }
+    )
+
+    ConfirmDialog(
+        visible = clearHistoryConfirmVisible,
+        title = "CLEAR ALL HISTORY?",
+        message = "This permanently deletes every conversation. This cannot be undone.",
+        confirmLabel = "CLEAR ALL",
+        onConfirm = {
+            chatViewModel.deleteAllConversations()
+            onBack()
+        },
+        onDismiss = { clearHistoryConfirmVisible = false }
     )
     }
 }
@@ -929,7 +1152,7 @@ private fun SliderParameter(
     onValueChange: (Float) -> Unit,
     primaryColor: Color,
     subtitle: String? = null,
-    viewModel: DaexInferenceViewModel? = null
+    settingsViewModel: SettingsViewModel? = null
 ) {
     val context = LocalContext.current
     var lastFormattedValue by remember(value) { mutableStateOf(valueFormatter(value)) }
@@ -972,7 +1195,7 @@ private fun SliderParameter(
                 val formatted = valueFormatter(newValue)
                 if (formatted != lastFormattedValue) {
                     lastFormattedValue = formatted
-                    viewModel?.triggerHapticFeedback(context, type = HapticType.TICK)
+                    settingsViewModel?.triggerHapticFeedback(context, type = HapticType.TICK)
                 }
                 onValueChange(newValue)
             },

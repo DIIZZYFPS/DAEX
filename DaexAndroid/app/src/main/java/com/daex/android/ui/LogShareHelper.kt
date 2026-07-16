@@ -21,26 +21,32 @@ object LogShareHelper {
             val logFile = File(logsDir, "daex_logs.txt")
             logFile.writeText(logText)
 
-            // Obtain URI using FileProvider configured in AndroidManifest
-            val authority = "${context.packageName}.fileprovider"
-            val uri: Uri = FileProvider.getUriForFile(context, authority, logFile)
+            shareFile(context, logFile, "DAEX Application Logs")
+        } catch (e: Exception) {
+            android.util.Log.e("LogShareHelper", "Failed to compile and share system logs", e)
+        }
+    }
 
-            // Create share intent
+    /** Shares an already-written file (e.g. a crash log) via the app's FileProvider. */
+    fun shareFile(context: Context, file: File, subject: String) {
+        try {
+            val authority = "${context.packageName}.fileprovider"
+            val uri: Uri = FileProvider.getUriForFile(context, authority, file)
+
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/plain"
                 putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "DAEX Application Logs")
+                putExtra(Intent.EXTRA_SUBJECT, subject)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
 
-            // Open sharing chooser sheet
             val chooserIntent = Intent.createChooser(shareIntent, "Share Logs via").apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(chooserIntent)
         } catch (e: Exception) {
-            android.util.Log.e("LogShareHelper", "Failed to compile and share system logs", e)
+            android.util.Log.e("LogShareHelper", "Failed to share file", e)
         }
     }
 }

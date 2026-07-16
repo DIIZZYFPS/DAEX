@@ -1,0 +1,225 @@
+package com.daex.android.data
+
+import android.content.Context
+import android.util.Log
+import androidx.sqlite.SQLiteConnection
+import androidx.sqlite.driver.bundled.BundledSQLiteDriver
+import com.daex.android.domain.FtsQuerySanitizer
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.io.File
+
+class DaexFtsDatabaseHelper(private val context: Context) {
+
+    companion object {
+        private const val DATABASE_NAME = "daex_fts5.db"
+        private const val TABLE_FTS = "document_chunks_fts"
+
+        // FTS5 virtual table fields
+        private const val COLUMN_DOC_ID = "documentId"
+        private const val COLUMN_FILE_NAME = "fileName"
+        private const val COLUMN_CHUNK_INDEX = "chunkIndex"
+        private const val COLUMN_CONTENT = "content"
+
+        // v2: documentId/fileName/chunkIndex were previously indexed (searchable) FTS5 columns,
+        // so filename/chunk-index text polluted content search matches. Bumping this drops and
+        // recreates the table with those columns marked UNINDEXED; DaexRagImpl.initRag()
+        // repopulates it from ObjectBox (the source of truth) afterward via needsRebuild.
+        private const val SCHEMA_VERSION = 2L
+    }
+
+    private val driver = BundledSQLiteDriver()
+    private val dbFile: File by lazy { context.getDatabasePath(DATABASE_NAME) }
+    private val mutex = Mutex()
+    private var connection: SQLiteConnection? = null
+    @Volatile private var needsRebuild = false
+
+    private fun getOrOpenConnection(): SQLiteConnection {
+        var conn = connection
+        if (conn == null) {
+            dbFile.parentFile?.mkdirs()
+            conn = driver.open(dbFile.absolutePath)
+
+            val currentVersion = conn.prepare("PRAGMA user_version").use {
+                if (it.step()) it.getLong(0) else 0L
+            }
+            if (currentVersion < SCHEMA_VERSION) {
+                conn.prepare("DROP TABLE IF EXISTS $TABLE_FTS").use { it.step() }
+                needsRebuild = true
+            }
+
+            // Create FTS5 virtual table if it doesn't exist
+            conn.prepare("""
+                CREATE VIRTUAL TABLE IF NOT EXISTS $TABLE_FTS USING fts5(
+                    $COLUMN_DOC_ID UNINDEXED,
+                    $COLUMN_FILE_NAME UNINDEXED,
+                    $COLUMN_CHUNK_INDEX UNINDEXED,
+                    $COLUMN_CONTENT,
+                    tokenize='unicode61'
+                )
+            """).use { it.step() }
+
+            if (currentVersion < SCHEMA_VERSION) {
+                // PRAGMA statements don't support bound parameters; SCHEMA_VERSION is a
+                // compile-time constant, not user input, so inlining it here is safe.
+                conn.prepare("PRAGMA user_version = $SCHEMA_VERSION").use { it.step() }
+            }
+
+            connection = conn
+            Log.d("DaexFtsDatabaseHelper", "Successfully opened and initialized Bundled SQLite connection at: ${dbFile.absolutePath}")
+        }
+        return conn
+    }
+
+    /**
+     * Returns true (once) if the schema was just migrated and the caller should repopulate the
+     * index from the source of truth (ObjectBox). Opens the connection if needed, which runs
+     * the migration check.
+     */
+    suspend fun consumeNeedsRebuild(): Boolean = mutex.withLock {
+        getOrOpenConnection()
+        val result = needsRebuild
+        needsRebuild = false
+        result
+    }
+
+    suspend fun insertChunk(documentId: String, fileName: String, chunkIndex: Int, content: String) = mutex.withLock {
+        try {
+            val conn = getOrOpenConnection()
+            conn.prepare("""
+                INSERT INTO $TABLE_FTS ($COLUMN_DOC_ID, $COLUMN_FILE_NAME, $COLUMN_CHUNK_INDEX, $COLUMN_CONTENT)
+                VALUES (?, ?, ?, ?)
+            """).use { stmt ->
+                stmt.bindText(1, documentId)
+                stmt.bindText(2, fileName)
+                stmt.bindLong(3, chunkIndex.toLong())
+                stmt.bindText(4, content)
+                stmt.step()
+            }
+        } catch (e: Exception) {
+            Log.e("DaexFtsDatabaseHelper", "Failed to insert chunk into FTS5 for document '$documentId'", e)
+        }
+    }
+
+    suspend fun insertChunks(chunks: List<FtsMatch>) = mutex.withLock {
+        try {
+            val conn = getOrOpenConnection()
+            conn.prepare("BEGIN TRANSACTION").use { it.step() }
+            try {
+                conn.prepare("""
+                    INSERT INTO $TABLE_FTS ($COLUMN_DOC_ID, $COLUMN_FILE_NAME, $COLUMN_CHUNK_INDEX, $COLUMN_CONTENT)
+                    VALUES (?, ?, ?, ?)
+                """).use { stmt ->
+                    for (chunk in chunks) {
+                        stmt.bindText(1, chunk.documentId)
+                        stmt.bindText(2, chunk.fileName)
+                        stmt.bindLong(3, chunk.chunkIndex.toLong())
+                        stmt.bindText(4, chunk.content)
+                        stmt.step()
+                        stmt.reset()
+                        stmt.clearBindings()
+                    }
+                }
+                conn.prepare("COMMIT").use { it.step() }
+            } catch (e: Exception) {
+                try {
+                    conn.prepare("ROLLBACK").use { it.step() }
+                } catch (rollbackEx: Exception) {
+                    Log.e("DaexFtsDatabaseHelper", "Failed to rollback FTS transaction", rollbackEx)
+                }
+                throw e
+            }
+        } catch (e: Exception) {
+            Log.e("DaexFtsDatabaseHelper", "Failed to batch insert chunks into FTS5", e)
+        }
+    }
+
+    // Delete failures are logged AND rethrown (unlike insert/search elsewhere in this class) so
+    // callers removing the same chunks from ObjectBox can detect a partial delete instead of
+    // reporting success while stale FTS rows are left behind.
+    suspend fun deleteChunksByDocumentId(documentId: String) = mutex.withLock {
+        try {
+            val conn = getOrOpenConnection()
+            conn.prepare("DELETE FROM $TABLE_FTS WHERE $COLUMN_DOC_ID = ?").use { stmt ->
+                stmt.bindText(1, documentId)
+                stmt.step()
+            }
+        } catch (e: Exception) {
+            Log.e("DaexFtsDatabaseHelper", "Failed to delete FTS5 chunks for documentId '$documentId'", e)
+            throw e
+        }
+    }
+
+    suspend fun deleteChunksByFileName(fileName: String) = mutex.withLock {
+        try {
+            val conn = getOrOpenConnection()
+            conn.prepare("DELETE FROM $TABLE_FTS WHERE $COLUMN_FILE_NAME = ?").use { stmt ->
+                stmt.bindText(1, fileName)
+                stmt.step()
+            }
+        } catch (e: Exception) {
+            Log.e("DaexFtsDatabaseHelper", "Failed to delete FTS5 chunks for fileName '$fileName'", e)
+            throw e
+        }
+    }
+
+    suspend fun clearAll() = mutex.withLock {
+        try {
+            val conn = getOrOpenConnection()
+            conn.prepare("DELETE FROM $TABLE_FTS").use { it.step() }
+        } catch (e: Exception) {
+            Log.e("DaexFtsDatabaseHelper", "Failed to clear FTS5 database", e)
+        }
+    }
+
+    data class FtsMatch(
+        val fileName: String,
+        val chunkIndex: Int,
+        val content: String,
+        val documentId: String,
+        var score: Double // higher relevance means lower score in FTS5 bm25()
+    )
+
+    suspend fun searchChunks(queryText: String, limit: Int): List<FtsMatch> = mutex.withLock {
+        val sanitizedQuery = FtsQuerySanitizer.sanitize(queryText)
+        if (sanitizedQuery.isBlank()) return@withLock emptyList()
+
+        val results = mutableListOf<FtsMatch>()
+        try {
+            val conn = getOrOpenConnection()
+            conn.prepare("""
+                SELECT $COLUMN_DOC_ID, $COLUMN_FILE_NAME, $COLUMN_CHUNK_INDEX, $COLUMN_CONTENT, bm25($TABLE_FTS)
+                FROM $TABLE_FTS
+                WHERE $TABLE_FTS MATCH ?
+                ORDER BY bm25($TABLE_FTS) ASC
+                LIMIT ?
+            """).use { stmt ->
+                stmt.bindText(1, sanitizedQuery)
+                stmt.bindLong(2, limit.toLong())
+
+                while (stmt.step()) {
+                    val docId = stmt.getText(0)
+                    val fileName = stmt.getText(1)
+                    val chunkIndex = stmt.getLong(2).toInt()
+                    val content = stmt.getText(3)
+                    val score = stmt.getDouble(4)
+
+                    results.add(
+                        FtsMatch(
+                            fileName = fileName,
+                            chunkIndex = chunkIndex,
+                            content = content,
+                            documentId = docId,
+                            score = score
+                        )
+                    )
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("DaexFtsDatabaseHelper", "FTS5 search query failed", e)
+        }
+
+        return@withLock results
+    }
+
+}

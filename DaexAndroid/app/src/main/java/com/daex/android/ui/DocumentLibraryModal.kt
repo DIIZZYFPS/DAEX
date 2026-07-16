@@ -23,6 +23,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.daex.android.ui.components.EmptyDocumentIcon
+import com.daex.android.ui.components.EmptyState
 import com.daex.android.ui.theme.DaexTheme
 
 @Composable
@@ -100,9 +102,12 @@ fun DocumentLibraryModal(
                         modifier = Modifier.weight(1f).fillMaxWidth(),
                         contentAlignment = Alignment.Center
                     ) {
-                        BasicText(
-                            text = "No documents in library.",
-                            style = DaexTheme.typography.mono.copy(color = Color.White.copy(alpha = 0.4f))
+                        EmptyState(
+                            icon = { color -> EmptyDocumentIcon(color = color, modifier = Modifier.size(40.dp)) },
+                            title = "No documents in library",
+                            subtitle = "Upload a PDF or text file to enable retrieval",
+                            actionLabel = "Upload Document",
+                            onAction = onUploadNew
                         )
                     }
                 } else {

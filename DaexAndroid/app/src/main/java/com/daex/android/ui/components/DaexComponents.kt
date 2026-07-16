@@ -2,10 +2,13 @@ package com.daex.android.ui.components
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -28,6 +31,7 @@ import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.daex.android.ui.theme.DaexTheme
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.graphics.Path
@@ -109,7 +113,9 @@ fun DaexTextField(
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
     keyboardActions: KeyboardActions = KeyboardActions.Default,
     textStyle: TextStyle = DaexTheme.typography.body1.copy(color = DaexTheme.colors.onBackground),
-    backgroundColor: Color = DaexTheme.colors.surface
+    backgroundColor: Color = DaexTheme.colors.surface,
+    minLines: Int = 1,
+    maxLines: Int = Int.MAX_VALUE
 ) {
     BasicTextField(
         value = value,
@@ -122,6 +128,8 @@ fun DaexTextField(
         enabled = enabled,
         keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions,
+        minLines = minLines,
+        maxLines = maxLines,
         cursorBrush = SolidColor(DaexTheme.colors.primary),
         decorationBox = { innerTextField ->
             Box(contentAlignment = Alignment.CenterStart) {
@@ -262,6 +270,219 @@ fun DaexStopIcon(
             cornerRadius = CornerRadius(w * 0.08f, w * 0.08f)
         )
     }
+}
+
+@Composable
+fun EmptyChatIcon(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        drawRoundRect(
+            color = color,
+            topLeft = Offset(w * 0.1f, h * 0.15f),
+            size = Size(w * 0.8f, h * 0.55f),
+            cornerRadius = CornerRadius(w * 0.12f, w * 0.12f),
+            style = Stroke(width = 2.dp.toPx())
+        )
+        val tail = Path().apply {
+            moveTo(w * 0.3f, h * 0.68f)
+            lineTo(w * 0.25f, h * 0.88f)
+            lineTo(w * 0.48f, h * 0.68f)
+        }
+        drawPath(
+            path = tail,
+            color = color,
+            style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round)
+        )
+    }
+}
+
+@Composable
+fun EmptyDocumentIcon(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.25f, h * 0.1f)
+            lineTo(w * 0.58f, h * 0.1f)
+            lineTo(w * 0.75f, h * 0.27f)
+            lineTo(w * 0.75f, h * 0.9f)
+            lineTo(w * 0.25f, h * 0.9f)
+            close()
+        }
+        drawPath(path = path, color = color, style = Stroke(width = 2.dp.toPx(), join = StrokeJoin.Round))
+        drawLine(
+            color = color,
+            start = Offset(w * 0.36f, h * 0.52f),
+            end = Offset(w * 0.64f, h * 0.52f),
+            strokeWidth = 1.5.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = color,
+            start = Offset(w * 0.36f, h * 0.68f),
+            end = Offset(w * 0.58f, h * 0.68f),
+            strokeWidth = 1.5.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+fun EmptyGalleryIcon(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val cell = Size(w * 0.32f, h * 0.32f)
+        val radius = CornerRadius(w * 0.06f, w * 0.06f)
+        val stroke = Stroke(width = 2.dp.toPx())
+        drawRoundRect(color, Offset(w * 0.14f, h * 0.14f), cell, radius, style = stroke)
+        drawRoundRect(color, Offset(w * 0.54f, h * 0.14f), cell, radius, style = stroke)
+        drawRoundRect(color, Offset(w * 0.14f, h * 0.54f), cell, radius, style = stroke)
+        drawRoundRect(color, Offset(w * 0.54f, h * 0.54f), cell, radius, style = stroke)
+    }
+}
+
+@Composable
+fun EmptyState(
+    icon: @Composable (Color) -> Unit,
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
+) {
+    Column(
+        modifier = modifier.fillMaxWidth().padding(32.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        icon(DaexTheme.colors.onSurface.copy(alpha = 0.3f))
+        androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(16.dp))
+        androidx.compose.foundation.text.BasicText(
+            text = title,
+            modifier = Modifier.fillMaxWidth(),
+            style = DaexTheme.typography.mono.copy(
+                color = DaexTheme.colors.onSurface.copy(alpha = 0.5f),
+                fontSize = 13.sp,
+                letterSpacing = 0.5.sp,
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+        )
+        if (subtitle != null) {
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(6.dp))
+            androidx.compose.foundation.text.BasicText(
+                text = subtitle,
+                modifier = Modifier.fillMaxWidth(),
+                style = DaexTheme.typography.body2.copy(
+                    color = DaexTheme.colors.onSurface.copy(alpha = 0.3f),
+                    fontSize = 12.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            )
+        }
+        if (actionLabel != null && onAction != null) {
+            androidx.compose.foundation.layout.Spacer(modifier = Modifier.height(20.dp))
+            Box(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(DaexTheme.colors.primary.copy(alpha = 0.08f))
+                    .border(0.5.dp, DaexTheme.colors.primary.copy(alpha = 0.3f), RoundedCornerShape(8.dp))
+                    .clickable { onAction() }
+                    .padding(horizontal = 16.dp, vertical = 10.dp)
+            ) {
+                androidx.compose.foundation.text.BasicText(
+                    text = actionLabel,
+                    style = DaexTheme.typography.mono.copy(
+                        color = DaexTheme.colors.primary,
+                        fontSize = 11.sp,
+                        letterSpacing = 0.5.sp
+                    )
+                )
+            }
+        }
+    }
+}
+
+/**
+ * The live-voice waveform from the workspace input bar: three layered sine paths with
+ * edge-tapering envelopes and vertical-gradient fills. Shared between ExecutionScreen's
+ * input bar and the onboarding voice-mode preview so both render the identical effect.
+ * `phase` animates the wave motion, `amplitude` (0..1) scales wave height, `alpha`
+ * fades the whole waveform in/out.
+ */
+fun androidx.compose.ui.graphics.drawscope.DrawScope.drawVoiceWaveform(
+    phase: Float,
+    amplitude: Float,
+    color: Color,
+    alpha: Float
+) {
+    if (alpha <= 0f) return
+    val baseLineY = size.height * 0.5f
+    val widthF = size.width
+    val piF = kotlin.math.PI.toFloat()
+
+    val path1 = Path()
+    val amplitude1 = 4.dp.toPx() + (amplitude * 10.dp.toPx())
+    path1.moveTo(0f, size.height)
+    for (x in 0..size.width.toInt() step 10) {
+        val xf = x.toFloat()
+        val envelope = kotlin.math.sin(xf / widthF * piF)
+        val sineVal = kotlin.math.sin(xf * 0.01f + phase)
+        val y = baseLineY + sineVal * amplitude1 * 0.4f * envelope
+        path1.lineTo(xf, y)
+    }
+    path1.lineTo(size.width, size.height)
+    path1.close()
+    drawPath(
+        path = path1,
+        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+            colors = listOf(color.copy(alpha = alpha * 0.25f), Color.Transparent),
+            startY = baseLineY - amplitude1,
+            endY = size.height
+        )
+    )
+
+    val path2 = Path()
+    val amplitude2 = 6.dp.toPx() + (amplitude * 14.dp.toPx())
+    path2.moveTo(0f, size.height)
+    for (x in 0..size.width.toInt() step 10) {
+        val xf = x.toFloat()
+        val envelope = kotlin.math.sin(xf / widthF * piF)
+        val sineVal = kotlin.math.sin(xf * 0.015f - phase * 2.0f + 1.0f)
+        val y = baseLineY + sineVal * amplitude2 * 0.6f * envelope
+        path2.lineTo(xf, y)
+    }
+    path2.lineTo(size.width, size.height)
+    path2.close()
+    drawPath(
+        path = path2,
+        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+            colors = listOf(color.copy(alpha = alpha * 0.40f), Color.Transparent),
+            startY = baseLineY - amplitude2,
+            endY = size.height
+        )
+    )
+
+    val path3 = Path()
+    val amplitude3 = 8.dp.toPx() + (amplitude * 18.dp.toPx())
+    path3.moveTo(0f, size.height)
+    for (x in 0..size.width.toInt() step 10) {
+        val xf = x.toFloat()
+        val envelope = kotlin.math.sin(xf / widthF * piF)
+        val sineVal = kotlin.math.sin(xf * 0.02f + phase * 3.0f + 2.5f)
+        val y = baseLineY + sineVal * amplitude3 * 0.8f * envelope
+        path3.lineTo(xf, y)
+    }
+    path3.lineTo(size.width, size.height)
+    path3.close()
+    drawPath(
+        path = path3,
+        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+            colors = listOf(color.copy(alpha = alpha * 0.60f), Color.Transparent),
+            startY = baseLineY - amplitude3,
+            endY = size.height
+        )
+    )
 }
 
 @Composable

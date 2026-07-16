@@ -3,15 +3,19 @@ package com.daex.android.ui.components
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.withTransform
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.daex.android.ui.theme.DaexTheme
@@ -205,4 +209,109 @@ fun DaexLoader(
             )
         }
     }
+}
+
+/**
+ * The workspace's ambient background aura, reusable outside ExecutionScreen (e.g. onboarding).
+ * Same visual language as the ExecutionScreen aura: two radial-gradient circles with a slow
+ * breathing pulse and accelerometer tilt-parallax. `intensity` (0..1) scales both circles'
+ * alphas so the effect can fade in progressively.
+ */
+@Composable
+fun AmbientAura(
+    intensity: Float,
+    modifier: Modifier = Modifier,
+    color: Color = DaexTheme.colors.primary,
+    tiltEnabled: Boolean = true
+) {
+    val context = LocalContext.current
+    val sensorManager = remember(context) {
+        context.getSystemService(android.content.Context.SENSOR_SERVICE) as android.hardware.SensorManager
+    }
+    val accelerometer = remember(sensorManager) {
+        sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)
+    }
+
+    var tiltX by remember { mutableFloatStateOf(0f) }
+    var tiltY by remember { mutableFloatStateOf(0f) }
+
+    DisposableEffect(tiltEnabled, accelerometer) {
+        if (!tiltEnabled || accelerometer == null) return@DisposableEffect onDispose {}
+
+        val listener = object : android.hardware.SensorEventListener {
+            override fun onSensorChanged(event: android.hardware.SensorEvent?) {
+                event?.let {
+                    val rawX = it.values[0]
+                    val rawY = it.values[1]
+                    tiltX = tiltX + 0.1f * (rawX - tiltX)
+                    tiltY = tiltY + 0.1f * (rawY - tiltY)
+                }
+            }
+            override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) {}
+        }
+
+        sensorManager.registerListener(listener, accelerometer, android.hardware.SensorManager.SENSOR_DELAY_UI)
+        onDispose { sensorManager.unregisterListener(listener) }
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "AmbientAuraPulse")
+    val auraScale by infiniteTransition.animateFloat(
+        initialValue = 0.85f,
+        targetValue = 1.15f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 6000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "AmbientAuraScale"
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .drawBehind {
+                if (intensity <= 0f) return@drawBehind
+
+                val maxShiftX = 35.dp.toPx()
+                val maxShiftY = 35.dp.toPx()
+                val shiftX = (-tiltX * 4.5f.dp.toPx()).coerceIn(-maxShiftX, maxShiftX)
+                val shiftY = (tiltY * 4.5f.dp.toPx()).coerceIn(-maxShiftY, maxShiftY)
+
+                val rightCenter = Offset(
+                    x = size.width * 0.85f + shiftX,
+                    y = size.height * 0.35f + shiftY
+                )
+                val rightRadius = size.width * 0.8f * auraScale
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            color.copy(alpha = 0.16f * intensity),
+                            color.copy(alpha = 0.16f * 0.4f * intensity),
+                            Color.Transparent
+                        ),
+                        center = rightCenter,
+                        radius = rightRadius
+                    ),
+                    center = rightCenter,
+                    radius = rightRadius
+                )
+
+                val leftCenter = Offset(
+                    x = size.width * 0.15f + shiftX,
+                    y = size.height * 0.75f + shiftY
+                )
+                val leftRadius = size.width * 0.6f
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            color.copy(alpha = 0.08f * intensity),
+                            Color.Transparent
+                        ),
+                        center = leftCenter,
+                        radius = leftRadius
+                    ),
+                    center = leftCenter,
+                    radius = leftRadius
+                )
+            }
+    )
 }

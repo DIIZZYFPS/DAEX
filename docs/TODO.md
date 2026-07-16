@@ -1,5 +1,14 @@
 # DAEX Agent Overhaul Roadmap
 
+## IMPORTANT: Do First
+- [x] **Audio & VAD Simplification**
+  - [x] Remove experimental barge-in code, `smoothedTtsRms` envelope follower, and dynamic echo thresholds from `AudioRecorder.kt` and `DaexInferenceViewModel.kt`.
+  - [x] Revert VAD to use static `speechThreshold` and `silenceThreshold` to fix model deafness and improve baseline listening sensitivity.
+- [x] **Architecture Restructuring & ViewModel Modularization**
+  - [x] Reorganize app file structure to establish clean MVVM/Clean Architecture boundaries (`data/`, `domain/`, `framework/`, `ui/` packages).
+  - [x] Relocate `DaexInferenceViewModel.kt` out of the `services/` directory into `ui/viewmodels/` (as its 5 successor ViewModels below - the god object itself was decomposed rather than moved intact).
+  - [x] Decouple `DaexInferenceViewModel` into focused view models: [ChatViewModel](file:///c:/Users/dgods/Documents/stuff/DAEX/DaexAndroid/app/src/main/java/com/daex/android/ui/viewmodels/ChatViewModel.kt), [AudioSessionViewModel](file:///c:/Users/dgods/Documents/stuff/DAEX/DaexAndroid/app/src/main/java/com/daex/android/ui/viewmodels/AudioSessionViewModel.kt), [SettingsViewModel](file:///c:/Users/dgods/Documents/stuff/DAEX/DaexAndroid/app/src/main/java/com/daex/android/ui/viewmodels/SettingsViewModel.kt), [TtsViewModel](file:///c:/Users/dgods/Documents/stuff/DAEX/DaexAndroid/app/src/main/java/com/daex/android/ui/viewmodels/TtsViewModel.kt), and [OnboardingViewModel](file:///c:/Users/dgods/Documents/stuff/DAEX/DaexAndroid/app/src/main/java/com/daex/android/ui/viewmodels/OnboardingViewModel.kt).
+
 ## Phase 1: Agent Overhaul (Skills & Dynamic Compaction)
 
 Revamp the tool execution pipeline to support interactive workflows, dynamic skill loading, and token-constrained context compaction.
@@ -17,4 +26,5 @@ Revamp the tool execution pipeline to support interactive workflows, dynamic ski
   - [x] Implement `load_skill` and `list_skills` tools to dynamically list and inject domain-specific instructions from Markdown files on demand, optimizing the system prompt.
   - [ ] Implement a generic `runMcpTool(toolName, input)` router to connect the local LiteRT client to external Model Context Protocol (MCP) servers.
   - [ ] Ensure automatic redaction of sensitive credentials and tokens before prompt submission.
+
 
