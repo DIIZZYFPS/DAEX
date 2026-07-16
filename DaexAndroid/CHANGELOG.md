@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.5.0](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.4.0...DaexAndroid-v0.5.0) (2026-07-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* Fix bugs, improve features, and refactor code structure, QOL additions ([#35](https://github.com/DIIZZYFPS/DAEX/issues/35))
+
+### Features
+
+* Fix bugs, improve features, and refactor code structure, QOL additions ([#35](https://github.com/DIIZZYFPS/DAEX/issues/35)) ([e45dd18](https://github.com/DIIZZYFPS/DAEX/commit/e45dd18dd3637d0f0a19144d5ef77b4700db7f9d))
+
 ## [0.4.0](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.3.5...DaexAndroid-v0.4.0) (2026-07-11)
 
 

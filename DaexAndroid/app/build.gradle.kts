@@ -13,7 +13,7 @@ plugins {
 // release-please bumps this value directly (see .github/release-please-config.json's
 // "generic" extra-files entry for app/build.gradle.kts); versionCode is derived from it
 // below so the two can never drift out of sync again.
-val appVersionName = "0.4.0" // x-release-please-version
+val appVersionName = "0.5.0" // x-release-please-version
 
 fun versionCodeFromName(name: String): Int {
     val parts = name.split(".").map { it.toIntOrNull() ?: 0 }
