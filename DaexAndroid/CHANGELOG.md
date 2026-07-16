@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.5.0](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.4.0...DaexAndroid-v0.5.0) (2026-07-16)
+## [1.0.0](https://github.com/DIIZZYFPS/DAEX/compare/DaexAndroid-v0.4.0...DaexAndroid-v0.5.0) (2026-07-16)
 
 
 ### ⚠ BREAKING CHANGES
