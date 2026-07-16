@@ -1,11 +1,11 @@
 name: Build signed AAB
 
-# Builds a signed Android App Bundle for manual upload to Play Console, on every commit to any
-# branch - decoupled from release-please's main-branch-only flow, so it doesn't require merging
-# first. The .aab comes back as a downloadable workflow artifact (not a GitHub Release), since
-# it's meant for a one-time manual Play Console upload, not public distribution.
+# On-demand build of a signed Android App Bundle, for manual upload to Play Console.
+# Runs against whichever branch you pick when triggering it - decoupled from release-please's
+# main-branch-only flow, so it doesn't require merging first. The .aab comes back as a downloadable
+# workflow artifact (not a GitHub Release), since it's meant for a one-time manual Play Console
+# upload, not public distribution.
 on:
-  push: {}
   workflow_dispatch: {}
 
 jobs:
