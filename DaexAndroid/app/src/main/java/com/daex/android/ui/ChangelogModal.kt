@@ -18,6 +18,10 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.daex.android.ui.theme.DaexTheme
@@ -195,7 +199,7 @@ fun ChangelogModal(
                                             modifier = Modifier.padding(top = 2.dp)
                                         )
                                         BasicText(
-                                            text = text,
+                                            text = parseMarkdownBold(text),
                                             style = DaexTheme.typography.body2.copy(
                                                 color = DaexTheme.colors.onSurface
                                             )
@@ -207,7 +211,7 @@ fun ChangelogModal(
                                 }
                                 else -> {
                                     BasicText(
-                                        text = trimmed,
+                                        text = parseMarkdownBold(trimmed),
                                         style = DaexTheme.typography.body2.copy(
                                             color = DaexTheme.colors.onSurface.copy(alpha = 0.8f)
                                         ),
@@ -219,6 +223,30 @@ fun ChangelogModal(
                     }
                 }
             }
+        }
+    }
+}
+
+private fun parseMarkdownBold(text: String): AnnotatedString {
+    return buildAnnotatedString {
+        var cursor = 0
+        while (cursor < text.length) {
+            val nextBoldStart = text.indexOf("**", cursor)
+            if (nextBoldStart == -1) {
+                append(text.substring(cursor))
+                break
+            }
+            append(text.substring(cursor, nextBoldStart))
+            val nextBoldEnd = text.indexOf("**", nextBoldStart + 2)
+            if (nextBoldEnd == -1) {
+                append(text.substring(nextBoldStart))
+                break
+            }
+            val boldContent = text.substring(nextBoldStart + 2, nextBoldEnd)
+            pushStyle(SpanStyle(fontWeight = FontWeight.Bold))
+            append(boldContent)
+            pop()
+            cursor = nextBoldEnd + 2
         }
     }
 }

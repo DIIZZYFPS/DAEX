@@ -116,7 +116,7 @@ object DaexTheme {
                 Color(0xFF00FFFF) -> Color(0xFF0891B2) // Cyan -> Deep Cyan
                 Color(0xFFA855F7) -> Color(0xFF7C3AED) // Purple -> Deep Purple
                 Color(0xFF4ADE80) -> Color(0xFF16A34A) // Green -> Deep Green
-                Color(0xFF3B82F6) -> Color(0xFF1D4ED8) // Blue -> Dark Blue
+                Color(0xFFEDAEC0) -> Color(0xFFEDAEC0) // Rose -> Crimson Red
                 Color(0xFFF59E0B) -> Color(0xFFD97706) // Amber -> Dark Amber
                 Color(0xFFFF003C) -> Color(0xFFD6002F) // Cyber Red -> Crimson Red
                 else -> computeLightVariant(color)

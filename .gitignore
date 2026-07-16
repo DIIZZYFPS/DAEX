@@ -6,6 +6,9 @@ __pycache__/
 # Idea files
 .idea/
 
+#marketing
+marketing/
+
 # C extensions
 *.so
 !**/jniLibs/**/*.so

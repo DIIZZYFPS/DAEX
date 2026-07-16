@@ -385,6 +385,7 @@
     <ID>ImplicitDefaultLocale:LandingScreen.kt$String.format("%.1f %s", bytes / Math.pow(k, i.toDouble()), sizes[i])</ID>
     <ID>ImplicitDefaultLocale:ModelManager.kt$ModelManager$String.format("%.1f %s", bytes / k.pow(i.toDouble()), sizes[i])</ID>
     <ID>ImportOrdering:AudioRecorder.kt$import android.annotation.SuppressLint import android.media.AudioFormat import android.media.AudioRecord import android.media.MediaRecorder import android.util.Log import java.io.File import java.io.FileOutputStream import java.io.RandomAccessFile import kotlinx.coroutines.CoroutineScope import kotlinx.coroutines.Dispatchers import kotlinx.coroutines.Job import kotlinx.coroutines.launch</ID>
+    <ID>ImportOrdering:ChangelogModal.kt$import android.content.Context import androidx.compose.animation.core.* import androidx.compose.foundation.background import androidx.compose.foundation.border import androidx.compose.foundation.clickable import androidx.compose.foundation.layout.* import androidx.compose.foundation.lazy.LazyColumn import androidx.compose.foundation.lazy.items import androidx.compose.foundation.shape.RoundedCornerShape import androidx.compose.foundation.text.BasicText import androidx.compose.runtime.* import androidx.compose.ui.Alignment import androidx.compose.ui.Modifier import androidx.compose.ui.draw.clip import androidx.compose.ui.graphics.Color import androidx.compose.ui.platform.LocalContext import androidx.compose.ui.unit.dp import androidx.compose.ui.unit.sp import androidx.compose.ui.text.AnnotatedString import androidx.compose.ui.text.SpanStyle import androidx.compose.ui.text.buildAnnotatedString import androidx.compose.ui.text.font.FontWeight import androidx.compose.ui.window.Dialog import androidx.compose.ui.window.DialogProperties import com.daex.android.ui.theme.DaexTheme</ID>
     <ID>ImportOrdering:DaexComponents.kt$import androidx.compose.animation.core.animateFloatAsState import androidx.compose.foundation.background import androidx.compose.foundation.border import androidx.compose.foundation.clickable import androidx.compose.foundation.interaction.MutableInteractionSource import androidx.compose.foundation.interaction.collectIsPressedAsState import androidx.compose.foundation.layout.Box import androidx.compose.foundation.layout.Column import androidx.compose.foundation.layout.fillMaxWidth import androidx.compose.foundation.layout.height import androidx.compose.foundation.layout.offset import androidx.compose.foundation.layout.padding import androidx.compose.foundation.layout.size import androidx.compose.foundation.layout.width import androidx.compose.foundation.shape.RoundedCornerShape import androidx.compose.foundation.text.BasicTextField import androidx.compose.foundation.text.KeyboardActions import androidx.compose.foundation.text.KeyboardOptions import androidx.compose.runtime.Composable import androidx.compose.runtime.getValue import androidx.compose.runtime.remember import androidx.compose.ui.Alignment import androidx.compose.ui.Modifier import androidx.compose.ui.draw.clip import androidx.compose.ui.draw.scale import androidx.compose.ui.graphics.Color import androidx.compose.ui.graphics.SolidColor import androidx.compose.ui.graphics.asComposeRenderEffect import androidx.compose.ui.graphics.graphicsLayer import androidx.compose.ui.text.TextStyle import androidx.compose.ui.unit.dp import androidx.compose.ui.unit.sp import com.daex.android.ui.theme.DaexTheme import androidx.compose.foundation.Canvas import androidx.compose.ui.graphics.Path import androidx.compose.ui.graphics.StrokeCap import androidx.compose.ui.graphics.StrokeJoin import androidx.compose.ui.graphics.drawscope.Stroke import androidx.compose.ui.geometry.CornerRadius import androidx.compose.ui.geometry.Size import androidx.compose.ui.geometry.Offset import androidx.compose.animation.core.rememberInfiniteTransition import androidx.compose.animation.core.animateFloat import androidx.compose.animation.core.infiniteRepeatable import androidx.compose.animation.core.tween import androidx.compose.animation.core.RepeatMode import androidx.compose.animation.core.LinearEasing import androidx.compose.foundation.layout.fillMaxSize</ID>
     <ID>ImportOrdering:DaexMemory.kt$import android.content.Context import com.daex.android.framework.DaexEmbedder import com.daex.android.framework.Message import io.objectbox.BoxStore import io.objectbox.kotlin.query import io.objectbox.kotlin.toFlow import kotlinx.coroutines.flow.Flow import kotlinx.coroutines.flow.map import kotlinx.coroutines.Dispatchers import kotlinx.coroutines.withContext import kotlinx.coroutines.sync.Mutex import kotlinx.coroutines.sync.withLock import java.util.UUID</ID>
     <ID>ImportOrdering:DaexService.kt$import android.content.Context import android.util.Log import com.daex.android.data.DaexMemory import kotlinx.coroutines.Dispatchers import kotlinx.coroutines.flow.collect import kotlinx.coroutines.withContext import com.google.ai.edge.litertlm.Engine import com.google.ai.edge.litertlm.EngineConfig import com.google.ai.edge.litertlm.Backend import com.google.ai.edge.litertlm.Conversation import com.google.ai.edge.litertlm.ConversationConfig import com.google.ai.edge.litertlm.Channel import com.google.ai.edge.litertlm.SamplerConfig import com.google.ai.edge.litertlm.tool import com.google.ai.edge.litertlm.Message as LiteRtMessage import com.google.ai.edge.litertlm.Contents as LiteRtContents import com.google.ai.edge.litertlm.Role as LiteRtRole</ID>
@@ -472,6 +473,7 @@
     <ID>LongParameterList:SettingsScreen.kt$( label: String, value: Float, valueRange: ClosedFloatingPointRange&lt;Float&gt;, valueFormatter: (Float) -&gt; String, onValueChange: (Float) -&gt; Unit, primaryColor: Color, subtitle: String? = null, settingsViewModel: SettingsViewModel? = null )</ID>
     <ID>LongParameterList:SettingsScreen.kt$( settingsViewModel: SettingsViewModel, ttsViewModel: TtsViewModel, chatViewModel: ChatViewModel, modelManager: ModelManager, onBack: () -&gt; Unit, onOpenGallery: () -&gt; Unit, onReplayOnboarding: () -&gt; Unit )</ID>
     <ID>LongParameterList:Sidebar.kt$( visible: Boolean, onClose: () -&gt; Unit, onNewConversation: () -&gt; Unit, onOpenSettings: () -&gt; Unit, onOpenGallery: () -&gt; Unit, onOpenSavedPrompts: () -&gt; Unit = {}, chatViewModel: ChatViewModel )</ID>
+    <ID>LoopWithTooManyJumpStatements:ChangelogModal.kt$while</ID>
     <ID>LoopWithTooManyJumpStatements:ChatViewModel.kt$ChatViewModel$for</ID>
     <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$0xFF</ID>
     <ID>MagicNumber:AudioRecorder.kt$AudioRecorder$0xff</ID>
@@ -697,13 +699,12 @@
     <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF00FFFF</ID>
     <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF0891B2</ID>
     <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF16A34A</ID>
-    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF1D4ED8</ID>
-    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF3B82F6</ID>
     <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF4ADE80</ID>
     <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFF7C3AED</ID>
     <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFFA855F7</ID>
     <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFFD6002F</ID>
     <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFFD97706</ID>
+    <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFFEDAEC0</ID>
     <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFFF59E0B</ID>
     <ID>MagicNumber:DaexTheme.kt$DaexTheme$0xFFFF003C</ID>
     <ID>MagicNumber:DaexTheme.kt$DaexTheme$1.1f</ID>
@@ -796,9 +797,9 @@
     <ID>MagicNumber:SavedPromptLibraryModal.kt$0.6f</ID>
     <ID>MagicNumber:SettingsScreen.kt$0.5f</ID>
     <ID>MagicNumber:SettingsScreen.kt$0xFF00FFFF</ID>
-    <ID>MagicNumber:SettingsScreen.kt$0xFF3B82F6</ID>
     <ID>MagicNumber:SettingsScreen.kt$0xFF4ADE80</ID>
     <ID>MagicNumber:SettingsScreen.kt$0xFFA855F7</ID>
+    <ID>MagicNumber:SettingsScreen.kt$0xFFEDAEC0</ID>
     <ID>MagicNumber:SettingsScreen.kt$0xFFF59E0B</ID>
     <ID>MagicNumber:SettingsScreen.kt$0xFFFF003C</ID>
     <ID>MagicNumber:SettingsScreen.kt$0xFFFFFF</ID>

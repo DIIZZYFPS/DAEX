@@ -646,7 +646,7 @@ fun SettingsScreen(
                                 Color(0xFF00FFFF), // Cyan
                                 Color(0xFFA855F7), // Purple
                                 Color(0xFF4ADE80), // Green
-                                Color(0xFF3B82F6), // Blue
+                                Color(0xFFEDAEC0), // Rose
                                 Color(0xFFF59E0B), // Amber
                                 Color(0xFFFF003C)  // Cyber Red
                             )

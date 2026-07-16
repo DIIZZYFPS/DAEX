@@ -87,18 +87,8 @@ jobs:
           git diff --cached --quiet || git commit -m "chore: update Play Store what's new for ${{ steps.release.outputs['DaexAndroid--tag_name'] }}"
           git push
 
-      # Targets "internal" specifically, not production - promotion to a wider track stays a
-      # deliberate manual step in Play Console, not something CI decides on its own.
-      - name: Publish AAB to Play Store (internal track)
-        if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
-        uses: r0adkll/upload-google-play@v1
-        with:
-          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          packageName: com.daex.android
-          releaseFiles: DaexAndroid/app/build/outputs/bundle/release/app-release.aab
-          track: internal
-          whatsNewDirectory: DaexAndroid/distribution/whatsnew
-
+      # GitHub Release delivery is the primary, validated distribution path (sideload) - it must
+      # never be blocked by the Play Store step below, so it runs first and unconditionally.
       - name: Upload APKs to GitHub Release
         if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
         env:
@@ -106,3 +96,19 @@ jobs:
         run: |
           gh release upload ${{ steps.release.outputs['DaexAndroid--tag_name'] }} DaexAndroid/app/build/outputs/apk/release/app-release.apk
           gh release upload ${{ steps.release.outputs['DaexAndroid--tag_name'] }} DaexAndroid/app/build/outputs/apk/debug/app-debug.apk
+
+      # Targets "internal" specifically, not production - promotion to a wider track stays a
+      # deliberate manual step in Play Console, not something CI decides on its own.
+      # continue-on-error: a Play Store auth/permission hiccup (service account scope, track
+      # access, etc.) must never take down GitHub Release delivery above - this step failing
+      # shows as a non-fatal warning on the run instead of failing the whole job.
+      - name: Publish AAB to Play Store (internal track)
+        if: ${{ steps.release.outputs['DaexAndroid--release_created'] }}
+        continue-on-error: true
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.daex.android
+          releaseFiles: DaexAndroid/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          whatsNewDirectory: DaexAndroid/distribution/whatsnew

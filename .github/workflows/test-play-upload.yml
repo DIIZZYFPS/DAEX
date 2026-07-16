@@ -1,0 +1,68 @@
+name: Test Play Store upload
+
+# Isolates just the Play Store publish step from release.yml so it can be run standalone for
+# debugging (service account permissions, track access, etc.) without waiting on or triggering
+# an actual release-please release. Manual only. Builds a fresh signed AAB from whatever
+# branch/ref you pick when running it, then attempts the exact same publish step as the real
+# pipeline - unlike release.yml's copy, this one does NOT continue-on-error, so a failure here
+# shows its real error directly instead of being swallowed.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  test-play-upload:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Decode signing keystore
+        working-directory: DaexAndroid
+        run: |
+          mkdir -p keystore
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > keystore/daex-release.jks
+          cat > keystore.properties <<EOF
+          storeFile=keystore/daex-release.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=daex-release
+          keyPassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          EOF
+
+      - name: Build signed AAB
+        run: |
+          cd DaexAndroid
+          chmod +x gradlew
+          ./gradlew bundleRelease
+
+      - name: Remove signing keystore
+        if: always()
+        working-directory: DaexAndroid
+        run: rm -rf keystore keystore.properties
+
+      # Self-sufficient regardless of which branch/ref this runs from - falls back to a
+      # placeholder if the checked-out ref doesn't have a whatsnew file yet.
+      - name: Ensure a "What's new" file exists
+        working-directory: DaexAndroid
+        run: |
+          mkdir -p distribution/whatsnew
+          if [ ! -s distribution/whatsnew/whatsnew-en-US ]; then
+            echo "Test upload from workflow_dispatch - not a real release." > distribution/whatsnew/whatsnew-en-US
+          fi
+
+      - name: Publish AAB to Play Store (internal track)
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.daex.android
+          releaseFiles: DaexAndroid/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          whatsNewDirectory: DaexAndroid/distribution/whatsnew
