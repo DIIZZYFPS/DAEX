@@ -1,0 +1,55 @@
+name: Build signed AAB
+
+# On-demand build of a signed Android App Bundle, for manual upload to Play Console.
+# Runs against whichever branch you pick when triggering it - decoupled from release-please's
+# main-branch-only flow, so it doesn't require merging first. The .aab comes back as a downloadable
+# workflow artifact (not a GitHub Release), since it's meant for a one-time manual Play Console
+# upload, not public distribution.
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build-aab:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+          cache: gradle
+
+      - name: Decode signing keystore
+        working-directory: DaexAndroid
+        run: |
+          mkdir -p keystore
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > keystore/daex-release.jks
+          cat > keystore.properties <<EOF
+          storeFile=keystore/daex-release.jks
+          storePassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          keyAlias=daex-release
+          keyPassword=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          EOF
+
+      - name: Build signed AAB
+        run: |
+          cd DaexAndroid
+          chmod +x gradlew
+          ./gradlew bundleRelease
+
+      - name: Remove signing keystore
+        if: always()
+        working-directory: DaexAndroid
+        run: rm -rf keystore keystore.properties
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: daex-release-aab
+          path: DaexAndroid/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 14
