@@ -1,5 +1,14 @@
 # DAEX (Daedalus Execution Engine)
 
+## 🧪 Closed Alpha Testing
+
+DAEX is currently in **Closed Alpha** on Google Play. To download and test the app on your Android device, follow these two steps:
+
+1. **Join the Testers Group**: Join the [DAEX Google Group](https://groups.google.com/g/daex-testing) with the Google account associated with your Android device.
+2. **Access Google Play Track**: Once joined, opt into the testing track and download the app via [Google Play](https://play.google.com/store/apps/details?id=com.daex.android) (or the [Web Testing Opt-in Link](https://play.google.com/apps/testing/com.daex.android)).
+
+*Feedback, bug reports, and hardware acceleration logs can be posted directly to the Google Group.*
+
 **DAEX** is a high-performance, edge-optimized execution client designed to run Large Language Models directly on Android hardware. DAEX hosts an advanced local AI agent known as **Icarus**, leveraging on-device inference to prioritize zero-latency speed, user privacy, and complete offline autonomy.
 
 The project is structured as a native Kotlin Android application with a premium dark cybernetic terminal user interface.
