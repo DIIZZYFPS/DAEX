@@ -1,0 +1,25 @@
+<svg width="1024" height="500" viewBox="0 0 1024 500" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background -->
+  <rect width="1024" height="500" fill="#000000" />
+
+  <!-- Logo Group (translated and scaled) -->
+  <g transform="translate(26, 34) scale(4.5)">
+    <!-- Blade 1 (Longest/Fastest) -->
+    <path d="M 20 80 L 40 40 L 70 16 L 72 18 L 46 40 L 26 80 Z" fill="#00ffff" />
+    
+    <!-- Blade 2 (Mid) -->
+    <path d="M 34 80 L 49 50 L 74 30 L 76 32 L 55 50 L 40 80 Z" fill="#00ffff" fill-opacity="0.7" />
+    
+    <!-- Blade 3 (Short) -->
+    <path d="M 48 80 L 58 60 L 78 44 L 80 46 L 64 60 L 54 80 Z" fill="#00ffff" fill-opacity="0.4" />
+    
+    <!-- Blade 4 (Extra Short) -->
+    <path d="M 62 80 L 67 70 L 82 58 L 84 60 L 73 70 L 68 80 Z" fill="#00ffff" fill-opacity="0.2" />
+  </g>
+
+  <!-- Title Text -->
+  <text x="460" y="255" fill="#00ffff" font-family="Consolas" font-size="130" font-weight="bold" style="font-family: Consolas, monospace; font-weight: bold;">DAEX</text>
+
+  <!-- Subtitle Text -->
+  <text x="465" y="315" fill="#E2E8F0" fill-opacity="0.8" font-family="Consolas" font-size="22" font-weight="bold" style="font-family: Consolas, monospace; font-weight: bold;">DAEDALUS EXECUTION ENGINE</text>
+</svg>

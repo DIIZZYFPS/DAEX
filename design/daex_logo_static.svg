@@ -8,12 +8,12 @@
     
     <!-- Blade 2 (Mid) -->
     <!-- Elbow and upper tip section are proportionally shorter -->
-    <path d="M 34 80 L 49 50 L 74 30 L 76 32 L 55 50 L 40 80 Z" fill="rgba(0,255,255,0.7)" />
+    <path d="M 34 80 L 49 50 L 74 30 L 76 32 L 55 50 L 40 80 Z" fill="#00ffff" fill-opacity="0.7" />
     
     <!-- Blade 3 (Short) -->
-    <path d="M 48 80 L 58 60 L 78 44 L 80 46 L 64 60 L 54 80 Z" fill="rgba(0,255,255,0.4)" />
+    <path d="M 48 80 L 58 60 L 78 44 L 80 46 L 64 60 L 54 80 Z" fill="#00ffff" fill-opacity="0.4" />
     
     <!-- Blade 4 (Extra Short) -->
-    <path d="M 62 80 L 67 70 L 82 58 L 84 60 L 73 70 L 68 80 Z" fill="rgba(0,255,255,0.2)" />
+    <path d="M 62 80 L 67 70 L 82 58 L 84 60 L 73 70 L 68 80 Z" fill="#00ffff" fill-opacity="0.2" />
   </g>
 </svg>
